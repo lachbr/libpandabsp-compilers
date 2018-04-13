@@ -1,0 +1,15 @@
+*.exe
+*.lib
+Debug
+Release
+.vs
+p3bsp/Release
+p3csg/Release
+p3vis/Release
+p3rad/Release
+ripent/Release
+CMakeFiles
+p3bsp/CMakeFiles
+p3csg/CMakeFiles
+p3vis/CMakeFiles
+p3rad/CMakeFiles
