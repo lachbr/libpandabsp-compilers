@@ -5197,7 +5197,7 @@ static void     AddSampleToPatch(const sample_t* const s, const int facenum)
 #endif
 {
     patch_t*        patch;
-    BoundingBox     bounds;
+    BSPBoundingBox     bounds;
     int             i;
 
 #ifndef HLRAD_GatherPatchLight
@@ -5213,11 +5213,11 @@ static void     AddSampleToPatch(const sample_t* const s, const int facenum)
         patch->winding->getBounds(bounds);
         for (i = 0; i < 3; i++)
         {
-            if (bounds.m_Mins[i] > s->pos[i] + 16)
+            if (bounds.m_Mins[i] > s->pos[i] + TEXTURE_STEP)
             {
                 goto nextpatch;
             }
-            if (bounds.m_Maxs[i] < s->pos[i] - 16)
+            if (bounds.m_Maxs[i] < s->pos[i] - TEXTURE_STEP)
             {
                 goto nextpatch;
             }
@@ -6349,7 +6349,8 @@ void            BuildFacelights(const int facenum)
 	#else
 				for (j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++)
 				{
-					VectorAdd (facelight[facenum].samples[j][i].light, weighting, l.lmcache[pos][j], facelight[facenum].samples[j][i].light);
+					VectorAdd ( fl_samples[j][i].light, weighting, l.lmcache[pos][j], fl_samples[j][i].light );
+					
 				}
 	#endif
 				subsamples += weighting;
@@ -8114,7 +8115,8 @@ void MLH_GetSamples_r (mdllight_t *ml, int nodenum, const float *start, const fl
 			dface_t *f = &g_dfaces[node->firstface + i];
 			texinfo_t *tex = &g_texinfo[f->texinfo];
 			const char *texname = GetTextureByNumber (f->texinfo);
-			if (!strncmp (texname, "sky", 3))
+			contents_t contents = GetTextureContents( texname );
+			if (contents == CONTENTS_SKY)
 			{
 				continue;
 			}

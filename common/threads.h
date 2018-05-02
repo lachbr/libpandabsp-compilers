@@ -2,21 +2,19 @@
 #define THREADS_H__
 #include "cmdlib.h" //--vluzacn
 
+#include <pointerTo.h>
+#include <lightMutex.h>
+#include <genericThread.h>
+#include <threadPriority.h>
+#include <pvector.h>
+
 #if _MSC_VER >= 1000
 #pragma once
 #endif
 
 #define	MAX_THREADS	64
 
-typedef enum
-{
-    eThreadPriorityLow = -1,
-    eThreadPriorityNormal,
-    eThreadPriorityHigh
-}
-q_threadpriority;
-
-typedef void    (*q_threadfunction) (int);
+typedef void q_threadfunction( int );
 
 #ifdef SYSTEM_WIN32
 #define DEFAULT_NUMTHREADS -1
@@ -25,12 +23,33 @@ typedef void    (*q_threadfunction) (int);
 #define DEFAULT_NUMTHREADS 1
 #endif
 
-#define DEFAULT_THREAD_PRIORITY eThreadPriorityNormal
+class BSPThread : public Thread
+{
+public:
+	BSPThread();
+	void set_function( q_threadfunction *func );
+	void set_value( int val );
+	volatile bool is_finished() const;
+
+protected:
+	virtual void thread_main();
+
+private:
+	q_threadfunction *_func;
+	int _val;
+	volatile bool _finished;
+};
+
+#define DEFAULT_THREAD_PRIORITY TP_normal
 
 extern int      g_numthreads;
-extern q_threadpriority g_threadpriority;
+extern ThreadPriority g_threadpriority;
+extern LightMutex g_global_lock;
+extern pvector<PT( BSPThread )> g_threadhandles;
 
-extern void     ThreadSetPriority(q_threadpriority type);
+extern int	GetCurrentThreadNumber();
+
+extern void     ThreadSetPriority(ThreadPriority type);
 extern void     ThreadSetDefault();
 extern int      GetThreadWork();
 extern void     ThreadLock();

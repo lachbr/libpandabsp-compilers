@@ -7,6 +7,7 @@
 #include "bspfile.h"
 #include "scriplib.h"
 #include "blockmem.h"
+#include <string>
 
 //=============================================================================
 
@@ -85,6 +86,9 @@ int             g_dsurfedges_checksum;
 
 int             g_numentities;
 entity_t        g_entities[MAX_MAP_ENTITIES];
+
+std::string g_tex_contents_file = DEFAULT_TEXCONTENTS_FILE;
+map<string, contents_t> g_tex_contents;
 
 /*
  * ===============
@@ -398,11 +402,6 @@ static int      CopyLump(int lump, void* dest, int size, const dheader_t* const 
 {
     int             length, ofs;
 
-    printf( "CopyLump: lump: %i\n", lump );
-    printf( "dest: %i\n", dest );
-    printf( "size: %i\n", size );
-    printf( "header: %i\n", header );
-
     length = header->lumps[lump].filelen;
     ofs = header->lumps[lump].fileofs;
 
@@ -440,6 +439,8 @@ void            LoadBSPFile(const char* const filename)
 // =====================================================================================
 void            LoadBSPImage(dheader_t* const header)
 {
+    LoadTextureContents();
+
     unsigned int     i;
 
     // swap the header
@@ -447,9 +448,6 @@ void            LoadBSPImage(dheader_t* const header)
     {
         ((int*)header)[i] = LittleLong(((int*)header)[i]);
     }
-
-    printf( "%i, %i\n", header->ident, PBSP_MAGIC );
-    printf( "%i, %i\n", header->version, BSPVERSION );
 
     if (header->ident != PBSP_MAGIC)
     {
@@ -941,8 +939,9 @@ int CountBlocks ()
 #else
 		const char *texname =  GetTextureByNumber (f->texinfo);
 #endif
-		if (!strncmp (texname, "sky", 3) //sky, no lightmap allocation.
-			|| !strncmp (texname, "!", 1) || !strncasecmp (texname, "water", 5) || !strncasecmp (texname, "laser", 5) //water, no lightmap allocation.
+		contents_t contents = GetTextureContents( texname );
+		if (contents == CONTENTS_SKY //sky, no lightmap allocation.
+			|| contents == CONTENTS_WATER //water, no lightmap allocation.
 #ifdef ZHLT_EMBEDLIGHTMAP
 			|| (g_texinfo[ParseTexinfoForFace (f)].flags & TEX_SPECIAL) //aaatrigger, I don't know.
 #else
@@ -1978,4 +1977,63 @@ entity_t*       EntityForModel(const int modnum)
     }
 
     return &g_entities[0];
+}
+
+void SetTextureContentsFile( const char *path )
+{
+	g_tex_contents_file = path;
+}
+
+void LoadTextureContents()
+{
+	g_tex_contents.clear();
+
+	char *buffer;
+	LoadFile( g_tex_contents_file.c_str(), &buffer );
+	string strbuf = buffer;
+
+	vector<string> lines = explode( "\n", strbuf );
+	for ( size_t linenum = 0; linenum < lines.size(); linenum++ )
+	{
+		string texdata = lines[linenum];
+		vector<string> tex_and_contents = explode( " ", texdata );
+		string tex = tex_and_contents[0];
+		string contents = tex_and_contents[1];
+		transform( contents.begin(), contents.end(), contents.begin(), tolower );
+
+		if ( contents == "solid" )
+			g_tex_contents[tex] = CONTENTS_SOLID;
+		else if ( contents == "empty" )
+			g_tex_contents[tex] = CONTENTS_EMPTY;
+		else if ( contents == "sky" )
+			g_tex_contents[tex] = CONTENTS_SKY;
+		else if ( contents == "slime" )
+			g_tex_contents[tex] = CONTENTS_SLIME;
+		else if ( contents == "water" )
+			g_tex_contents[tex] = CONTENTS_WATER;
+		else if ( contents == "translucent" )
+			g_tex_contents[tex] = CONTENTS_TRANSLUCENT;
+		else if ( contents == "hint" )
+			g_tex_contents[tex] = CONTENTS_HINT;
+		else if ( contents == "null" )
+			g_tex_contents[tex] = CONTENTS_NULL;
+		else if ( contents == "boundingbox" )
+			g_tex_contents[tex] = CONTENTS_BOUNDINGBOX;
+		else if ( contents == "origin" )
+			g_tex_contents[tex] = CONTENTS_ORIGIN;
+		else
+			g_tex_contents[tex] = CONTENTS_SOLID;
+	}
+
+	delete buffer;
+}
+
+contents_t GetTextureContents( const char *texname )
+{
+	if ( g_tex_contents.find( texname ) != g_tex_contents.end() )
+	{
+		return g_tex_contents[texname];
+	}
+
+	return CONTENTS_SOLID;
 }

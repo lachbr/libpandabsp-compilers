@@ -48,7 +48,7 @@ static int texmap_store (char *texname, bool shouldlock = true)
 	g_numtexrefs++;
 
 	i = numtexmap;
-	texmap[numtexmap] = strdup (texname);
+	texmap[numtexmap] = texname;
 	numtexmap++;
 
 	if (shouldlock)
@@ -201,25 +201,21 @@ int             TexinfoForBrushTexture(const plane_t* const plane, brush_texture
 
     // Very Sleazy Hack 104 - since the tx.texref index will be bogus after we sort the texref array later
     // Put the string name of the texref in this "index" until after we are done sorting it in WriteMiptex().
-    tx.texref = texmap64_store(strdup(bt->name));
+    tx.texref = texmap64_store(bt->name);
 #endif
+
+    contents_t contents = GetTextureContents( bt->name );
 
     // set the special flag
     if (bt->name[0] == '*'
-        || !strncasecmp(bt->name, "sky", 3)
-
-// =====================================================================================
-//Cpt_Andrew - Env_Sky Check
-// =====================================================================================
-        || !strncasecmp(bt->name, "env_sky", 5)
-// =====================================================================================
+        || contents == CONTENTS_SKY
 
 #ifndef HLCSG_CUSTOMHULL
-        || !strncasecmp(bt->name, "clip", 4)
+        || contents == CONTENTS_CLIP
 #endif
-        || !strncasecmp(bt->name, "origin", 6)
+        || contents == CONTENTS_ORIGIN
 #ifdef ZHLT_NULLTEX // AJM
-        || !strncasecmp(bt->name, "null", 4)
+        || contents == CONTENTS_NULL
 #endif
         || !strncasecmp(bt->name, "aaatrigger", 10)
        )

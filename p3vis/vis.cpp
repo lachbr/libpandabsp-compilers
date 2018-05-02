@@ -11,9 +11,11 @@
 
 #include "vis.h"
 #ifdef ZHLT_LANGFILE
+#ifndef WITHIN_PANDA
 #ifdef SYSTEM_WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#endif
 #endif
 #endif
 
@@ -160,12 +162,12 @@ void            GetParamsFromEnt(entity_t* mapent)
 	// priority(choices) : "Priority Level" : 0 = [	0 : "Normal" 1 : "High"	-1 : "Low" ]
 	if (!strcmp(ValueForKey(mapent, "priority"), "1"))
     {
-        g_threadpriority = eThreadPriorityHigh;
+        g_threadpriority = TP_high;
         Log("%30s [ %-9s ]\n", "Thread Priority", "high");
     }
     else if (!strcmp(ValueForKey(mapent, "priority"), "-1"))
     {
-        g_threadpriority = eThreadPriorityLow;
+        g_threadpriority = TP_low;
         Log("%30s [ %-9s ]\n", "Thread Priority", "low");
     }
 
@@ -486,7 +488,7 @@ void			CompressAll(void)
 #endif
 
 #ifndef ZHLT_NETVIS
-static void     LeafThread(int unused)
+static void     LeafThread(int threadnum)
 {
     portal_t*       p;
 
@@ -1331,7 +1333,7 @@ static void     AssignPortalsToZones()
     UINT32 numportals = g_numportals * 2;
     for (x=0, p=g_portals; x<numportals; x++, p++)
     {
-        BoundingBox bounds;
+        BSPBoundingBox bounds;
         winding_t* w = p->winding;
         UINT32 numpoints = w->numpoints;
 
@@ -1456,14 +1458,14 @@ static void     Settings()
 
     switch (g_threadpriority)
     {
-    case eThreadPriorityNormal:
+    case TP_normal:
     default:
         tmp = "Normal";
         break;
-    case eThreadPriorityLow:
+    case TP_low:
         tmp = "Low";
         break;
-    case eThreadPriorityHigh:
+    case TP_high:
         tmp = "High";
         break;
     }
@@ -1682,11 +1684,11 @@ int             main(const int argc, char** argv)
         }
         else if (!strcasecmp(argv[i], "-low"))
         {
-            g_threadpriority = eThreadPriorityLow;
+            g_threadpriority = TP_low;
         }
         else if (!strcasecmp(argv[i], "-high"))
         {
-            g_threadpriority = eThreadPriorityHigh;
+            g_threadpriority = TP_high;
         }
         else if (!strcasecmp(argv[i], "-nolog"))
         {

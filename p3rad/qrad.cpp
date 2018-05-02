@@ -17,6 +17,9 @@
 #include <string>
 
 #include "qrad.h"
+#include "radstaticprop.h"
+
+#include <load_prc_file.h>
 
 
 /*
@@ -313,12 +316,12 @@ void            GetParamsFromEnt(entity_t* mapent)
 	// priority(choices) : "Priority Level" : 0 = [	0 : "Normal" 1 : "High"	-1 : "Low" ]
 	if (!strcmp(ValueForKey(mapent, "priority"), "1"))
     {
-        g_threadpriority = eThreadPriorityHigh;
+        g_threadpriority = TP_high;
         Log("%30s [ %-9s ]\n", "Thread Priority", "high");
     }
     else if (!strcmp(ValueForKey(mapent, "priority"), "-1"))
     {
-        g_threadpriority = eThreadPriorityLow;
+        g_threadpriority = TP_low;
         Log("%30s [ %-9s ]\n", "Thread Priority", "low");
     }
 
@@ -4376,14 +4379,14 @@ static void     Settings()
 
     switch (g_threadpriority)
     {
-    case eThreadPriorityNormal:
+    case TP_normal:
     default:
         tmp = "Normal";
         break;
-    case eThreadPriorityLow:
+    case TP_low:
         tmp = "Low";
         break;
-    case eThreadPriorityHigh:
+    case TP_high:
         tmp = "High";
         break;
     }
@@ -4850,6 +4853,11 @@ int             main(const int argc, char** argv)
     const char*     mapname_from_arg = NULL;
     const char*     user_lights = NULL;
 
+    load_prc_file_data( "", "model-path /d/OTHER/lachb/Documents/ttsp/game/resources" );
+    load_prc_file_data( "", "assert-abort 0" );
+
+    RADCollisionPolygon::init_type();
+
     g_Program = "p3rad";
 
 #ifdef ZHLT_PARAMFILE
@@ -5160,11 +5168,11 @@ int             main(const int argc, char** argv)
         }
         else if (!strcasecmp(argv[i], "-low"))
         {
-            g_threadpriority = eThreadPriorityLow;
+            g_threadpriority = TP_low;
         }
         else if (!strcasecmp(argv[i], "-high"))
         {
-            g_threadpriority = eThreadPriorityHigh;
+            g_threadpriority = TP_high;
         }
         else if (!strcasecmp(argv[i], "-nolog"))
         {
@@ -5816,6 +5824,7 @@ int             main(const int argc, char** argv)
 #ifdef ZHLT_EMBEDLIGHTMAP
 	DeleteEmbeddedLightmaps ();
 #endif
+	LoadStaticProps();
 #ifdef HLRAD_TEXTURE
 	LoadTextures ();
 #endif

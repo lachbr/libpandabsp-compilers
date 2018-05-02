@@ -180,7 +180,7 @@ typedef struct bface_s
 #ifdef HLCSG_CUSTOMHULL
 	bool			bevel; //used for ExpandBrush
 #endif
-    BoundingBox     bounds;
+    BSPBoundingBox     bounds;
 } bface_t;
 
 // NUM_HULLS should be no larger than MAX_MAP_HULLS
@@ -188,7 +188,7 @@ typedef struct bface_s
 
 typedef struct
 {
-    BoundingBox     bounds;
+    BSPBoundingBox     bounds;
     bface_t*        faces;
 } brushhull_t;
 

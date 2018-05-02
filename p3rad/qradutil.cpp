@@ -555,7 +555,8 @@ static bool IsPositionValid (positionmap_t *map, const vec3_t &pos_st, vec3_t &p
 			return false;
 		}
 
-		if (TestLine (pos, test) != CONTENTS_EMPTY)
+		int res = TestLine( pos, test );
+		if ( res != CONTENTS_EMPTY && res != CONTENTS_PROP )
 		{
 			return false;
 		}

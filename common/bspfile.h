@@ -7,6 +7,8 @@
 #pragma once
 #endif
 
+#define DEFAULT_TEXCONTENTS_FILE "D:\\OTHER\\lachb\\Documents\\cio\\cio-panda3d\\built\\bin\\texturecontents.txt"
+
 #define PBSP_MAGIC ( ( 'P' << 24 ) + ( 'S' << 16 ) + ( 'B' << 8 ) + 'P' )
 
 #define DEFAULT_LIGHTMAP_SIZE 16.0
@@ -99,13 +101,8 @@
 
 #define MAX_TEXTURE_NAME 256 // number of characters
 
-#ifdef ZHLT_XASH2
-#define TEXTURE_STEP        8
-#define MAX_SURFACE_EXTENT  64
-#else
-#define TEXTURE_STEP        16 // this constant was previously defined in lightmap.cpp. --vluzacn
-#define MAX_SURFACE_EXTENT  16 // if lightmap extent exceeds 16, the map will not be able to load in 'Software' renderer and HLDS. //--vluzacn
-#endif
+#define TEXTURE_STEP 4 // Default is 16
+#define MAX_SURFACE_EXTENT 128 // Default is 16
 
 #ifdef ZHLT_LARGERANGE
 #define ENGINE_ENTITY_RANGE 4096.0
@@ -205,33 +202,33 @@ dplane_t;
 
 typedef enum
 {
-    CONTENTS_EMPTY = -1,
-    CONTENTS_SOLID = -2,
-    CONTENTS_WATER = -3,
-    CONTENTS_SLIME = -4,
-    CONTENTS_LAVA = -5,
-    CONTENTS_SKY = -6,
-    CONTENTS_ORIGIN = -7,                                  // removed at csg time
+	CONTENTS_EMPTY = -1,
+	CONTENTS_SOLID = -2,
+	CONTENTS_WATER = -3,
+	CONTENTS_SLIME = -4,
+	CONTENTS_LAVA = -5,
+	CONTENTS_SKY = -6,
+	CONTENTS_ORIGIN = -7,                                  // removed at csg time
 #ifndef HLCSG_CUSTOMHULL
-    CONTENTS_CLIP = -8,                                    // changed to contents_solid
+	CONTENTS_CLIP = -8,                                    // changed to contents_solid
 #endif
 
-    CONTENTS_CURRENT_0 = -9,
-    CONTENTS_CURRENT_90 = -10,
-    CONTENTS_CURRENT_180 = -11,
-    CONTENTS_CURRENT_270 = -12,
-    CONTENTS_CURRENT_UP = -13,
-    CONTENTS_CURRENT_DOWN = -14,
+	CONTENTS_CURRENT_0 = -9,
+	CONTENTS_CURRENT_90 = -10,
+	CONTENTS_CURRENT_180 = -11,
+	CONTENTS_CURRENT_270 = -12,
+	CONTENTS_CURRENT_UP = -13,
+	CONTENTS_CURRENT_DOWN = -14,
 
-    CONTENTS_TRANSLUCENT = -15,
-    CONTENTS_HINT = -16,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
+	CONTENTS_TRANSLUCENT = -15,
+	CONTENTS_HINT = -16,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
 
 #ifdef ZHLT_NULLTEX
-    CONTENTS_NULL = -17,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
+	CONTENTS_NULL = -17,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
 #endif
 
 #ifdef ZHLT_DETAIL   // AJM
-    CONTENTS_DETAIL = -18,  
+	CONTENTS_DETAIL = -18,
 #endif
 
 #ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
@@ -241,6 +238,7 @@ typedef enum
 #ifdef HLCSG_EMPTYBRUSH
 	CONTENTS_TOEMPTY = -32,
 #endif
+	CONTENTS_PROP = -33,
 }
 contents_t;
 
@@ -475,5 +473,11 @@ extern void     dtexdata_init();
 extern void CDECL dtexdata_free();
 
 extern char*    GetTextureByNumber(int texturenumber);
+
+extern map<string, contents_t> g_tex_contents;
+extern std::string g_tex_contents_file;
+extern void SetTextureContentsFile( const char *path );
+extern void LoadTextureContents();
+extern contents_t GetTextureContents( const char *texname );
 
 #endif //BSPFILE_H__

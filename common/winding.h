@@ -48,7 +48,7 @@ public:
     void            getPlane(dplane_t& plane) const;
     void            getPlane(vec3_t& normal, vec_t& dist) const;
     vec_t           getArea() const;
-    void            getBounds(BoundingBox& bounds) const;
+    void            getBounds(BSPBoundingBox& bounds) const;
     void            getBounds(vec3_t& mins, vec3_t& maxs) const;
     void            getCenter(vec3_t& center) const;
     Winding*        Copy() const;

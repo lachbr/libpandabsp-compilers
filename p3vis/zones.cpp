@@ -5,7 +5,7 @@
 #include "vis.h"
 
 
-void Zones::set(UINT32 zone, const BoundingBox& bounds)
+void Zones::set(UINT32 zone, const BSPBoundingBox& bounds)
 {
     if (zone < m_ZoneCount)
     {
@@ -13,7 +13,7 @@ void Zones::set(UINT32 zone, const BoundingBox& bounds)
     }
 }
 
-UINT32 Zones::getZoneFromBounds(const BoundingBox& bounds)
+UINT32 Zones::getZoneFromBounds(const BSPBoundingBox& bounds)
 {
     UINT32 x;
     for (x=0; x<m_ZoneCount; x++)
@@ -29,7 +29,7 @@ UINT32 Zones::getZoneFromBounds(const BoundingBox& bounds)
 UINT32 Zones::getZoneFromWinding(const Winding& winding)
 {
     UINT32          x;
-    BoundingBox     bounds;
+    BSPBoundingBox     bounds;
 
     for (x=0; x<winding.m_NumPoints; x++)
     {
@@ -127,7 +127,7 @@ Zones* MakeZones(void)
     
             {
                 UINT32          j;
-                BoundingBox     bounds;
+                BSPBoundingBox     bounds;
                 dface_t*        f = g_dfaces + mod->firstface;
             
                 for (j = 0; j < mod->numfaces; j++, f++)

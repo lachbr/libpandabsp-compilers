@@ -35,8 +35,8 @@ public:
         return false;
     }
     
-    void set(UINT32 zone, const BoundingBox& bounds);
-    UINT32 getZoneFromBounds(const BoundingBox& bounds);
+    void set(UINT32 zone, const BSPBoundingBox& bounds);
+    UINT32 getZoneFromBounds(const BSPBoundingBox& bounds);
     UINT32 getZoneFromWinding(const Winding& winding);
 
 public:
@@ -46,7 +46,7 @@ public:
         m_ZoneVisMatrix = new bool[m_ZoneCount * m_ZoneCount];
         memset(m_ZoneVisMatrix, 0, sizeof(bool) * m_ZoneCount * m_ZoneCount);
         m_ZonePtrs = new bool*[m_ZoneCount];
-        m_ZoneBounds = new BoundingBox[m_ZoneCount];
+        m_ZoneBounds = new BSPBoundingBox[m_ZoneCount];
 
         UINT32 x;
         bool* dstPtr = m_ZoneVisMatrix;
@@ -67,7 +67,7 @@ protected:
     UINT32       m_ZoneCount;
     bool*        m_ZoneVisMatrix;  // Size is (m_ZoneCount * m_ZoneCount) and data is duplicated for efficiency
     bool**       m_ZonePtrs;    // Lookups into m_ZoneMatrix for m_ZonePtrs[x][y] style;
-    BoundingBox* m_ZoneBounds;
+    BSPBoundingBox* m_ZoneBounds;
 };
 
 Zones* MakeZones();

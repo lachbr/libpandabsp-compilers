@@ -29,7 +29,39 @@
 
 #include "hlassert.h"
 
-q_threadpriority g_threadpriority = DEFAULT_THREAD_PRIORITY;
+BSPThread::BSPThread() :
+	Thread( "bspthread", "bspthread_sync" ),
+	_func(nullptr),
+	_val(0),
+	_finished(false)
+{
+}
+
+void BSPThread::thread_main()
+{
+	//Thread::thread_main();
+	( *_func )( _val );
+	_finished = true;
+}
+
+void BSPThread::set_function( q_threadfunction *func )
+{
+	_func = func;
+}
+
+void BSPThread::set_value( int val )
+{
+	_val = val;
+}
+
+volatile bool BSPThread::is_finished() const
+{
+	return _finished;
+}
+
+ThreadPriority g_threadpriority = TP_normal;
+LightMutex g_global_lock( "bspToolsGlobalMutex" );
+pvector<PT( BSPThread )> g_threadhandles;
 
 #define THREADTIMES_SIZE 100
 #define THREADTIMES_SIZEf (float)(THREADTIMES_SIZE)
@@ -213,7 +245,7 @@ int             GetThreadWork()
     return r;
 }
 
-q_threadfunction workfunction;
+q_threadfunction *workfunction;
 
 #ifdef SYSTEM_WIN32
 #pragma warning(push)
@@ -253,8 +285,27 @@ int             g_numthreads = DEFAULT_NUMTHREADS;
 static CRITICAL_SECTION crit;
 static int      enter;
 
-void            ThreadSetPriority(q_threadpriority type)
+int GetCurrentThreadNumber()
 {
+	Thread *th = Thread::get_current_thread();
+
+	int num = 0;
+
+	for ( size_t i = 0; i < g_threadhandles.size(); i++ )
+	{
+		if ( g_threadhandles[i] == th )
+		{
+			num = i;
+			break;
+		}
+	}
+
+	return num;
+}
+
+void            ThreadSetPriority(ThreadPriority type)
+{
+	/*
     int             val;
 
     g_threadpriority = type;
@@ -275,7 +326,10 @@ void            ThreadSetPriority(q_threadpriority type)
         break;
     }
 
+    Thread::get_current_thread()->
+
     SetPriorityClass(GetCurrentProcess(), val);
+    */
 }
 
 #if 0
@@ -323,7 +377,8 @@ void            ThreadLock()
     {
         return;
     }
-    EnterCriticalSection(&crit);
+    g_global_lock.acquire();
+    //EnterCriticalSection(&crit);
     if (enter)
     {
         Warning("Recursive ThreadLock\n");
@@ -342,10 +397,11 @@ void            ThreadUnlock()
         Error("ThreadUnlock without lock\n");
     }
     enter--;
-    LeaveCriticalSection(&crit);
+    //LeaveCriticalSection(&crit);
+    g_global_lock.release();
 }
 
-q_threadfunction q_entry;
+q_threadfunction *q_entry;
 
 static DWORD WINAPI ThreadEntryStub(LPVOID pParam)
 {
@@ -355,21 +411,22 @@ static DWORD WINAPI ThreadEntryStub(LPVOID pParam)
 
 void            threads_InitCrit()
 {
-    InitializeCriticalSection(&crit);
+    //InitializeCriticalSection(&crit);
     threaded = true;
 }
 
 void            threads_UninitCrit()
 {
-    DeleteCriticalSection(&crit);
+    //DeleteCriticalSection(&crit);
 }
 
 void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction func)
 {
-    DWORD           threadid[MAX_THREADS];
-    HANDLE          threadhandle[MAX_THREADS];
+    string           threadid[MAX_THREADS];
     int             i;
     double          start, end;
+
+    g_threadhandles.clear();
 
     threadstart = I_FloatTime();
     start = threadstart;
@@ -396,16 +453,21 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
     threads_InitCrit();
     for (i = 0; i < g_numthreads; i++)
     {
+	    /*
         HANDLE          hThread = CreateThread(NULL,
                                                0,
                                                (LPTHREAD_START_ROUTINE) ThreadEntryStub,
                                                (LPVOID) i,
                                                CREATE_SUSPENDED,
-                                               &threadid[i]);
+                                               &threadid[i]);*/
+	    PT( BSPThread ) hThread = new BSPThread;
+	hThread->set_function( func );
+	hThread->set_value( i );
+	hThread->set_pipeline_stage( Thread::get_main_thread()->get_pipeline_stage() );
 
         if (hThread != NULL)
         {
-            threadhandle[i] = hThread;
+		g_threadhandles.push_back( hThread );
         }
         else
         {
@@ -418,7 +480,7 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
             // Process any inserts in lpMsgBuf.
             // ...
             // Display the string.
-            Developer(DEVELOPER_LEVEL_ERROR, "CreateThread #%d [%08X] failed : %s\n", i, threadhandle[i], lpMsgBuf);
+            Developer(DEVELOPER_LEVEL_ERROR, "CreateThread #%d [%08X] failed : %s\n", i, g_threadhandles[i], lpMsgBuf);
             Fatal(assume_THREAD_ERROR, "Unable to create thread #%d", i);
             // Free the buffer.
             LocalFree(lpMsgBuf);
@@ -427,9 +489,10 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
     CheckFatal();
 
     // Start all the threads
-    for (i = 0; i < g_numthreads; i++)
+    for (i = 0; i < g_threadhandles.size(); i++)
     {
-        if (ResumeThread(threadhandle[i]) == 0xFFFFFFFF)
+        //if (ResumeThread(threadhandle[i]) == 0xFFFFFFFF)
+	if (!g_threadhandles[i]->start(g_threadpriority, false))
         {
             LPVOID          lpMsgBuf;
 
@@ -440,7 +503,7 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
             // Process any inserts in lpMsgBuf.
             // ...
             // Display the string.
-            Developer(DEVELOPER_LEVEL_ERROR, "ResumeThread #%d [%08X] failed : %s\n", i, threadhandle[i], lpMsgBuf);
+            Developer(DEVELOPER_LEVEL_ERROR, "ResumeThread #%d [%08X] failed : %s\n", i, g_threadhandles[i], lpMsgBuf);
             Fatal(assume_THREAD_ERROR, "Unable to start thread #%d", i);
             // Free the buffer.
             LocalFree(lpMsgBuf);
@@ -449,10 +512,20 @@ void            RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction fu
     CheckFatal();
 
     // Wait for threads to complete
-    for (i = 0; i < g_numthreads; i++)
+    for (i = 0; i < g_threadhandles.size(); i++)
     {
-        Developer(DEVELOPER_LEVEL_MESSAGE, "WaitForSingleObject on thread #%d [%08X]\n", i, threadhandle[i]);
-        WaitForSingleObject(threadhandle[i], INFINITE);
+        Developer(DEVELOPER_LEVEL_MESSAGE, "WaitForSingleObject on thread #%d [%08X]\n", i, g_threadhandles[i]);
+	while ( true )
+	{
+		if ( !g_threadhandles[i]->is_started() )
+			break;
+		if ( g_threadhandles[i]->is_finished() )
+			break;
+
+		//cout << "Thread " << i << " not finished" << endl;
+		//cout << "Waiting on thread " << i << endl;
+	}
+        //WaitForSingleObject(threadhandle[i], INFINITE);
     }
     threads_UninitCrit();
 

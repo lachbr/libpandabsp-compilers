@@ -1,6 +1,13 @@
 #ifndef CMDLIB_H__
 #define CMDLIB_H__
 
+#include <iostream>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <map>
+using namespace std;
+
 #if _MSC_VER >= 1000
 #pragma once
 #endif
@@ -58,7 +65,7 @@
 //#define ZHLT_NSBOB //should never turn on
 #define ZHLT_VectorMA_FIX //--vluzacn
 #define ZHLT_LARGERANGE //--vluzacn
-#define ZHLT_CONSOLE //--vluzacn
+//#define ZHLT_CONSOLE //--vluzacn
 #define ZHLT_PARAMFILE //--vluzacn
 #define ZHLT_LANGFILE //--vluzacn
 #define ZHLT_DELETEKEY //--vluzacn
@@ -90,9 +97,9 @@
 	#endif
 #define ZHLT_DecompressVis_FIX //--vluzacn
 #define ZHLT_64BIT_FIX //--vluzacn
-	#ifdef ZHLT_64BIT_FIX
-#define ZHLT_EMBEDLIGHTMAP // this feature requires HLRAD_TEXTURE and RIPENT_TEXTURE //--vluzacn
-	#endif
+//	#ifdef ZHLT_64BIT_FIX
+//#define ZHLT_EMBEDLIGHTMAP // this feature requires HLRAD_TEXTURE and RIPENT_TEXTURE //--vluzacn
+//	#endif
 //#define ZHLT_HIDDENSOUNDTEXTURE //--vluzacn
 
 #define COMMON_HULLU // winding optimisations by hullu
@@ -708,5 +715,8 @@ extern int      BigLong(int l);
 extern int      LittleLong(int l);
 extern float    BigFloat(float l);
 extern float    LittleFloat(float l);
+
+extern bool strcontains( const string &str, const string &keyword );
+extern vector<string> explode( const string &delimiter, const string &str );
 
 #endif //CMDLIB_H__

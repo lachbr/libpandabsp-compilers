@@ -5,9 +5,10 @@
 #ifdef HLRAD_OPAQUE_NODE
 #include "winding.h"
 #endif
-#ifdef HLRAD_OPAQUE_ALPHATEST
+//#ifdef HLRAD_OPAQUE_ALPHATEST
 #include "qrad.h"
-#endif
+//#endif
+#include "radstaticprop.h"
 
 // #define      ON_EPSILON      0.001
 
@@ -56,7 +57,7 @@ static void     MakeTnode(const int nodenum)
     for (i = 0; i < 2; i++)
     {
         if (node->children[i] < 0)
-            t->children[i] = g_dleafs[-node->children[i] - 1].contents;
+            t->children[i] = node->children[i];
         else
         {
             t->children[i] = tnode_p - tnodes;
@@ -337,14 +338,27 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
 #ifdef HLRAD_WATERBLOCKLIGHT
 	if (node < 0)
 	{
-		if (node == linecontent)
+		// We're in a leaf!
+		int leafnum = ~node;
+		dleaf_t *leaf = &g_dleafs[leafnum];
+
+		if ( StaticPropIntersectionTest( start, stop, leafnum ) )
+		{
+			// There was an intersection with a static prop.
+			//cout << "Intersection with static prop!" << endl;
+			return CONTENTS_SOLID;
+		}
+
+		int contents = leaf->contents;
+
+		if (contents == linecontent)
 			return CONTENTS_EMPTY;
 #ifdef HLRAD_OPAQUEINSKY_FIX
-		if (node == CONTENTS_SOLID)
+		if ( contents == CONTENTS_SOLID)
 		{
 			return CONTENTS_SOLID;
 		}
-		if (node == CONTENTS_SKY)
+		if ( contents == CONTENTS_SKY)
 		{
 			if (skyhit)
 			{
@@ -353,14 +367,16 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
 			return CONTENTS_SKY;
 		}
 #else
-		if (node == CONTENTS_SOLID || node == CONTENTS_SKY)
+		if ( contents == CONTENTS_SOLID || contents == CONTENTS_SKY)
 			return node;
 #endif
 		if (linecontent)
 		{
 			return CONTENTS_SOLID;
 		}
-		linecontent = node;
+		
+
+		linecontent = contents;
 		return CONTENTS_EMPTY;
 	}
 #else
@@ -376,8 +392,17 @@ int             TestLine_r(const int node, const vec3_t start, const vec3_t stop
        )
 		return node;
 
-    if (node < 0)
-        return CONTENTS_EMPTY; 
+	if ( node < 0 )
+	{
+		if ( StaticPropIntersectionTest( start, stop ) )
+		{
+			// There was an intersection with a static prop.
+			//cout << "Intersection with static prop!" << endl;
+			return CONTENTS_SOLID;
+		}
+		return CONTENTS_EMPTY;
+    }
+         
 #endif
 
     tnode = &tnodes[node];

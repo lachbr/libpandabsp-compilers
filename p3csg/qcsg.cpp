@@ -36,7 +36,7 @@ static int      c_tiny;
 static int      c_tiny_clip;
 static int      c_outfaces;
 static int      c_csgfaces;
-BoundingBox     world_bounds;
+BSPBoundingBox     world_bounds;
 
 #ifndef HLCSG_WADCFG_NEW
 #ifdef HLCSG_WADCFG
@@ -144,12 +144,12 @@ void            GetParamsFromEnt(entity_t* mapent)
 	// priority(choices) : "Priority Level" : 0 = [	0 : "Normal" 1 : "High"	-1 : "Low" ]
 	if (!strcmp(ValueForKey(mapent, "priority"), "1"))
     {
-        g_threadpriority = eThreadPriorityHigh;
+        g_threadpriority = TP_high;
         Log("%30s [ %-9s ]\n", "Thread Priority", "high");
     }
     else if (!strcmp(ValueForKey(mapent, "priority"), "-1"))
     {
-        g_threadpriority = eThreadPriorityLow;
+        g_threadpriority = TP_low;
         Log("%30s [ %-9s ]\n", "Thread Priority", "low");
     }
 
@@ -1832,7 +1832,7 @@ static void     ProcessModels()
         {
             for (j = 0; j < g_entities[i].numbrushes; j++)
             {
-                CSGBrush(first + j);
+		    CSGBrush( first + j );
             }
         }
 
@@ -1858,7 +1858,7 @@ static void     SetModelCenters(int entitynum)
     int             last;
     char            string[MAXTOKEN];
     entity_t*       e = &g_entities[entitynum];
-    BoundingBox     bounds;
+    BSPBoundingBox     bounds;
     vec3_t          center;
 
     if ((entitynum == 0) || (e->numbrushes == 0)) // skip worldspawn and point entities
@@ -2072,14 +2072,14 @@ static void     Settings()
 
     switch (g_threadpriority)
     {
-    case eThreadPriorityNormal:
+    case TP_normal:
     default:
         tmp = "Normal";
         break;
-    case eThreadPriorityLow:
+    case TP_low:
         tmp = "Low";
         break;
-    case eThreadPriorityHigh:
+    case TP_high:
         tmp = "High";
         break;
     }
@@ -2218,6 +2218,9 @@ int             main(const int argc, char** argv)
     // error on zhlt.wad etc
     //g_WadInclude.push_back("zhlt.wad");
 
+    // Make sure we know which textures are sky, water, etc.
+    LoadTextureContents();
+
 #ifndef HLCSG_WADCFG_NEW
 #ifdef HLCSG_WADCFG
     memset(wadconfigname, 0, sizeof(wadconfigname));//AJM
@@ -2298,11 +2301,11 @@ int             main(const int argc, char** argv)
         }
         else if (!strcasecmp(argv[i], "-low"))
         {
-            g_threadpriority = eThreadPriorityLow;
+            g_threadpriority = TP_low;
         }
         else if (!strcasecmp(argv[i], "-high"))
         {
-            g_threadpriority = eThreadPriorityHigh;
+            g_threadpriority = TP_high;
         }
         else if (!strcasecmp(argv[i], "-nolog"))
         {

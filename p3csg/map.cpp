@@ -419,7 +419,7 @@ static contents_t ParseBrush(entity_t* mapent)
 
         // read the     texturedef
         GetToken(false);
-        _strupr(g_token);
+        //_strupr(g_token);
 #ifdef HLCSG_CUSTOMHULL
 		{
 			if (!strncasecmp (g_token, "NOCLIP", 6) || !strncasecmp (g_token, "NULLNOCLIP", 10))

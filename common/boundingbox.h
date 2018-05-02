@@ -14,7 +14,7 @@
 #pragma once
 #endif
 
-class BoundingBox
+class BSPBoundingBox
 {
 public:
     typedef enum
@@ -26,7 +26,7 @@ public:
     } eBoundingState;
 
     // Tests if other box is completely outside of this box
-    bool testDisjoint(const BoundingBox& other) const
+    bool testDisjoint(const BSPBoundingBox& other) const
     {
 #ifdef ZHLT_BOUNDINGBOX_PRECISION_FIX
         if ((m_Mins[0] > other.m_Maxs[0] + ON_EPSILON) ||
@@ -49,7 +49,7 @@ public:
         return false;
     }
     // returns true if this box is completely inside other box
-    bool testSubset(const BoundingBox& other) const
+    bool testSubset(const BSPBoundingBox& other) const
     {
         if (
                 (m_Mins[0] >= other.m_Mins[0]) &&
@@ -65,14 +65,14 @@ public:
         return false;
     }
     // returns true if this box contains the other box completely
-    bool testSuperset(const BoundingBox& other) const
+    bool testSuperset(const BSPBoundingBox& other) const
     {
         return other.testSubset(*this);
     }
     // returns true if this box partially intersects the other box
-    bool testUnion(const BoundingBox& other) const
+    bool testUnion(const BSPBoundingBox& other) const
     {
-        BoundingBox tmpBox;
+        BSPBoundingBox tmpBox;
         tmpBox.m_Mins[0] = qmax(m_Mins[0], other.m_Mins[0]);
         tmpBox.m_Mins[1] = qmax(m_Mins[1], other.m_Mins[1]);
         tmpBox.m_Mins[2] = qmax(m_Mins[2], other.m_Mins[2]);
@@ -88,7 +88,7 @@ public:
         }   
         return true;
     }
-    eBoundingState test(const BoundingBox& other) const
+    eBoundingState test(const BSPBoundingBox& other) const
     {
         eBoundingState rval;
         if (testDisjoint(other))
@@ -129,25 +129,25 @@ public:
         m_Mins[2] = qmin(m_Mins[2], point[2]);
         m_Maxs[2] = qmax(m_Maxs[2], point[2]);
     }
-    void add(const BoundingBox& other)
+    void add(const BSPBoundingBox& other)
     {
         add(other.m_Mins);
         add(other.m_Maxs);
     }
 
 public:
-    // BoundingBox(const BoundingBox& other) // Default copy constructor ok
-    // BoundingBox& operator=(const BoundingBox& other); // Default copy operator ok
-    BoundingBox()
+    // BSPBoundingBox(const BSPBoundingBox& other) // Default copy constructor ok
+    // BSPBoundingBox& operator=(const BSPBoundingBox& other); // Default copy operator ok
+    BSPBoundingBox()
     {
         reset();
     }
-    BoundingBox(const vec3_t& mins, const vec3_t& maxs)
+    BSPBoundingBox(const vec3_t& mins, const vec3_t& maxs)
     {
         VectorCopy(mins, m_Mins);
         VectorCopy(maxs, m_Maxs);
     }
-    ~BoundingBox() {}
+    ~BSPBoundingBox() {}
 
 public:
     // Bounding box

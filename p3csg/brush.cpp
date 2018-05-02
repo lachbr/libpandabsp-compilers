@@ -1,5 +1,7 @@
 #include "csg.h"
 
+#include <algorithm>
+
 plane_t         g_mapplanes[MAX_INTERNAL_MAP_PLANES];
 int             g_nummapplanes;
 #ifdef HLCSG_HULLBRUSH
@@ -1379,112 +1381,120 @@ bool            MakeBrushPlanes(brush_t* b)
     return true;
 }
 
-
 // =====================================================================================
 //  TextureContents
 // =====================================================================================
 static contents_t TextureContents(const char* const name)
 {
+	contents_t cts =  GetTextureContents( name );
+	return cts;
+	/*
 #ifdef HLCSG_CUSTOMCONTENT
-	if (!strncasecmp(name, "contentsolid", 12))
+	if (strcontains(name, "contentsolid"))
 		return CONTENTS_SOLID;
-	if (!strncasecmp(name, "contentwater", 12))
+	if (strcontains(name, "contentwater"))
 		return CONTENTS_WATER;
-	if (!strncasecmp(name, "contentempty", 12))
+	if (strcontains(name, "contentempty"))
 		return CONTENTS_TOEMPTY;
-	if (!strncasecmp(name, "contentsky", 10))
+	if (strcontains(name, "contentsky"))
 		return CONTENTS_SKY;
 #endif
-    if (!strncasecmp(name, "sky", 3))
-        return CONTENTS_SKY;
+	
+	if (strcontains(name, "sky"))
+	{
+		printf( "Found a CONTENTS_SKY!\n" );
+		return CONTENTS_SKY;
+	}
 
 // =====================================================================================
 //Cpt_Andrew - Env_Sky Check
 // =====================================================================================
 #ifdef HLCSG_TextureContents_FIX
-    if (!strncasecmp(name, "env_sky", 7))
+    if (strcontains(name, "env_sky"))
 #else
-    if (!strncasecmp(name, "env_sky", 3))
+    if ( strcontains( name, "env_sky" ) )
 #endif
         return CONTENTS_SKY;
 // =====================================================================================
 
-    if (!strncasecmp(name + 1, "!lava", 5))
+    if (strcontains(name + 1, "!lava"))
         return CONTENTS_LAVA;
 
-    if (!strncasecmp(name + 1, "!slime", 6))
+    if (strcontains(name + 1, "!slime"))
         return CONTENTS_SLIME;
 #ifdef HLCSG_TextureContents_FIX
-    if (!strncasecmp(name, "!lava", 5))
+    if (strcontains(name, "!lava"))
         return CONTENTS_LAVA;
 
-    if (!strncasecmp(name, "!slime", 6))
+    if (strcontains(name, "!slime"))
         return CONTENTS_SLIME;
 #endif
 
     if (name[0] == '!') //optimized -- don't check for current unless it's liquid (KGP)
 	{
-		if (!strncasecmp(name, "!cur_90", 7))
+		if (strcontains(name, "!cur_90"))
 			return CONTENTS_CURRENT_90;
-		if (!strncasecmp(name, "!cur_0", 6))
+		if (strcontains(name, "!cur_0"))
 			return CONTENTS_CURRENT_0;
-		if (!strncasecmp(name, "!cur_270", 8))
+		if (strcontains(name, "!cur_270"))
 			return CONTENTS_CURRENT_270;
-		if (!strncasecmp(name, "!cur_180", 8))
+		if (strcontains(name, "!cur_180"))
 			return CONTENTS_CURRENT_180;
-		if (!strncasecmp(name, "!cur_up", 7))
+		if (strcontains(name, "!cur_up"))
 			return CONTENTS_CURRENT_UP;
-		if (!strncasecmp(name, "!cur_dwn", 8))
+		if (strcontains(name, "!cur_dwn"))
 			return CONTENTS_CURRENT_DOWN;
         return CONTENTS_WATER; //default for liquids
 	}
 
-    if (!strncasecmp(name, "origin", 6))
+    if (strcontains(name, "origin"))
         return CONTENTS_ORIGIN;
 #ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
-	if (!strncasecmp(name, "boundingbox", 11))
+	if (strcontains(name, "boundingbox"))
 		return CONTENTS_BOUNDINGBOX;
 #endif
 
 #ifndef HLCSG_CUSTOMHULL
-    if (!strncasecmp(name, "clip", 4))
+    if (strcontains(name, "clip", 4))
         return CONTENTS_CLIP;
 #endif
 
 #ifdef HLCSG_HLBSP_SOLIDHINT
-	if (!strncasecmp(name, "solidhint", 9))
+	if (strcontains(name, "solidhint"))
 		return CONTENTS_NULL;
 #endif
 #ifdef HLCSG_NOSPLITBYHINT
-	if (!strncasecmp(name, "splitface", 9))
+	if (strcontains(name, "splitface"))
 		return CONTENTS_HINT;
-	if (!strncasecmp(name, "hint", 4))
+	if (strcontains(name, "hint"))
 		return CONTENTS_TOEMPTY;
-	if (!strncasecmp(name, "skip", 4))
+	if (strcontains(name, "skip"))
 		return CONTENTS_TOEMPTY;
 #else
-    if (!strncasecmp(name, "hint", 4))
+    if (strcontains(name, "hint", 4))
         return CONTENTS_HINT;
-    if (!strncasecmp(name, "skip", 4))
+    if (strcontains(name, "skip", 4))
         return CONTENTS_HINT;
 #endif
 
-    if (!strncasecmp(name, "translucent", 11))
+    if (strcontains(name, "translucent"))
         return CONTENTS_TRANSLUCENT;
 
     if (name[0] == '@')
         return CONTENTS_TRANSLUCENT;
 
 #ifdef ZHLT_NULLTEX // AJM:
-	if (!strncasecmp(name, "null", 4))
+	if (strcontains(name, "null"))
         return CONTENTS_NULL;
 #ifdef HLCSG_PRECISIONCLIP // KGP
-	if(!strncasecmp(name,"bevel",5))
+	if(strcontains(name,"bevel"))
 		return CONTENTS_NULL;
 #endif //precisionclip
 #endif //nulltex
 
     return CONTENTS_SOLID;
+    */
+
 }
 
 // =====================================================================================

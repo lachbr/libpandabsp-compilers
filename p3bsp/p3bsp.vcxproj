@@ -22,7 +22,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v100</PlatformToolset>
+    <PlatformToolset>Windows7.1SDK</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -54,15 +54,15 @@
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <StringPooling>true</StringPooling>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <Optimization>MaxSpeed</Optimization>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HLBSP;VERSION_32BIT;NDEBUG;DOUBLEVEC_T;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WITHIN_PANDA;HLBSP;VERSION_32BIT;NDEBUG;DOUBLEVEC_T;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
       <PrecompiledHeaderOutputFile>.\Release\hlbsp.pch</PrecompiledHeaderOutputFile>
@@ -86,12 +86,13 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <SubSystem>Console</SubSystem>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <OutputFile>.\Release\p3bsp.exe</OutputFile>
-      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>..\Release\p3bsp.exe</OutputFile>
+      <AdditionalDependencies>binmode.obj;libpanda.lib;libpandaexpress.lib;libp3dtool.lib;libp3dtoolconfig.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <StackReserveSize>4194304</StackReserveSize>
       <StackCommitSize>1048576</StackCommitSize>
       <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
