@@ -794,7 +794,7 @@ static void     CalcFaceExtents(lightinfo_t* l)
 
 	if (!(tex->flags & TEX_SPECIAL))
 	{
-		if ((l->texsize[0] > MAX_SURFACE_EXTENT) || (l->texsize[1] > MAX_SURFACE_EXTENT)
+		if ((l->texsize[0] > MAX_SURFACE_EXTENT + 1) || (l->texsize[1] > MAX_SURFACE_EXTENT + 1)
 			|| l->texsize[0] < 0 || l->texsize[1] < 0 //--vluzacn
 			)
 		{

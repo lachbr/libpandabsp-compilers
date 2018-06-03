@@ -1672,6 +1672,7 @@ static void     CheckForNoClip()
 			(
 				!strcmp(entclassname, "env_bubbles")
 				|| !strcmp(entclassname, "func_illusionary")
+				|| !strcmp(entclassname, "func_physics")
 				|| (spawnflags & 8) && 
 				(   /* NOTE: func_doors as far as i can tell may need clipnodes for their
 							player collision detection, so for now, they stay out of it. */

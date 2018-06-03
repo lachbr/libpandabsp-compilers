@@ -101,7 +101,7 @@
 
 #define MAX_TEXTURE_NAME 256 // number of characters
 
-#define TEXTURE_STEP 4 // Default is 16
+#define TEXTURE_STEP 16 // Default is 16
 #define MAX_SURFACE_EXTENT 128 // Default is 16
 
 #ifdef ZHLT_LARGERANGE
@@ -116,6 +116,11 @@
 #endif
 #define TOOLVERSION 2
 
+// One hammer unit is 1/16th of a foot.
+// One panda unit is one foot.
+// Scale factors to convert between interfaces.
+#define PANDA_TO_HAMMER 16.0
+#define HAMMER_TO_PANDA 1.0 / PANDA_TO_HAMMER
 
 //
 // BSP File Structures
@@ -143,10 +148,11 @@ lump_t;
 #define LUMP_EDGES        12
 #define LUMP_SURFEDGES    13
 #define LUMP_MODELS       14
+//#define LUMP_ORIGFACES    15
 #ifdef ZHLT_XASH2
-#define LUMP_CLIPNODES2   15
-#define LUMP_CLIPNODES3   16
-#define HEADER_LUMPS      17
+#define LUMP_CLIPNODES2   16
+#define LUMP_CLIPNODES3   17
+#define HEADER_LUMPS      18
 #else
 #define HEADER_LUMPS      15
 #endif
@@ -239,6 +245,7 @@ typedef enum
 	CONTENTS_TOEMPTY = -32,
 #endif
 	CONTENTS_PROP = -33,
+	CONTENTS_CLIP = -34,
 }
 contents_t;
 
@@ -295,6 +302,13 @@ typedef struct dface_s
     // lighting info
     byte            styles[MAXLIGHTMAPS];
     int             lightofs;                              // start of [numstyles*surfsize] samples
+
+    // index into the g_dorigfaces array,
+    // which original non-split face this face comes from.
+    // it's needed for collision geometry, as the splitting
+    // done is only useful for lightmaps and very inefficient
+    // for collisions.
+    //int		    origface;				   
 }
 dface_t;
 
@@ -378,6 +392,10 @@ extern int      g_texinfo_checksum;
 extern int      g_numfaces;
 extern dface_t  g_dfaces[MAX_MAP_FACES];
 extern int      g_dfaces_checksum;
+
+extern int	g_numorigfaces;
+extern dface_t	g_dorigfaces[MAX_MAP_FACES];
+extern int	g_dorigfaces_checksum;
 
 #ifdef ZHLT_XASH2
 extern int      g_numclipnodes[MAX_MAP_HULLS - 1];

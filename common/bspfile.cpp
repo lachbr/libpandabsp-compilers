@@ -62,6 +62,10 @@ int             g_numfaces;
 dface_t         g_dfaces[MAX_MAP_FACES];
 int             g_dfaces_checksum;
 
+int		g_numorigfaces;
+dface_t		g_dorigfaces[MAX_MAP_FACES];
+int		g_dorigfaces_checksum;
+
 #ifdef ZHLT_XASH2
 int             g_numclipnodes[MAX_MAP_HULLS - 1];
 dclipnode_t     g_dclipnodes[MAX_MAP_HULLS - 1][MAX_MAP_CLIPNODES];
@@ -301,6 +305,21 @@ static void     SwapBSPFile(const bool todisk)
         g_dfaces[i].numedges = LittleShort(g_dfaces[i].numedges);
     }
 
+    /*
+    //
+    // orig faces
+    //
+    for ( i = 0; i < g_numorigfaces; i++ )
+    {
+	    g_dorigfaces[i].texinfo = LittleShort( g_dorigfaces[i].texinfo );
+	    g_dorigfaces[i].planenum = LittleShort( g_dorigfaces[i].planenum );
+	    g_dorigfaces[i].side = LittleShort( g_dorigfaces[i].side );
+	    g_dorigfaces[i].lightofs = LittleLong( g_dorigfaces[i].lightofs );
+	    g_dorigfaces[i].firstedge = LittleLong( g_dorigfaces[i].firstedge );
+	    g_dorigfaces[i].numedges = LittleShort( g_dorigfaces[i].numedges );
+    }
+    */
+
     //
     // nodes
     //
@@ -484,6 +503,7 @@ void            LoadBSPImage(dheader_t* const header)
     g_numclipnodes = CopyLump(LUMP_CLIPNODES, g_dclipnodes, sizeof(dclipnode_t), header);
 #endif
     g_numfaces = CopyLump(LUMP_FACES, g_dfaces, sizeof(dface_t), header);
+    //g_numorigfaces = CopyLump( LUMP_ORIGFACES, g_dorigfaces, sizeof( dface_t ), header );
     g_nummarksurfaces = CopyLump(LUMP_MARKSURFACES, g_dmarksurfaces, sizeof(g_dmarksurfaces[0]), header);
     g_numsurfedges = CopyLump(LUMP_SURFEDGES, g_dsurfedges, sizeof(g_dsurfedges[0]), header);
     g_numedges = CopyLump(LUMP_EDGES, g_dedges, sizeof(dedge_t), header);
@@ -514,6 +534,7 @@ void            LoadBSPImage(dheader_t* const header)
     g_dclipnodes_checksum = FastChecksum(g_dclipnodes, g_numclipnodes * sizeof(g_dclipnodes[0]));
 #endif
     g_dfaces_checksum = FastChecksum(g_dfaces, g_numfaces * sizeof(g_dfaces[0]));
+    //g_dorigfaces_checksum = FastChecksum( g_dorigfaces, g_numorigfaces * sizeof( g_dorigfaces[0] ) );
     g_dmarksurfaces_checksum = FastChecksum(g_dmarksurfaces, g_nummarksurfaces * sizeof(g_dmarksurfaces[0]));
     g_dsurfedges_checksum = FastChecksum(g_dsurfedges, g_numsurfedges * sizeof(g_dsurfedges[0]));
     g_dedges_checksum = FastChecksum(g_dedges, g_numedges * sizeof(g_dedges[0]));
@@ -567,6 +588,7 @@ void            WriteBSPFile(const char* const filename)
     AddLump(LUMP_NODES,     g_dnodes,       g_numnodes * sizeof(dnode_t),       header, bspfile);
     AddLump(LUMP_TEXINFO,   g_texinfo,      g_numtexinfo * sizeof(texinfo_t),   header, bspfile);
     AddLump(LUMP_FACES,     g_dfaces,       g_numfaces * sizeof(dface_t),       header, bspfile);
+    //AddLump( LUMP_ORIGFACES, g_dorigfaces, g_numorigfaces * sizeof( dface_t ), header, bspfile );
 #ifdef ZHLT_XASH2
 	for (int hull = 1; hull < MAX_MAP_HULLS; hull++)
 	{
@@ -1197,6 +1219,7 @@ void            PrintBSPFileSizes()
     totalmemory += ArrayUsage("texinfos", g_numtexinfo, ENTRIES(g_texinfo), ENTRYSIZE(g_texinfo));
 #endif
     totalmemory += ArrayUsage("faces", g_numfaces, ENTRIES(g_dfaces), ENTRYSIZE(g_dfaces));
+    //totalmemory += ArrayUsage( "origfaces", g_numorigfaces, ENTRIES( g_dorigfaces ), ENTRYSIZE( g_dorigfaces ) );
 #ifdef ZHLT_WARNWORLDFACES
 	totalmemory += ArrayUsage("* worldfaces", (g_nummodels > 0? g_dmodels[0].numfaces: 0), MAX_MAP_WORLDFACES, 0);
 #endif
@@ -2001,28 +2024,30 @@ void LoadTextureContents()
 		string contents = tex_and_contents[1];
 		transform( contents.begin(), contents.end(), contents.begin(), tolower );
 
-		if ( contents == "solid" )
+		if ( !strncmp(contents.c_str(), "solid", 5) )
 			g_tex_contents[tex] = CONTENTS_SOLID;
-		else if ( contents == "empty" )
+		else if ( !strncmp( contents.c_str(), "empty", 5 ) )
 			g_tex_contents[tex] = CONTENTS_EMPTY;
-		else if ( contents == "sky" )
+		else if ( !strncmp( contents.c_str(), "sky", 3 ) )
 			g_tex_contents[tex] = CONTENTS_SKY;
-		else if ( contents == "slime" )
+		else if ( !strncmp( contents.c_str(), "slime", 5 ) )
 			g_tex_contents[tex] = CONTENTS_SLIME;
-		else if ( contents == "water" )
+		else if ( !strncmp( contents.c_str(), "water", 5 ) )
 			g_tex_contents[tex] = CONTENTS_WATER;
-		else if ( contents == "translucent" )
+		else if ( !strncmp( contents.c_str(), "translucent", 11 ) )
 			g_tex_contents[tex] = CONTENTS_TRANSLUCENT;
-		else if ( contents == "hint" )
+		else if ( !strncmp( contents.c_str(), "hint", 4 ) )
 			g_tex_contents[tex] = CONTENTS_HINT;
-		else if ( contents == "null" )
+		else if ( !strncmp( contents.c_str(), "null", 4 ) )
 			g_tex_contents[tex] = CONTENTS_NULL;
-		else if ( contents == "boundingbox" )
+		else if ( !strncmp( contents.c_str(), "boundingbox", 11 ) )
 			g_tex_contents[tex] = CONTENTS_BOUNDINGBOX;
-		else if ( contents == "origin" )
+		else if ( !strncmp( contents.c_str(), "origin", 6 ) )
 			g_tex_contents[tex] = CONTENTS_ORIGIN;
 		else
 			g_tex_contents[tex] = CONTENTS_SOLID;
+
+		cout << tex << " is contents " << g_tex_contents[tex] << endl;
 	}
 
 	delete buffer;

@@ -420,6 +420,7 @@ static contents_t ParseBrush(entity_t* mapent)
         // read the     texturedef
         GetToken(false);
         //_strupr(g_token);
+	string strtoken = g_token;
 #ifdef HLCSG_CUSTOMHULL
 		{
 			if (!strncasecmp (g_token, "NOCLIP", 6) || !strncasecmp (g_token, "NULLNOCLIP", 10))
@@ -437,7 +438,7 @@ static contents_t ParseBrush(entity_t* mapent)
 				strcpy (g_token, "NULL");
 				side->bevel = true;
 			}
-			if (!strncasecmp (g_token, "CLIP", 4))
+			if (strtoken.find("toolsclip") != string::npos)//!strncasecmp (g_token, "CLIP", 4))
 			{
 				b->cliphull |= (1 << NUM_HULLS); // arbitrary nonexistent hull
 				int h;

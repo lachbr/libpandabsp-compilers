@@ -22,7 +22,7 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseOfMfc>false</UseOfMfc>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>Windows7.1SDK</PlatformToolset>
+    <PlatformToolset>v141</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -48,9 +48,7 @@
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <OutDir>.\Release_x64\</OutDir>
-    <IntDir>.\Release_x64\</IntDir>
-    <LinkIncremental>false</LinkIncremental>
+    <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -60,8 +58,8 @@
       <Optimization>MaxSpeed</Optimization>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\thirdparty\win-libs-vc10\bullet\include;D:\OTHER\lachb\Documents\cio\cio-panda3d\built\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HLRAD;VERSION_32BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\rpbmStudios\panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
       <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
@@ -91,30 +89,30 @@
       <StackCommitSize>1048576</StackCommitSize>
       <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\rpbmStudios\panda3d\built_x64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <TargetMachine>MachineX64</TargetMachine>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <InlineFunctionExpansion>Default</InlineFunctionExpansion>
       <StringPooling>true</StringPooling>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <Optimization>MaxSpeed</Optimization>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AssemblerListingLocation>.\Release_x64\</AssemblerListingLocation>
+      <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
-      <PrecompiledHeaderOutputFile>.\Release_x64\hlrad.pch</PrecompiledHeaderOutputFile>
-      <ObjectFileName>.\Release_x64\</ObjectFileName>
-      <ProgramDataBaseFileName>.\Release_x64\</ProgramDataBaseFileName>
+      <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
+      <ObjectFileName>.\Release\</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release\</ProgramDataBaseFileName>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>true</WholeProgramOptimization>
     </ClCompile>
     <Midl>
-      <TypeLibraryName>.\Release_x64\hlrad.tlb</TypeLibraryName>
+      <TypeLibraryName>.\Release\hlrad.tlb</TypeLibraryName>
     </Midl>
     <ResourceCompile>
       <Culture>0x0409</Culture>
@@ -122,17 +120,19 @@
     </ResourceCompile>
     <Bscmake>
       <SuppressStartupBanner>true</SuppressStartupBanner>
-      <OutputFile>.\Release_x64\hlrad.bsc</OutputFile>
+      <OutputFile>.\Release\hlrad.bsc</OutputFile>
     </Bscmake>
     <Link>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <SubSystem>Console</SubSystem>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
-      <OutputFile>.\Release_x64\hlrad.exe</OutputFile>
-      <AdditionalDependencies>binmode.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>..\Release\p3rad.exe</OutputFile>
+      <AdditionalDependencies>binmode.obj;libpanda.lib;libpandaexpress.lib;libp3dtool.lib;libp3dtoolconfig.lib;libpandabullet.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <StackReserveSize>4194304</StackReserveSize>
       <StackCommitSize>1048576</StackCommitSize>
       <EnableUAC>false</EnableUAC>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

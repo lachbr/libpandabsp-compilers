@@ -22,8 +22,6 @@ pvector<RADStaticProp *> g_static_props;
 bool g_collisions_loaded = false;
 LightMutex g_prop_lock( "RadStaticPropRayCastLock" );
 
-#define PROP_SCALE 0.075
-
 int        LeafNumFromPoint( const vec3_t point )
 {
 	int             nodenum;
@@ -93,7 +91,7 @@ void LoadStaticProps()
 			NodePath propnp( loader->load_sync( Filename( mdl_path ) ) );
 			if ( !propnp.is_empty() )
 			{
-				propnp.set_scale( scale[0] / PROP_SCALE, scale[1] / PROP_SCALE, scale[2] / PROP_SCALE );
+				propnp.set_scale( scale[0] * PANDA_TO_HAMMER, scale[1] * PANDA_TO_HAMMER, scale[2] * PANDA_TO_HAMMER );
 				propnp.set_pos( origin[0], origin[1], origin[2] );
 				propnp.set_hpr( angles[1], angles[0], angles[2] );
 

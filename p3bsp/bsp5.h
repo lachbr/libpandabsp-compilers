@@ -135,6 +135,8 @@ typedef struct face_s                                      // This structure is 
     // vector quad word aligned
     vec3_t          pts[MAXEDGES];                         // FIXME: change to use winding_t
 
+    //side_t	    *originalface; // save the "side" this face came from
+
 }
 face_t;
 

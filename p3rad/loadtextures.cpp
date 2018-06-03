@@ -1,4 +1,6 @@
 #include "qrad.h"
+#include <virtualFileSystem.h>
+#include <texturePool.h>
 #ifdef HLRAD_TEXTURE
 
 #ifdef WORDS_BIGENDIAN
@@ -8,241 +10,14 @@
 int g_numtextures;
 radtexture_t *g_textures;
 
-typedef struct waddir_s
-{
-	struct waddir_s *next;
-	char path[_MAX_PATH];
-} waddir_t;
-waddir_t *g_waddirs = NULL;
-
-void AddWadFolder (const char *path)
-{
-	waddir_t *waddir;
-	waddir = (waddir_t *)malloc (sizeof (waddir_t));
-	hlassume (waddir != NULL, assume_NoMemory);
-	{
-		waddir_t **pos;
-		for (pos = &g_waddirs; *pos; pos = &(*pos)->next)
-			;
-		waddir->next = *pos;
-		*pos = waddir;
-	}
-	safe_snprintf (waddir->path, _MAX_PATH, "%s", path);
-}
-
-typedef struct
-{
-	int filepos;
-	int disksize;
-	int size;
-	char type;
-	char compression;
-	char pad1, pad2;
-	char name[16];
-} lumpinfo_t;
-
-typedef struct wadfile_s
-{
-	struct wadfile_s *next;
-	char path[_MAX_PATH];
-	FILE *file;
-	int filesize;
-	int numlumps;
-	lumpinfo_t *lumpinfos;
-} wadfile_t;
-
-wadfile_t *g_wadfiles = NULL;
-bool g_wadfiles_opened;
-
-static int CDECL lump_sorter_by_name (const void *lump1, const void *lump2)
-{
-	lumpinfo_t *plump1 = (lumpinfo_t *)lump1;
-	lumpinfo_t *plump2 = (lumpinfo_t *)lump2;
-	return strcasecmp (plump1->name, plump2->name);
-}
-
-void OpenWadFile (const char *name
-#ifdef ZHLT_NOWADDIR
-	, bool fullpath = false
-#endif
-	)
-{
-	int i;
-	wadfile_t *wad;
-	wad = (wadfile_t *)malloc (sizeof (wadfile_t));
-	hlassume (wad != NULL, assume_NoMemory);
-	{
-		wadfile_t **pos;
-		for (pos = &g_wadfiles; *pos; pos = &(*pos)->next)
-			;
-		wad->next = *pos;
-		*pos = wad;
-	}
-#ifdef ZHLT_NOWADDIR
-   if (fullpath)
-   {
-	safe_snprintf (wad->path, _MAX_PATH, "%s", name);
-	wad->file = fopen (wad->path, "rb");
-	if (!wad->file)
-	{
-		Error ("Couldn't open %s", wad->path);
-	}
-   }
-   else
-   {
-#endif
-	waddir_t *dir;
-	for (dir = g_waddirs; dir; dir = dir->next)
-	{
-		safe_snprintf (wad->path, _MAX_PATH, "%s\\%s", dir->path, name);
-		wad->file = fopen (wad->path, "rb");
-		if (wad->file)
-		{
-			break;
-		}
-	}
-	if (!dir)
-	{
-		Fatal (assume_COULD_NOT_LOCATE_WAD, "Could not locate wad file %s", name);
-		return;
-	}
-#ifdef ZHLT_NOWADDIR
-   }
-#endif
-	Log ("Using Wadfile: %s\n", wad->path);
-	wad->filesize = q_filelength (wad->file);
-	struct
-	{
-		char identification[4];
-		int numlumps;
-		int infotableofs;
-	} wadinfo;
-	if (wad->filesize < (int)sizeof (wadinfo))
-	{
-		Error ("Invalid wad file '%s'.", wad->path);
-	}
-	SafeRead (wad->file, &wadinfo, sizeof (wadinfo));
-	wadinfo.numlumps  = LittleLong(wadinfo.numlumps);
-	wadinfo.infotableofs = LittleLong(wadinfo.infotableofs);
-	if (strncmp (wadinfo.identification, "WAD2", 4) && strncmp (wadinfo.identification, "WAD3", 4))
-		Error ("%s isn't a Wadfile!", wad->path);
-	wad->numlumps = wadinfo.numlumps;
-	if (wad->numlumps < 0 || wadinfo.infotableofs < 0 || wadinfo.infotableofs + wad->numlumps * (int)sizeof (lumpinfo_t) > wad->filesize)
-	{
-		Error ("Invalid wad file '%s'.", wad->path);
-	}
-	wad->lumpinfos = (lumpinfo_t *)malloc (wad->numlumps * sizeof (lumpinfo_t));
-	hlassume (wad->lumpinfos != NULL, assume_NoMemory);
-    if (fseek (wad->file, wadinfo.infotableofs, SEEK_SET))
-		Error ("File read failure: %s", wad->path);
-	for (i = 0; i < wad->numlumps; i++)
-	{
-		SafeRead (wad->file, &wad->lumpinfos[i], sizeof (lumpinfo_t));
-		if (!TerminatedString(wad->lumpinfos[i].name, 16))
-		{
-			wad->lumpinfos[i].name[16 - 1] = 0;
-			Warning("Unterminated texture name : wad[%s] texture[%d] name[%s]\n", wad->path, i, wad->lumpinfos[i].name);
-		}
-		wad->lumpinfos[i].filepos = LittleLong(wad->lumpinfos[i].filepos);
-		wad->lumpinfos[i].disksize = LittleLong(wad->lumpinfos[i].disksize);
-		wad->lumpinfos[i].size = LittleLong(wad->lumpinfos[i].size);
-	}
-	qsort (wad->lumpinfos, wad->numlumps, sizeof (lumpinfo_t), lump_sorter_by_name);
-}
-
-void TryOpenWadFiles ()
-{
-	if (!g_wadfiles_opened)
-	{
-		g_wadfiles_opened = true;
-#ifdef ZHLT_NOWADDIR
-		char filename[_MAX_PATH];
-		safe_snprintf(filename, _MAX_PATH, "%s.wa_", g_Mapname);
-	   if (q_exists (filename))
-	   {
-		OpenWadFile (filename, true);
-	   }
-	   else
-	   {
-		Warning ("Couldn't open %s", filename);
-#endif
-		Log ("Opening wad files from directories:\n");
-		if (!g_waddirs)
-		{
-			Warning ("No wad directories have been set.");
-		}
-		else
-		{
-			waddir_t *dir;
-			for (dir = g_waddirs; dir; dir = dir->next)
-			{
-				Log ("  %s\n", dir->path);
-			}
-		}
-		const char *value = ValueForKey (&g_entities[0], "wad");
-		char path[MAX_VAL];
-		int i, j;
-		for (i = 0, j = 0; i < strlen(value) + 1; i++)
-		{
-			if (value[i] == ';' || value[i] == '\0')
-			{
-				path[j] = '\0';
-				if (path[0])
-				{
-					char name[MAX_VAL];
-					ExtractFile (path, name);
-					DefaultExtension (name, ".wad");
-					OpenWadFile (name);
-				}
-				j = 0;
-			}
-			else
-			{
-				path[j] = value[i];
-				j++;
-			}
-		}
-#ifdef ZHLT_NOWADDIR
-	   }
-#endif
-		CheckFatal ();
-	}
-}
-
-void TryCloseWadFiles ()
-{
-	if (g_wadfiles_opened)
-	{
-		g_wadfiles_opened = false;
-		wadfile_t *wadfile, *next;
-		for (wadfile = g_wadfiles; wadfile; wadfile = next)
-		{
-			next = wadfile->next;
-			free (wadfile->lumpinfos);
-			fclose (wadfile->file);
-			free (wadfile);
-		}
-		g_wadfiles = NULL;
-	}
-}
-
 void DefaultTexture (radtexture_t *tex, const char *name)
 {
 	int i;
-	tex->width = DEFAULT_LIGHTMAP_SIZE;
-	tex->height = DEFAULT_LIGHTMAP_SIZE;
+	PNMImage *img = new PNMImage( DEFAULT_LIGHTMAP_SIZE, DEFAULT_LIGHTMAP_SIZE );
+	img->fill( 1.0 );
+	tex->image = img;
 	strcpy (tex->name, name);
 	tex->name[MAX_TEXTURE_NAME - 1] = '\0';
-	tex->canvas = (byte *)malloc (tex->width * tex->height);
-	hlassume (tex->canvas != NULL, assume_NoMemory);
-	for (i = 0; i < 256; i++)
-	{
-		VectorFill (tex->palette[i], 0x80);
-	}
-	for (i = 0; i < tex->width * tex->height; i++)
-	{
-		tex->canvas[i] = 0x00;
-	}
 }
 
 /*
@@ -358,6 +133,22 @@ void LoadTextures ()
 	{
 		Log ("Load Textures:\n");
 	}
+
+	VirtualFileSystem *vfs = VirtualFileSystem::get_global_ptr();
+	for ( size_t i = 0; i < g_multifiles.size(); i++ )
+	{
+		Filename file = Filename::from_os_specific( g_multifiles[i] );
+		cout << file.get_fullpath() << endl;
+		if ( !vfs->mount( file, ".", VirtualFileSystem::MF_read_only ) )
+		{
+			Warning( "Could not mount multifile from %s!\n", file.get_fullpath().c_str() );
+		}
+		else
+		{
+			Log( "Mounted multifile %s.\n", file.get_fullpath().c_str() );
+		}
+	}
+
 	g_numtextures = g_numtexrefs;
 	g_textures = (radtexture_t *)malloc (g_numtextures * sizeof (radtexture_t));
 	hlassume (g_textures != NULL, assume_NoMemory);
@@ -365,56 +156,78 @@ void LoadTextures ()
 	for (i = 0; i < g_numtextures; i++)
 	{
 		radtexture_t *tex = &g_textures[i];
-		/*
-		if (g_notextures)
+		
+		if ( g_notextures )
 		{
-			DefaultTexture (tex, "DEFAULT");
-		}
-		else if (offset < 0 || size < (int)sizeof (texref_t))
-		{
-			Warning ("Invalid texture data in '%s'.", g_source);
-			DefaultTexture (tex, "");
+			DefaultTexture ( tex, "DEFAULT" );
 		}
 		else
 		{
-			texref_t *mt = (texref_t *)&g_dtexrefs[i];
-			//if (mt->offsets[0])
-			//{
-			//	Developer (DEVELOPER_LEVEL_MESSAGE, "Texture '%s': found in '%s'.\n", mt->name, g_source);
-			//	Developer (DEVELOPER_LEVEL_MESSAGE, "Texture '%s': name '%s', width %d, height %d.\n", mt->name, mt->name, mt->width, mt->height);
-			//	LoadTexture (tex, mt, size);
-			//}
-			//else
-			//{
-			//	TryOpenWadFiles ();
-			//	LoadTextureFromWad (tex, mt);
-			//}
+			vector_string extensions;
+			extensions.push_back( ".jpg" );
+			extensions.push_back( ".png" );
+			extensions.push_back( ".bmp" );
+			extensions.push_back( ".tif" );
+
+			texref_t *tref = &g_dtexrefs[i];
+			string name = tref->name;
+
+			bool success = false;
+			for ( size_t j = 0; j < extensions.size(); j++ )
+			{
+				string ext = extensions[j];
+				PNMImage *img = new PNMImage;
+				if ( img->read( name + ext ) )
+				{
+					tex->image = img;
+					strcpy ( tex->name, name.c_str() );
+					tex->name[MAX_TEXTURE_NAME - 1] = '\0';
+					success = true;
+					Log( "Loaded RAD texture from %s.\n", tref->name );
+					break;
+				}
+				else
+				{
+					delete img;
+				}
+			}
+
+			if ( !success )
+				Warning( "Could not load texture %s!\n", tref->name );
+
+			
 		}
-		*/
-		DefaultTexture (tex, "DEFAULT");
+		
+
 #ifdef HLRAD_REFLECTIVITY
 		{
 			vec3_t total;
 			VectorClear (total);
-			for (int j = 0; j < tex->width * tex->height; j++)
+			int width = tex->image->get_x_size();
+			int height = tex->image->get_y_size();
+			PNMImage *img = tex->image;
+			for ( int row = 0; row < height; row++ )
 			{
-				vec3_t reflectivity;
-				if (tex->name[0] == '{' && tex->canvas[j] == 0xFF)
+				for ( int col = 0; col < width; col++ )
 				{
-					VectorFill (reflectivity, 0.0);
-				}
-				else
-				{
-					VectorScale (tex->palette[tex->canvas[j]], 1.0/255.0, reflectivity);
-					for (int k = 0; k < 3; k++)
+					vec3_t reflectivity;
+					if ( img->get_num_channels() == 1 && img->get_channel(col, row, 0) * 0xFF == 0xFF )
 					{
-						reflectivity[k] = pow (reflectivity[k], g_texreflectgamma);
+						VectorFill ( reflectivity, 0.0 );
 					}
-					VectorScale (reflectivity, g_texreflectscale, reflectivity);
+					else
+					{
+						VectorScale ( img->get_xel(col, row) * 0xFF, 1.0 / 255.0, reflectivity );
+						for ( int k = 0; k < 3; k++ )
+						{
+							reflectivity[k] = pow ( reflectivity[k], g_texreflectgamma );
+						}
+						VectorScale ( reflectivity, g_texreflectscale, reflectivity );
+					}
+					VectorAdd ( total, reflectivity, total );
 				}
-				VectorAdd (total, reflectivity, total);
 			}
-			VectorScale (total, 1.0 / (double)(tex->width * tex->height), total);
+			VectorScale (total, 1.0 / (double)(width * height), total);
 			VectorCopy (total, tex->reflectivity);
 			Developer (DEVELOPER_LEVEL_MESSAGE, "Texture '%s': reflectivity is (%f,%f,%f).\n",
 				tex->name, tex->reflectivity[0], tex->reflectivity[1], tex->reflectivity[2]);
@@ -428,7 +241,6 @@ void LoadTextures ()
 	if (!g_notextures)
 	{
 		Log ("%i textures referenced\n", g_numtextures);
-		TryCloseWadFiles ();
 	}
 }
 

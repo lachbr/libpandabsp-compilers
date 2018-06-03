@@ -1,6 +1,8 @@
 #ifndef CMDLIB_H__
 #define CMDLIB_H__
 
+#pragma warning(disable: 4251)
+
 #include <iostream>
 #include <string>
 #include <vector>

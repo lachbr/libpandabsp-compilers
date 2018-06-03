@@ -446,6 +446,10 @@ static void     WriteFace(face_t* f)
 #else
     df->texinfo = f->texturenum;
 #endif
+
+    // Save original side/face data
+
+
     for (i = 0; i < f->numpoints; i++)
     {
 #ifdef ZHLT_DETAILBRUSH

@@ -581,9 +581,10 @@ typedef struct
 	int texinfo;
 	bool tex_alphatest;
 	vec_t tex_vecs[2][4];
-	int tex_width;
-	int tex_height;
-	const byte *tex_canvas;
+	//int tex_width;
+	//int tex_height;
+	//const byte *tex_canvas;
+	PNMImage *tex_image;
 #endif
 } opaqueface_t;
 opaqueface_t *opaquefaces;
@@ -826,10 +827,9 @@ void CreateOpaqueNodes ()
 			}
 		}
 		radtexture_t *tex = &g_textures[info->texref];
-		of->tex_alphatest = tex->name[0] == '{';
-		of->tex_width = tex->width;
-		of->tex_height = tex->height;
-		of->tex_canvas = tex->canvas;
+		of->tex_alphatest = tex->image->get_num_channels() == 4;
+		of->tex_image = tex->image;
+
 #endif
 	}
 	for (i = 0; i < g_numnodes; i++)
@@ -898,13 +898,16 @@ int TestLineOpaque_face (int facenum, const vec3_t hit)
 	if (thisface->tex_alphatest)
 	{
 		double x, y;
+		PNMImage *img = thisface->tex_image;
+		int width = img->get_x_size();
+		int height = img->get_y_size();
 		x = DotProduct (hit, thisface->tex_vecs[0]) + thisface->tex_vecs[0][3];
 		y = DotProduct (hit, thisface->tex_vecs[1]) + thisface->tex_vecs[1][3];
-		x = floor (x - thisface->tex_width * floor (x / thisface->tex_width));
-		y = floor (y - thisface->tex_height * floor (y / thisface->tex_height));
-		x = x > thisface->tex_width - 1? thisface->tex_width - 1: x < 0? 0: x;
-		y = y > thisface->tex_height - 1? thisface->tex_height - 1: y < 0? 0: y;
-		if (thisface->tex_canvas[(int)y * thisface->tex_width + (int)x] == 0xFF)
+		x = floor (x - width * floor (x / width));
+		y = floor (y - height * floor (y / height));
+		x = x > width - 1? width - 1: x < 0? 0: x;
+		y = y > height - 1? height - 1: y < 0? 0: y;
+		if (img->get_channel( (int)x, (int)y, 3 ) * 0xFF == 0xFF)
 		{
 			return 0;
 		}

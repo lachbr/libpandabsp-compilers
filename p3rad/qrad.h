@@ -25,6 +25,8 @@
 #include "cmdlinecfg.h"
 #endif
 
+#include <pnmImage.h>
+
 #ifdef SYSTEM_WIN32
 #pragma warning(disable: 4142 4028)
 #include <io.h>
@@ -204,7 +206,7 @@
 	#define DEFAULT_TRANSLUCENTDEPTH 2.0f
 #endif
 #ifdef HLRAD_TEXTURE
-	#define DEFAULT_NOTEXTURES true
+	#define DEFAULT_NOTEXTURES false
 #endif
 #ifdef HLRAD_REFLECTIVITY
 	#define DEFAULT_TEXREFLECTGAMMA 1.76f // 2.0(texgamma cvar) / 2.5 (gamma cvar) * 2.2 (screen gamma) = 1.76
@@ -680,20 +682,23 @@ typedef struct
 
 #define OPAQUE_ARRAY_GROWTH_SIZE 1024
 
+extern vector_string g_multifiles; // for loading textures and static props
+extern string g_mfincludefile;
+
 #ifdef HLRAD_TEXTURE
 typedef struct
 {
 	char name[MAX_TEXTURE_NAME]; // not always same with the name in texdata
-	int width, height;
-	byte *canvas; //[height][width]
-	byte palette[256][3];
+	//int width, height;
+	//byte *canvas; //[height][width]
+	//byte palette[256][3];
+	PNMImage *image;
 #ifdef HLRAD_REFLECTIVITY
 	vec3_t reflectivity;
 #endif
 } radtexture_t;
 extern int g_numtextures;
 extern radtexture_t *g_textures;
-extern void AddWadFolder (const char *path);
 extern void LoadTextures ();
 #ifdef ZHLT_EMBEDLIGHTMAP
 #ifdef HLRAD_TEXTURE
@@ -1142,5 +1147,7 @@ extern vec_t	CalcSightArea_SpotLight (const vec3_t receiver_origin, const vec3_t
 #ifdef HLRAD_ACCURATEBOUNCE_ALTERNATEORIGIN
 extern void		GetAlternateOrigin (const vec3_t pos, const vec3_t normal, const patch_t *patch, vec3_t &origin);
 #endif
+
+extern void	ReadMFIncludeFile();
 
 #endif //HLRAD_H__

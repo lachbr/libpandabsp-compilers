@@ -105,6 +105,9 @@ static vec3_t   addlight[MAX_PATCHES];
 #endif
 #endif
 
+vector_string	g_multifiles;
+string		g_mfincludefile;
+
 vec3_t          g_face_offset[MAX_MAP_FACES];              // for rotating bmodels
 
 vec_t           g_direct_scale = DEFAULT_DLIGHT_SCALE;
@@ -1785,6 +1788,7 @@ static void     MakePatchForFace(const int fn, Winding* w
         patch_t*        patch;
         vec3_t          light;
         vec3_t          centroid = { 0, 0, 0 };
+	texinfo_t *tv = &g_texinfo[f->texinfo];
 
         int             numpoints = w->m_NumPoints;
 
@@ -4855,6 +4859,36 @@ int             main(const int argc, char** argv)
 
     load_prc_file_data( "", "model-path /d/OTHER/lachb/Documents/ttsp/game/resources" );
     load_prc_file_data( "", "assert-abort 0" );
+    load_prc_file_data( "", "load-file-type egg pandaegg" );
+    load_prc_file_data( "", "egg-object-type-portal          <Scalar> portal { 1 }" );
+    load_prc_file_data( "", "egg-object-type-polylight       <Scalar> polylight { 1 }" );
+    load_prc_file_data( "", "egg-object-type-seq24           <Switch> { 1 } <Scalar> fps { 24 }" );
+    load_prc_file_data( "", "egg-object-type-seq12           <Switch> { 1 } <Scalar> fps { 12 }" );
+    load_prc_file_data( "", "egg-object-type-indexed         <Scalar> indexed { 1 }" );
+    load_prc_file_data( "", "egg-object-type-seq10           <Switch> { 1 } <Scalar> fps { 10 }" );
+    load_prc_file_data( "", "egg-object-type-seq8            <Switch> { 1 } <Scalar> fps { 8 }" );
+    load_prc_file_data( "", "egg-object-type-seq6            <Switch> { 1 } <Scalar>  fps { 6 }" );
+    load_prc_file_data( "", "egg-object-type-seq4            <Switch> { 1 } <Scalar>  fps { 4 }" );
+    load_prc_file_data( "", "egg-object-type-seq2            <Switch> { 1 } <Scalar>  fps { 2 }" );
+    load_prc_file_data( "", "egg-object-type-binary          <Scalar> alpha { binary }" );
+    load_prc_file_data( "", "egg-object-type-dual            <Scalar> alpha { dual }" );
+    load_prc_file_data( "", "egg-object-type-glass           <Scalar> alpha { blend_no_occlude }" );
+    load_prc_file_data( "", "egg-object-type-model           <Model> { 1 }" );
+    load_prc_file_data( "", "egg-object-type-dcs             <DCS> { 1 }" );
+    load_prc_file_data( "", "egg-object-type-notouch         <DCS> { no_touch }" );
+    load_prc_file_data( "", "egg-object-type-barrier         <Collide> { Polyset descend }" );
+    load_prc_file_data( "", "egg-object-type-sphere          <Collide> { Sphere descend }" );
+    load_prc_file_data( "", "egg-object-type-invsphere       <Collide> { InvSphere descend }" );
+    load_prc_file_data( "", "egg-object-type-tube            <Collide> { Tube descend }" );
+    load_prc_file_data( "", "egg-object-type-trigger         <Collide> { Polyset descend intangible }" );
+    load_prc_file_data( "", "egg-object-type-trigger-sphere  <Collide> { Sphere descend intangible }" );
+    load_prc_file_data( "", "egg-object-type-floor           <Collide> { Polyset descend level }" );
+    load_prc_file_data( "", "egg-object-type-dupefloor       <Collide> { Polyset keep descend level }" );
+    load_prc_file_data( "", "egg-object-type-bubble          <Collide> { Sphere keep descend }" );
+    load_prc_file_data( "", "egg-object-type-ghost           <Scalar> collide-mask { 0 }" );
+    load_prc_file_data( "", "egg-object-type-glow            <Scalar> blend { add }" );
+    load_prc_file_data( "", "egg-object-type-direct-widget   <Scalar> collide-mask { 0x80000000 } <Collide> { Polyset descend }" );
+    load_prc_file_data( "", "default-model-extension .egg" );
 
     RADCollisionPolygon::init_type();
 
@@ -4910,6 +4944,18 @@ int             main(const int argc, char** argv)
                 Usage();
             }
         }
+	else if ( !strcasecmp( argv[i], "-mfincludefile" ) )
+	{
+		if ( i + 1 < argc )
+		{
+			g_mfincludefile = argv[++i];
+		}
+		else
+		{
+			Warning( "i + 1 >= argc?\n" );
+			Usage();
+		}
+	}
         else if (!strcasecmp(argv[i], "-dev"))
         {
             if (i + 1 < argc)	//added "1" .--vluzacn
@@ -5610,17 +5656,17 @@ int             main(const int argc, char** argv)
 		}
 #endif
 #ifdef HLRAD_TEXTURE
-		else if (!strcasecmp (argv[i], "-waddir"))
-		{
-			if (i + 1 < argc)
-			{
-				AddWadFolder (argv[++i]);
-			}
-			else
-			{
-				Usage ();
-			}
-		}
+		//else if (!strcasecmp (argv[i], "-waddir"))
+		//{
+		//	if (i + 1 < argc)
+		//	{
+		//		AddWadFolder (argv[++i]);
+		//	}
+		//	else
+		//	{
+		//		Usage ();
+		//	}
+		//}
 		else if (!strcasecmp (argv[i], "-notextures"))
 		{
 			g_notextures = true;
@@ -5779,6 +5825,9 @@ int             main(const int argc, char** argv)
 	hlassume (g_ddlitdata != NULL, assume_NoMemory);
 	safe_snprintf (g_dlitfile, _MAX_PATH, "%s.dlit", g_Mapname);
 #endif
+
+    ReadMFIncludeFile();
+
     // END INIT
 
     // BEGIN RAD
@@ -5923,4 +5972,27 @@ int             main(const int argc, char** argv)
 	}
 #endif
     return 0;
+}
+
+void ReadMFIncludeFile()
+{
+	Log( "Multifile include file is %s.\n", g_mfincludefile.c_str() );
+
+	char *buffer;
+	LoadFile( g_mfincludefile.c_str(), &buffer );
+	string strbuf = buffer;
+
+	vector<string> lines = explode( "\n", strbuf );
+	for ( size_t linenum = 0; linenum < lines.size(); linenum++ )
+	{
+		string mfpath = lines[linenum];
+		if ( linenum < lines.size() - 1 )
+		{
+			mfpath = mfpath.substr( 0, mfpath.length() - 1 );
+		}
+		g_multifiles.push_back( mfpath );
+		Log( "%s will attempt to be mounted.\n", mfpath.c_str() );
+	}
+
+	delete buffer;
 }
