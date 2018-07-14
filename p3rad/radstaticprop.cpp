@@ -75,6 +75,13 @@ void LoadStaticProps()
 		string classname = ValueForKey( ent, "classname" );
 		if ( classname == "prop_static" )
 		{
+                        if ( IntForKey( ent, "shadows" ) == 0 )
+                        {
+                                // This prop will not cast shadows.
+                                cout << "Static prop will not cast shadows." << endl;
+                                continue;
+                        }
+
 			string mdl_path = ValueForKey( ent, "modelpath" );
 
 			cout << "Loading static prop " << mdl_path << endl;
@@ -120,7 +127,7 @@ void LoadStaticProps()
 						PT( Geom ) geom = gn->get_geom( j )->decompose();
 						const GeomVertexData *vdata = geom->get_vertex_data();
 						GeomVertexReader vreader( vdata, InternalName::get_vertex() );
-						stringstream ss;
+						std::stringstream ss;
 						ss << gn->get_name() << "-" << j;
 						PT( CollisionNode ) cnode = new CollisionNode( ss.str() );
 						for ( int k = 0; k < geom->get_num_primitives(); k++ )
@@ -648,8 +655,8 @@ project( const LVector3 &axis, PN_stdfloat &center, PN_stdfloat &extent ) const
 		const LPoint2 &point = ( *pi )._p;
 
 		PN_stdfloat t = point[0] * axis[0] + point[1] * axis[2];
-		begin = min( begin, t );
-		end = max( end, t );
+		begin = std::min( begin, t );
+		end = std::max( end, t );
 	}
 
 	center = ( end + begin ) * 0.5f;
