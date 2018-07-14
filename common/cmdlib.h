@@ -8,7 +8,12 @@
 #include <vector>
 #include <algorithm>
 #include <map>
-using namespace std;
+using std::string;
+using std::vector;
+using std::map;
+using std::cout;
+using std::cerr;
+using std::endl;
 
 #if _MSC_VER >= 1000
 #pragma once

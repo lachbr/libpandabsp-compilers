@@ -7,7 +7,7 @@
 #pragma once
 #endif
 
-#define DEFAULT_TEXCONTENTS_FILE "D:\\OTHER\\lachb\\Documents\\cio\\cio-panda3d\\built\\bin\\texturecontents.txt"
+#define DEFAULT_TEXCONTENTS_FILE "D:\\OTHER\\lachb\\Documents\\cio\\cio-panda3d\\built_x64\\bin\\texturecontents.txt"
 
 #define PBSP_MAGIC ( ( 'P' << 24 ) + ( 'S' << 16 ) + ( 'B' << 8 ) + 'P' )
 
