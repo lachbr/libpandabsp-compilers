@@ -1,0 +1,129 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\common\blockmem.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\bspfile.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlinecfg.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\filelib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\log.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\mathlib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\messages.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\scriplib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\winding.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="ansitoutf8.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="autowad.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="brush.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="brushunion.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="hullfile.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="map.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="properties.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="qcsg.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="textures.cpp">
+      <Filter>csg</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\threads.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\common\blockmem.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\boundingbox.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\bspfile.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\cmdlib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\cmdlinecfg.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\hlassert.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\filelib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\log.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathlib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathtypes.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\messages.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\scriplib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\win32fix.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\winding.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\template\basictypes.h">
+      <Filter>template</Filter>
+    </ClInclude>
+    <ClInclude Include="csg.h">
+      <Filter>csg</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\threads.h">
+      <Filter>common</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="csg">
+      <UniqueIdentifier>{1686c47b-31b0-4d5c-aa91-30f09f53afaf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common">
+      <UniqueIdentifier>{e65af2d0-cc4f-4f41-9bdd-b9ecb7f10429}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="template">
+      <UniqueIdentifier>{7e2bf22f-2bc5-4ef2-a6f7-40093f1f236b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

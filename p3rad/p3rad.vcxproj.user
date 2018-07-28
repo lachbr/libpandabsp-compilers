@@ -9,11 +9,11 @@ $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\ttsp\game\resources\maps\test</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>cog_bldg_executive_flr.bsp -threads 6 -extra -dev 4 -mfincludefile D:\OTHER\lachb\Documents\ttsp\game\resources\maps\rad_mfinclude.txt</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>sewer_entrance_room.bsp -threads 6 -extra -dev 4 -mfincludefile D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\rad_mfinclude.txt -extra</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerEnvironment>PATH=D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\bin;%PATH%
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <LocalDebuggerCommand>D:\OTHER\lachb\Documents\rpbmStudios\panda_hl_bsp_tools\Release\p3rad.exe</LocalDebuggerCommand>
-    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\cog_bldg_executive_flr</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\sewer_entrance_room</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
 </Project>

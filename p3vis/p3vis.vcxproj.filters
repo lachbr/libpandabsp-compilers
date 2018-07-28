@@ -1,0 +1,114 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\common\blockmem.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\bspfile.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlinecfg.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\filelib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\log.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\mathlib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\scriplib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\threads.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\winding.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="flow.cpp">
+      <Filter>vis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\messages.cpp">
+      <Filter>vis</Filter>
+    </ClCompile>
+    <ClCompile Include="vis.cpp">
+      <Filter>vis</Filter>
+    </ClCompile>
+    <ClCompile Include="zones.cpp">
+      <Filter>vis</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\template\basictypes.h">
+      <Filter>template</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\blockmem.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\boundingbox.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\bspfile.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\cmdlib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\cmdlinecfg.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\filelib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\hlassert.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\log.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathlib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathtypes.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\scriplib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\threads.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\win32fix.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\winding.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\messages.h">
+      <Filter>vis</Filter>
+    </ClInclude>
+    <ClInclude Include="vis.h">
+      <Filter>vis</Filter>
+    </ClInclude>
+    <ClInclude Include="zones.h">
+      <Filter>vis</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{26399b57-ff49-4e87-82cb-a849d11120fb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="template">
+      <UniqueIdentifier>{11aa600c-869a-4b7d-a6af-ce2a994ac0de}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="vis">
+      <UniqueIdentifier>{cacf7330-0af7-4baf-8c90-661ea50b2246}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

@@ -45,22 +45,15 @@
 #define MAX_MAP_CLIPNODES    32767
 // hard limit (negative short's are used as contents values)
 
-#ifdef ZHLT_MAX_MAP_LEAFS
 #define MAX_MAP_LEAFS        32760
 #define MAX_MAP_LEAFS_ENGINE 8192
 // No problem has been observed in testmap or reported, except when viewing the map from outside (some leafs missing, no crash).
 // This problem indicates that engine's MAX_MAP_LEAFS is 8192 (for reason, see: Quake - gl_model.c - Mod_Init).
 // I don't know if visleafs > 8192 will cause Mod_DecompressVis overflow.
-#else
-#define MAX_MAP_LEAFS         8192
-// hard limit (halflife depends on it to setup pvs bits correctly)
-#endif
 
 #define MAX_MAP_VERTS        65535
 #define MAX_MAP_FACES        65535 // This ought to be 32768, otherwise faces(in world) can become invisible. --vluzacn
-#ifdef ZHLT_WARNWORLDFACES
 #define MAX_MAP_WORLDFACES   32768
-#endif
 #define MAX_MAP_MARKSURFACES 65535
 // hard limit (data structures store them as unsigned shorts)
 
@@ -69,9 +62,7 @@
 
 #define MAX_MAP_TEXINFO      32767
 // hard limit (face.texinfo is signed short)
-#ifdef HLCSG_HLBSP_REDUCETEXTURE
 #define MAX_INTERNAL_MAP_TEXINFO 262144
-#endif
 
 #define MAX_MAP_EDGES       256000
 #define MAX_MAP_SURFEDGES   512000
@@ -102,18 +93,12 @@
 #define MAX_TEXTURE_NAME 256 // number of characters
 
 #define TEXTURE_STEP 16 // Default is 16
-#define MAX_SURFACE_EXTENT 128 // Default is 16
+#define MAX_LIGHTMAP_DIM 128 // Default is 16
 
-#ifdef ZHLT_LARGERANGE
 #define ENGINE_ENTITY_RANGE 4096.0
-#endif
 //=============================================================================
 
-#ifdef ZHLT_XASH2
-#define BSPVERSION  31
-#else
 #define BSPVERSION  30
-#endif
 #define TOOLVERSION 2
 
 // One hammer unit is 1/16th of a foot.
@@ -129,7 +114,7 @@
 
 typedef struct
 {
-    int             fileofs, filelen;
+        int             fileofs, filelen;
 }
 lump_t;
 
@@ -149,166 +134,149 @@ lump_t;
 #define LUMP_SURFEDGES    13
 #define LUMP_MODELS       14
 //#define LUMP_ORIGFACES    15
-#ifdef ZHLT_XASH2
-#define LUMP_CLIPNODES2   16
-#define LUMP_CLIPNODES3   17
-#define HEADER_LUMPS      18
-#else
 #define HEADER_LUMPS      15
-#endif
 
 //#define LUMP_MISCPAD      -1
 //#define LUMP_ZEROPAD      -2
 
 typedef struct
 {
-    float           mins[3], maxs[3];
-    float           origin[3];
-    int             headnode[MAX_MAP_HULLS];
-    int             visleafs;                              // not including the solid leaf 0
-    int             firstface, numfaces;
+        float           mins[3], maxs[3];
+        float           origin[3];
+        int             headnode[MAX_MAP_HULLS];
+        int             visleafs;                              // not including the solid leaf 0
+        int             firstface, numfaces;
 }
 dmodel_t;
 
 typedef struct
 {
-    int             ident;
-    int             version;
-    lump_t          lumps[HEADER_LUMPS];
+        int             ident;
+        int             version;
+        lump_t          lumps[HEADER_LUMPS];
 }
 dheader_t;
 
 /*
 typedef struct
 {
-	char		    name[MAX_TEXTURE_NAME];
+char		    name[MAX_TEXTURE_NAME];
 }
 dtexlump_t;
 */
 
 typedef struct texref_s
 {
-    char            name[MAX_TEXTURE_NAME];
+        char            name[MAX_TEXTURE_NAME];
 }
 texref_t;
 
 typedef struct dvertex_s
 {
-    float           point[3];
+        float           point[3];
 }
 dvertex_t;
 
 typedef struct
 {
-    float           normal[3];
-    float           dist;
-    planetypes      type;                                  // PLANE_X - PLANE_ANYZ ?remove? trivial to regenerate
+        float           normal[3];
+        float           dist;
+        planetypes      type;                                  // PLANE_X - PLANE_ANYZ ?remove? trivial to regenerate
 }
 dplane_t;
 
 typedef enum
 {
-	CONTENTS_EMPTY = -1,
-	CONTENTS_SOLID = -2,
-	CONTENTS_WATER = -3,
-	CONTENTS_SLIME = -4,
-	CONTENTS_LAVA = -5,
-	CONTENTS_SKY = -6,
-	CONTENTS_ORIGIN = -7,                                  // removed at csg time
-#ifndef HLCSG_CUSTOMHULL
-	CONTENTS_CLIP = -8,                                    // changed to contents_solid
-#endif
+        CONTENTS_EMPTY = -1,
+        CONTENTS_SOLID = -2,
+        CONTENTS_WATER = -3,
+        CONTENTS_SLIME = -4,
+        CONTENTS_LAVA = -5,
+        CONTENTS_SKY = -6,
+        CONTENTS_ORIGIN = -7,                                  // removed at csg time
 
-	CONTENTS_CURRENT_0 = -9,
-	CONTENTS_CURRENT_90 = -10,
-	CONTENTS_CURRENT_180 = -11,
-	CONTENTS_CURRENT_270 = -12,
-	CONTENTS_CURRENT_UP = -13,
-	CONTENTS_CURRENT_DOWN = -14,
+        CONTENTS_CURRENT_0 = -9,
+        CONTENTS_CURRENT_90 = -10,
+        CONTENTS_CURRENT_180 = -11,
+        CONTENTS_CURRENT_270 = -12,
+        CONTENTS_CURRENT_UP = -13,
+        CONTENTS_CURRENT_DOWN = -14,
 
-	CONTENTS_TRANSLUCENT = -15,
-	CONTENTS_HINT = -16,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
+        CONTENTS_TRANSLUCENT = -15,
+        CONTENTS_HINT = -16,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
 
-#ifdef ZHLT_NULLTEX
-	CONTENTS_NULL = -17,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
-#endif
+        CONTENTS_NULL = -17,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
 
-#ifdef ZHLT_DETAIL   // AJM
-	CONTENTS_DETAIL = -18,
-#endif
 
-#ifdef HLCSG_HLBSP_CUSTOMBOUNDINGBOX
-	CONTENTS_BOUNDINGBOX = -19, // similar to CONTENTS_ORIGIN
-#endif
+        CONTENTS_BOUNDINGBOX = -19, // similar to CONTENTS_ORIGIN
 
-#ifdef HLCSG_EMPTYBRUSH
-	CONTENTS_TOEMPTY = -32,
-#endif
-	CONTENTS_PROP = -33,
-	CONTENTS_CLIP = -34,
+        CONTENTS_TOEMPTY = -32,
+        CONTENTS_PROP = -33,
+        CONTENTS_CLIP = -34,
 }
 contents_t;
 
 // !!! if this is changed, it must be changed in asm_i386.h too !!!
 typedef struct
 {
-    int             planenum;
-    short           children[2];                           // negative numbers are -(leafs+1), not nodes
-    short           mins[3];                               // for sphere culling
-    short           maxs[3];
-    unsigned short  firstface;
-    unsigned short  numfaces;                              // counting both sides
+        int             planenum;
+        short           children[2];                           // negative numbers are -(leafs+1), not nodes
+        short           mins[3];                               // for sphere culling
+        short           maxs[3];
+        unsigned short  firstface;
+        unsigned short  numfaces;                              // counting both sides
 }
 dnode_t;
 
 typedef struct
 {
-    int             planenum;
-    short           children[2];                           // negative numbers are contents
+        int             planenum;
+        short           children[2];                           // negative numbers are contents
 }
 dclipnode_t;
 
 typedef struct texinfo_s
 {
-    float           vecs[2][4];                            // [s/t][xyz offset]
-    int             texref;
-    int             flags;
+        float           vecs[2][4]; // [s/t][xyz offset]
+        float           lightmap_vecs[2][4]; // [s/t][xyz offset]
+        int             lightmap_scale;
+        int             texref;
+        int             flags;
 }
 texinfo_t;
 
 #define TEX_SPECIAL     1                                  // sky or slime or null, no lightmap or 256 subdivision
-#ifdef ZHLT_HIDDENSOUNDTEXTURE
-#define TEX_SHOULDHIDE  16384 // this flag is temporary; it might be set after CSG, but will be dropped after BSP
-#endif
 
 // note that edge 0 is never used, because negative edge nums are used for
 // counterclockwise use of the edge in a face
 typedef struct dedge_s
 {
-    unsigned short  v[2];                                  // vertex numbers
+        unsigned short  v[2];                                  // vertex numbers
 }
 dedge_t;
 
 #define MAXLIGHTMAPS    4
 typedef struct dface_s
 {
-    unsigned short	planenum;
-    short           side;
+        unsigned short	planenum;
+        short           side;
 
-    int             firstedge;                             // we must support > 64k edges
-    short           numedges;
-    short           texinfo;
+        int             firstedge;                             // we must support > 64k edges
+        short           numedges;
+        short           texinfo;
 
-    // lighting info
-    byte            styles[MAXLIGHTMAPS];
-    int             lightofs;                              // start of [numstyles*surfsize] samples
+        // lighting info
+        byte            styles[MAXLIGHTMAPS];
+        int             lightofs;                              // start of [numstyles*surfsize] samples
+        int             lightmap_mins[2];
+        int             lightmap_size[2];
 
-    // index into the g_dorigfaces array,
-    // which original non-split face this face comes from.
-    // it's needed for collision geometry, as the splitting
-    // done is only useful for lightmaps and very inefficient
-    // for collisions.
-    //int		    origface;				   
+        // index into the g_dorigfaces array,
+        // which original non-split face this face comes from.
+        // it's needed for collision geometry, as the splitting
+        // done is only useful for lightmaps and very inefficient
+        // for collisions.
+        //int		    origface;				   
 }
 dface_t;
 
@@ -323,16 +291,16 @@ dface_t;
 // all other leafs need visibility info
 typedef struct
 {
-    int             contents;
-    int             visofs;                                // -1 = no visibility info
+        int             contents;
+        int             visofs;                                // -1 = no visibility info
 
-    short           mins[3];                               // for frustum culling
-    short           maxs[3];
+        short           mins[3];                               // for frustum culling
+        short           maxs[3];
 
-    unsigned short  firstmarksurface;
-    unsigned short  nummarksurfaces;
+        unsigned short  firstmarksurface;
+        unsigned short  nummarksurfaces;
 
-    byte            ambient_level[NUM_AMBIENTS];
+        byte            ambient_level[NUM_AMBIENTS];
 }
 dleaf_t;
 
@@ -382,11 +350,7 @@ extern dnode_t  g_dnodes[MAX_MAP_NODES];
 extern int      g_dnodes_checksum;
 
 extern int      g_numtexinfo;
-#ifdef HLCSG_HLBSP_REDUCETEXTURE
 extern texinfo_t g_texinfo[MAX_INTERNAL_MAP_TEXINFO];
-#else
-extern texinfo_t g_texinfo[MAX_MAP_TEXINFO];
-#endif
 extern int      g_texinfo_checksum;
 
 extern int      g_numfaces;
@@ -397,15 +361,9 @@ extern int	g_numorigfaces;
 extern dface_t	g_dorigfaces[MAX_MAP_FACES];
 extern int	g_dorigfaces_checksum;
 
-#ifdef ZHLT_XASH2
-extern int      g_numclipnodes[MAX_MAP_HULLS - 1];
-extern dclipnode_t g_dclipnodes[MAX_MAP_HULLS - 1][MAX_MAP_CLIPNODES];
-extern int      g_dclipnodes_checksum[MAX_MAP_HULLS - 1];
-#else
 extern int      g_numclipnodes;
 extern dclipnode_t g_dclipnodes[MAX_MAP_CLIPNODES];
 extern int      g_dclipnodes_checksum;
-#endif
 
 extern int      g_numedges;
 extern dedge_t  g_dedges[MAX_MAP_EDGES];
@@ -419,27 +377,20 @@ extern int      g_numsurfedges;
 extern int      g_dsurfedges[MAX_MAP_SURFEDGES];
 extern int      g_dsurfedges_checksum;
 
-extern void     DecompressVis(const byte* src, byte* const dest, const unsigned int dest_length);
-extern int      CompressVis(const byte* const src, const unsigned int src_length, byte* dest, unsigned int dest_length);
+extern void     DecompressVis( const byte* src, byte* const dest, const unsigned int dest_length );
+extern int      CompressVis( const byte* const src, const unsigned int src_length, byte* dest, unsigned int dest_length );
 
-extern void     LoadBSPImage(dheader_t* header);
-extern void     LoadBSPFile(const char* const filename);
-extern void     WriteBSPFile(const char* const filename);
+extern void     LoadBSPImage( dheader_t* header );
+extern void     LoadBSPFile( const char* const filename );
+extern void     WriteBSPFile( const char* const filename );
 extern void     PrintBSPFileSizes();
-#ifdef ZHLT_64BIT_FIX
 #ifdef PLATFORM_CAN_CALC_EXTENT
-extern void		WriteExtentFile (const char *const filename);
-extern bool		CalcFaceExtents_test ();
+extern void		WriteExtentFile( const char *const filename );
+extern bool		CalcFaceExtents_test();
 #else
-extern void		LoadExtentFile (const char *const filename);
+extern void		LoadExtentFile( const char *const filename );
 #endif
-extern void		GetFaceExtents (int facenum, int mins_out[2], int maxs_out[2]);
-#endif
-#ifdef ZHLT_EMBEDLIGHTMAP
-extern int		ParseImplicitTexinfoFromTexture (int texref);
-extern int		ParseTexinfoForFace (const dface_t *f);
-extern void		DeleteEmbeddedLightmaps ();
-#endif
+extern void		GetFaceExtents( int facenum, int mins_out[2], int maxs_out[2] );
 
 //
 // Entity Related Stuff
@@ -447,18 +398,18 @@ extern void		DeleteEmbeddedLightmaps ();
 
 typedef struct epair_s
 {
-    struct epair_s* next;
-    char*           key;
-    char*           value;
+        struct epair_s* next;
+        char*           key;
+        char*           value;
 }
 epair_t;
 
 typedef struct
 {
-    vec3_t          origin;
-    int             firstbrush;
-    int             numbrushes;
-    epair_t*        epairs;
+        vec3_t          origin;
+        int             firstbrush;
+        int             numbrushes;
+        epair_t*        epairs;
 }
 entity_t;
 
@@ -468,18 +419,16 @@ extern entity_t g_entities[MAX_MAP_ENTITIES];
 extern void            ParseEntities();
 extern void            UnparseEntities();
 
-#ifdef ZHLT_DELETEKEY
-extern void            DeleteKey(entity_t* ent, const char* const key);
-#endif
-extern void            SetKeyValue(entity_t* ent, const char* const key, const char* const value);
-extern const char*     ValueForKey(const entity_t* const ent, const char* const key);
-extern int             IntForKey(const entity_t* const ent, const char* const key);
-extern vec_t           FloatForKey(const entity_t* const ent, const char* const key);
-extern void            GetVectorForKey(const entity_t* const ent, const char* const key, vec3_t vec);
+extern void            DeleteKey( entity_t* ent, const char* const key );
+extern void            SetKeyValue( entity_t* ent, const char* const key, const char* const value );
+extern const char*     ValueForKey( const entity_t* const ent, const char* const key );
+extern int             IntForKey( const entity_t* const ent, const char* const key );
+extern vec_t           FloatForKey( const entity_t* const ent, const char* const key );
+extern void            GetVectorForKey( const entity_t* const ent, const char* const key, vec3_t vec );
 
-extern entity_t* FindTargetEntity(const char* const target);
+extern entity_t* FindTargetEntity( const char* const target );
 extern epair_t* ParseEpair();
-extern entity_t* EntityForModel(int modnum);
+extern entity_t* EntityForModel( int modnum );
 
 //
 // Texture Related Stuff
@@ -490,7 +439,7 @@ extern int		g_max_map_lightdata;
 extern void     dtexdata_init();
 extern void CDECL dtexdata_free();
 
-extern char*    GetTextureByNumber(int texturenumber);
+extern char*    GetTextureByNumber( int texturenumber );
 
 extern map<string, contents_t> g_tex_contents;
 extern std::string g_tex_contents_file;

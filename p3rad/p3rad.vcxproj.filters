@@ -1,0 +1,165 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\common\anorms.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\blockmem.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\bspfile.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\cmdlinecfg.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\filelib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\log.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\mathlib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="mathutil.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\messages.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\scriplib.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\threads.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\winding.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
+    <ClCompile Include="lerp.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="lightmap.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="loadtextures.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="nomatrix.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="qrad.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="qradutil.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="radstaticprop.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="sparse.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="trace.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="transfers.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="transparency.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="vismatrix.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="vismatrixutil.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="leaf_ambient_lighting.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="compress.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\template\basictypes.h">
+      <Filter>template</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\anorms.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\blockmem.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\boundingbox.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\bspfile.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\cmdlib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\cmdlinecfg.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\filelib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\hlassert.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\log.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathlib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathtypes.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\messages.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\scriplib.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\threads.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\win32fix.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\winding.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="qrad.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="radstaticprop.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="leaf_ambient_lighting.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="compress.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="common">
+      <UniqueIdentifier>{3d60cbb1-fff2-43a7-abd1-e15109bca81b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="template">
+      <UniqueIdentifier>{4885d1f8-4800-427f-ad2d-fcb3873ce531}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="rad">
+      <UniqueIdentifier>{c193c38f-a439-407c-8d85-0ba25e1be21a}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

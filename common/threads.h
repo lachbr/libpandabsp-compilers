@@ -26,18 +26,18 @@ typedef void q_threadfunction( int );
 class BSPThread : public Thread
 {
 public:
-	BSPThread();
-	void set_function( q_threadfunction *func );
-	void set_value( int val );
-	volatile bool is_finished() const;
+        BSPThread();
+        void set_function( q_threadfunction *func );
+        void set_value( int val );
+        volatile bool is_finished() const;
 
 protected:
-	virtual void thread_main();
+        virtual void thread_main();
 
 private:
-	q_threadfunction *_func;
-	int _val;
-	volatile bool _finished;
+        q_threadfunction * _func;
+        int _val;
+        volatile bool _finished;
 };
 
 #define DEFAULT_THREAD_PRIORITY TP_normal
@@ -49,26 +49,21 @@ extern pvector<PT( BSPThread )> g_threadhandles;
 
 extern int	GetCurrentThreadNumber();
 
-extern void     ThreadSetPriority(ThreadPriority type);
+extern void     ThreadSetPriority( ThreadPriority type );
 extern void     ThreadSetDefault();
 extern int      GetThreadWork();
 extern void     ThreadLock();
 extern void     ThreadUnlock();
 
-extern void     RunThreadsOnIndividual(int workcnt, bool showpacifier, q_threadfunction);
-extern void     RunThreadsOn(int workcnt, bool showpacifier, q_threadfunction);
+extern void     RunThreadsOnIndividual( int workcnt, bool showpacifier, q_threadfunction );
+extern void     RunThreadsOn( int workcnt, bool showpacifier, q_threadfunction );
 
 #ifdef ZHLT_NETVIS
 extern void     threads_InitCrit();
 extern void     threads_UninitCrit();
 #endif
 
-#ifdef ZHLT_LANGFILE
-#define NamedRunThreadsOn(n,p,f) { Log("%s\n", Localize(#f ":")); RunThreadsOn(n,p,f); }
-#define NamedRunThreadsOnIndividual(n,p,f) { Log("%s\n", Localize(#f ":")); RunThreadsOnIndividual(n,p,f); }
-#else
-#define NamedRunThreadsOn(n,p,f) { Log("%s\n", #f ":"); RunThreadsOn(n,p,f); }
-#define NamedRunThreadsOnIndividual(n,p,f) { Log("%s\n", #f ":"); RunThreadsOnIndividual(n,p,f); }
-#endif
+#define NamedRunThreadsOn(n,p,f) { Log("%s\n", #f); RunThreadsOn(n,p,f); }
+#define NamedRunThreadsOnIndividual(n,p,f) { Log("%s\n", #f); RunThreadsOnIndividual(n,p,f); }
 
 #endif //**/ THREADS_H__

@@ -12,10 +12,10 @@
 extern char     g_token[MAXTOKEN];
 extern char     g_TXcommand;                               // global for Quark maps texture alignment hack
 
-extern void     LoadScriptFile(const char* const filename);
-extern void     ParseFromMemory(char* buffer, int size);
+extern void     LoadScriptFile( const char* const filename );
+extern void     ParseFromMemory( char* buffer, int size );
 
-extern bool     GetToken(bool crossline);
+extern bool     GetToken( bool crossline );
 extern void     UnGetToken();
 extern bool     TokenAvailable();
 

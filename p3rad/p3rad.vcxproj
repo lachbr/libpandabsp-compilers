@@ -103,7 +103,7 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>NOMINMAX;HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>PLATFORM_WINDOWS_PC64;NOMINMAX;HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
       <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
@@ -138,6 +138,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\common\anorms.cpp" />
     <ClCompile Include="..\common\blockmem.cpp" />
     <ClCompile Include="..\common\bspfile.cpp" />
     <ClCompile Include="..\common\cmdlib.cpp" />
@@ -150,6 +151,7 @@
     <ClCompile Include="..\common\threads.cpp" />
     <ClCompile Include="..\common\winding.cpp" />
     <ClCompile Include="compress.cpp" />
+    <ClCompile Include="leaf_ambient_lighting.cpp" />
     <ClCompile Include="lerp.cpp" />
     <ClCompile Include="lightmap.cpp" />
     <ClCompile Include="loadtextures.cpp" />
@@ -180,6 +182,7 @@
     <ClInclude Include="..\common\mathlib.h" />
     <ClInclude Include="..\common\mathtypes.h" />
     <ClInclude Include="..\common\messages.h" />
+    <ClInclude Include="leaf_ambient_lighting.h" />
     <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />

@@ -28,15 +28,9 @@
 extern const vec3_t vec3_origin;
 
 // HLCSG_HLBSP_DOUBLEPLANE: We could use smaller epsilon for hlcsg and hlbsp (hlcsg and hlbsp use double as vec_t), which will totally eliminate all epsilon errors. But we choose this big epsilon to tolerate the imprecision caused by Hammer. Basically, this is a balance between precision and flexibility.
-#ifdef ZHLT_LARGERANGE
 #define NORMAL_EPSILON   0.00001
 #define ON_EPSILON       0.04 // we should ensure that (float)BOGUS_RANGE < (float)(BOGUA_RANGE + 0.2 * ON_EPSILON)
 #define EQUAL_EPSILON    0.004
-#else
-#define NORMAL_EPSILON   0.00001
-#define ON_EPSILON       0.01
-#define EQUAL_EPSILON    0.001
-#endif
 
 
 //
@@ -85,56 +79,47 @@ extern const vec3_t vec3_origin;
     (a)[2] = -((a)[2]); \
 }
 #define VectorRound(a) floor((a) + 0.5)
-#ifdef ZHLT_VectorMA_FIX
 #define VectorMA(a, scale, b, dest) \
 { \
     (dest)[0] = (a)[0] + (scale) * (b)[0]; \
     (dest)[1] = (a)[1] + (scale) * (b)[1]; \
     (dest)[2] = (a)[2] + (scale) * (b)[2]; \
 }
-#else
-#define VectorMA(a, scale, b, dest) \
-{ \
-    (dest)[0] = (a)[0] + scale * (b)[0]; \
-    (dest)[1] = (a)[1] + scale * (b)[1]; \
-    (dest)[2] = (a)[2] + scale * (b)[2]; \
-}
-#endif
 #define VectorLength(a)  sqrt((double) ((double)((a)[0] * (a)[0]) + (double)( (a)[1] * (a)[1]) + (double)( (a)[2] * (a)[2])) )
 #define VectorCompareMinimum(a,b,c) { (c)[0] = qmin((a)[0], (b)[0]); (c)[1] = qmin((a)[1], (b)[1]); (c)[2] = qmin((a)[2], (b)[2]); }
 #define VectorCompareMaximum(a,b,c) { (c)[0] = qmax((a)[0], (b)[0]); (c)[1] = qmax((a)[1], (b)[1]); (c)[2] = qmax((a)[2], (b)[2]); }
 
-inline vec_t   VectorNormalize(vec3_t v)
+inline vec_t   VectorNormalize( vec3_t v )
 {
-    double          length;
+        double          length;
 
-    length = DotProduct(v, v);
-    length = sqrt(length);
-    if (length < NORMAL_EPSILON)
-    {
-        VectorClear(v);
-        return 0.0;
-    }
+        length = DotProduct( v, v );
+        length = sqrt( length );
+        if ( length < NORMAL_EPSILON )
+        {
+                VectorClear( v );
+                return 0.0;
+        }
 
-    v[0] /= length;
-    v[1] /= length;
-    v[2] /= length;
+        v[0] /= length;
+        v[1] /= length;
+        v[2] /= length;
 
-    return length;
+        return length;
 }
 
-inline bool     VectorCompare(const vec3_t v1, const vec3_t v2)
+inline bool     VectorCompare( const vec3_t v1, const vec3_t v2 )
 {
-    int             i;
+        int             i;
 
-    for (i = 0; i < 3; i++)
-    {
-        if (fabs(v1[i] - v2[i]) > EQUAL_EPSILON)
+        for ( i = 0; i < 3; i++ )
         {
-            return false;
+                if ( fabs( v1[i] - v2[i] ) > EQUAL_EPSILON )
+                {
+                        return false;
+                }
         }
-    }
-    return true;
+        return true;
 }
 
 
@@ -147,24 +132,24 @@ inline bool     VectorCompare(const vec3_t v1, const vec3_t v2)
 #undef rotl
 #undef rotr
 
-inline unsigned int rotl(unsigned value, unsigned int amt)
+inline unsigned int rotl( unsigned value, unsigned int amt )
 {
-    unsigned        t1, t2;
+        unsigned        t1, t2;
 
-    t1 = value >> ((sizeof(unsigned) * CHAR_BIT) - amt);
+        t1 = value >> ( ( sizeof( unsigned ) * CHAR_BIT ) - amt );
 
-    t2 = value << amt;
-    return (t1 | t2);
+        t2 = value << amt;
+        return ( t1 | t2 );
 }
 
-inline unsigned int rotr(unsigned value, unsigned int amt)
+inline unsigned int rotr( unsigned value, unsigned int amt )
 {
-    unsigned        t1, t2;
+        unsigned        t1, t2;
 
-    t1 = value << ((sizeof(unsigned) * CHAR_BIT) - amt);
+        t1 = value << ( ( sizeof( unsigned ) * CHAR_BIT ) - amt );
 
-    t2 = value >> amt;
-    return (t1 | t2);
+        t2 = value >> amt;
+        return ( t1 | t2 );
 }
 #endif
 
@@ -174,13 +159,13 @@ inline unsigned int rotr(unsigned value, unsigned int amt)
 //
 
 
-inline bool    isPointFinite(const vec_t* p)
+inline bool    isPointFinite( const vec_t* p )
 {
-    if (finite(p[0]) && finite(p[1]) && finite(p[2]))
-    {
-        return true;
-    }
-    return false;
+        if ( finite( p[0] ) && finite( p[1] ) && finite( p[2] ) )
+        {
+                return true;
+        }
+        return false;
 }
 
 
@@ -191,103 +176,49 @@ inline bool    isPointFinite(const vec_t* p)
 
 typedef enum
 {
-    plane_x = 0,
-    plane_y,
-    plane_z,
-    plane_anyx,
-    plane_anyy,
-    plane_anyz
+        plane_x = 0,
+        plane_y,
+        plane_z,
+        plane_anyx,
+        plane_anyy,
+        plane_anyz
 }
 planetypes;
 
 #define last_axial plane_z
-#ifdef HLCSG_FACENORMALEPSILON
 #define DIR_EPSILON 0.0001
-#endif
 
-#ifdef ZHLT_PLANETYPE_FIX
-inline planetypes PlaneTypeForNormal(vec3_t normal)
+inline planetypes PlaneTypeForNormal( vec3_t normal )
 {
-    vec_t           ax, ay, az;
+        vec_t           ax, ay, az;
 
-    ax = fabs(normal[0]);
-    ay = fabs(normal[1]);
-    az = fabs(normal[2]);
-#ifdef HLCSG_FACENORMALEPSILON
-    if (ax > 1.0 - DIR_EPSILON && ay < DIR_EPSILON && az < DIR_EPSILON)
-    {
-        return plane_x;
-    }
+        ax = fabs( normal[0] );
+        ay = fabs( normal[1] );
+        az = fabs( normal[2] );
+        if ( ax > 1.0 - DIR_EPSILON && ay < DIR_EPSILON && az < DIR_EPSILON )
+        {
+                return plane_x;
+        }
 
-    if (ay > 1.0 - DIR_EPSILON && az < DIR_EPSILON && ax < DIR_EPSILON)
-    {
-        return plane_y;
-    }
+        if ( ay > 1.0 - DIR_EPSILON && az < DIR_EPSILON && ax < DIR_EPSILON )
+        {
+                return plane_y;
+        }
 
-    if (az > 1.0 - DIR_EPSILON && ax < DIR_EPSILON && ay < DIR_EPSILON)
-    {
-        return plane_z;
-    }
-#else
-    if (ax > 1.0 - NORMAL_EPSILON && ay < NORMAL_EPSILON && az < NORMAL_EPSILON)
-    {
-        return plane_x;
-    }
+        if ( az > 1.0 - DIR_EPSILON && ax < DIR_EPSILON && ay < DIR_EPSILON )
+        {
+                return plane_z;
+        }
 
-    if (ay > 1.0 - NORMAL_EPSILON && az < NORMAL_EPSILON && ax < NORMAL_EPSILON)
-    {
-        return plane_y;
-    }
-
-    if (az > 1.0 - NORMAL_EPSILON && ax < NORMAL_EPSILON && ay < NORMAL_EPSILON)
-    {
-        return plane_z;
-    }
-#endif
-
-    if ((ax >= ay) && (ax >= az))
-    {
-        return plane_anyx;
-    }
-    if ((ay >= ax) && (ay >= az))
-    {
-        return plane_anyy;
-    }
-    return plane_anyz;
+        if ( ( ax >= ay ) && ( ax >= az ) )
+        {
+                return plane_anyx;
+        }
+        if ( ( ay >= ax ) && ( ay >= az ) )
+        {
+                return plane_anyy;
+        }
+        return plane_anyz;
 }
-#else
-inline planetypes PlaneTypeForNormal(vec3_t normal)
-{
-    vec_t           ax, ay, az;
-
-    ax = fabs(normal[0]);
-    if (ax == 1.0)
-    {
-        return plane_x;
-    }
-
-    ay = fabs(normal[1]);
-    if (ay == 1.0)
-    {
-        return plane_y;
-    }
-
-    az = fabs(normal[2]);
-    if (az == 1.0)
-    {
-        return plane_z;
-    }
-
-    if ((ax > ay) && (ax > az))
-    {
-        return plane_anyx;
-    }
-    if ((ay > ax) && (ay > az))
-    {
-        return plane_anyy;
-    }
-    return plane_anyz;
-}
-#endif
 
 #endif //MATHLIB_H__
