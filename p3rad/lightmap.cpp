@@ -27,7 +27,7 @@ bool TestFaceIntersect( intersecttest_t *t, int facenum )
         for ( k = 0; k < t->numclipplanes; k++ )
         {
                 if ( !w->Clip( t->clipplanes[k], false
-                               , ON_EPSILON * 4
+                               , ON_EPSILON / 16.0f
                 ) )
                 {
                         break;
@@ -953,7 +953,7 @@ void ChopFrag( samplefrag_t *frag )
 
         for ( int x = 0; x < 4 && frag->mywinding->m_NumPoints > 0; x++ )
         {
-                frag->mywinding->Clip( frag->myrect.planes[x], false );
+                frag->mywinding->Clip( frag->myrect.planes[x], false, ON_EPSILON / 16.0f );
         }
 
         frag->winding = new Winding( frag->mywinding->m_NumPoints );
@@ -1180,7 +1180,7 @@ static samplefrag_t *GrowSingleFrag( const samplefraginfo_t *info, samplefrag_t 
                 for ( int x = 0; x < numclipplanes && w->m_NumPoints > 0; x++ )
                 {
                         w->Clip( clipplanes[x], false
-                                 , 4 * ON_EPSILON
+                                 , ON_EPSILON / 16.0f
                         );
                 }
                 if ( w->m_NumPoints > 0 )
@@ -2524,8 +2524,13 @@ static void     GatherSampleLight( const vec3_t pos, const byte* const pvs, cons
 
                 for ( x = 0; x < 2; x++ )
                 {
-                        CrossProduct( tex->lightmap_vecs[1 - x], dp->normal, texlightgap_textoworld[x] );
-                        len = DotProduct( texlightgap_textoworld[x], tex->lightmap_vecs[x] );
+                        vec3_t temp1;
+                        vec3_t temp2;
+                        VectorScale( tex->lightmap_vecs[1 - x], tex->lightmap_scale, temp1 );
+                        VectorScale( tex->lightmap_vecs[x], tex->lightmap_scale, temp2 );
+
+                        CrossProduct( temp1, dp->normal, texlightgap_textoworld[x] );
+                        len = DotProduct( texlightgap_textoworld[x], temp2 );
                         if ( fabs( len ) < NORMAL_EPSILON )
                         {
                                 VectorClear( texlightgap_textoworld[x] );
@@ -3043,7 +3048,7 @@ static void AddSamplesToPatches( const sample_t **samples, const unsigned char *
                         {
                                 if ( w->m_NumPoints )
                                 {
-                                        w->Clip( clipplanes[k], false );
+                                        w->Clip( clipplanes[k], false, ON_EPSILON / 16.0f );
                                 }
                         }
                         if ( w->m_NumPoints )

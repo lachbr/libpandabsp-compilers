@@ -354,12 +354,12 @@ void TranslateWorldToTex( int facenum, matrix_t &m )
         fp = getPlaneFromFace( f );
         for ( i = 0; i < 3; i++ )
         {
-                m.v[i][0] = ti->lightmap_vecs[0][i];
-                m.v[i][1] = ti->lightmap_vecs[1][i];
+                m.v[i][0] = ti->lightmap_vecs[0][i] * ti->lightmap_scale;
+                m.v[i][1] = ti->lightmap_vecs[1][i] * ti->lightmap_scale;
                 m.v[i][2] = fp->normal[i];
         }
-        m.v[3][0] = ti->lightmap_vecs[0][3];
-        m.v[3][1] = ti->lightmap_vecs[1][i];
+        m.v[3][0] = ti->lightmap_vecs[0][3] * ti->lightmap_scale;
+        m.v[3][1] = ti->lightmap_vecs[1][i] * ti->lightmap_scale;
         m.v[3][2] = -fp->dist;
 }
 
@@ -540,7 +540,7 @@ static void CalcSinglePosition( positionmap_t *map, int is, int it )
         zone = new Winding( *map->texwinding );
         for ( int x = 0; x < 4 && zone->m_NumPoints > 0; x++ )
         {
-                zone->Clip( clipplanes[x], false );
+                zone->Clip( clipplanes[x], false, ON_EPSILON / 16.0f );
         }
         if ( zone->m_NumPoints == 0 )
         {

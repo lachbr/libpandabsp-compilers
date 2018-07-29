@@ -943,8 +943,10 @@ static void     getGridPlanes( const patch_t* const p, dplane_t* const pl )
         {
                 // cut the patch along texel grid planes
                 vec_t			val;
-                val = DotProduct( faceplane->normal, tx->lightmap_vecs[!x] );
-                VectorMA( tx->lightmap_vecs[!x], -val, faceplane->normal, plane->normal );
+                vec3_t temp;
+                VectorScale( tx->lightmap_vecs[!x], tx->lightmap_scale, temp );
+                val = DotProduct( faceplane->normal, temp );
+                VectorMA( temp, -val, faceplane->normal, plane->normal );
                 VectorNormalize( plane->normal );
                 plane->dist = DotProduct( plane->normal, patch->origin );
         }
@@ -1177,8 +1179,10 @@ static vec_t    getScale( const patch_t* const patch )
                 // snap texture "vecs" to faceplane without affecting texture alignment
                 for ( int x = 0; x < 2; x++ )
                 {
-                        dot = DotProduct( faceplane->normal, tx->lightmap_vecs[x] );
-                        VectorMA( tx->lightmap_vecs[x], -dot, faceplane->normal, vecs_perpendicular[x] );
+                        vec3_t temp;
+                        VectorScale( tx->lightmap_vecs[x], tx->lightmap_scale, temp );
+                        dot = DotProduct( faceplane->normal, temp );
+                        VectorMA( temp, -dot, faceplane->normal, vecs_perpendicular[x] );
                 }
 
                 scale[0] = 1 / qmax( NORMAL_EPSILON, VectorLength( vecs_perpendicular[0] ) );
