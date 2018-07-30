@@ -265,6 +265,8 @@ bface_t*        NewFaceFromFace( const bface_t* const in )
         newf->planenum = in->planenum;
         newf->plane = in->plane;
         newf->backcontents = in->backcontents;
+        newf->brushnum = in->brushnum;
+        newf->brushside = in->brushside;
 
         return newf;
 }
@@ -277,7 +279,6 @@ void            FreeFace( bface_t* f )
         delete f->w;
         Free( f );
 }
-
 
 // =====================================================================================
 //  WriteFace
@@ -297,7 +298,7 @@ void            WriteFace( const int hull, const bface_t* const f
         w = f->w;
 
         // plane summary
-        fprintf( out[hull], "%i %i %i %i %u\n", detaillevel, f->planenum, f->texinfo, f->contents, w->m_NumPoints );
+        fprintf( out[hull], "%i %i %i %i %i %i %i\n", detaillevel, f->planenum, f->texinfo, f->contents, f->brushnum, f->brushside, (int)w->m_NumPoints );
 
         // for each of the points on the face
         for ( i = 0; i < w->m_NumPoints; i++ )
@@ -536,6 +537,8 @@ bface_t*        CopyFace( const bface_t* const f )
         n = NewFaceFromFace( f );
         n->w = f->w->Copy();
         n->bounds = f->bounds;
+        n->brushnum = f->brushnum;
+        n->brushside = f->brushside;
         return n;
 }
 
@@ -929,6 +932,52 @@ static void     CSGBrush( int brushnum )
 //
 // =====================================================================================
 //
+
+void EmitBrushes()
+{
+        g_dbrushsides.clear();
+        g_dbrushes.clear();
+
+        for ( int bnum = 0; bnum < g_nummapbrushes; bnum++ )
+        {
+                brush_t *b = &g_mapbrushes[bnum];
+
+                dbrush_t db;
+
+                db.contents = b->contents;
+                db.firstside = (int)g_dbrushsides.size();
+                db.numsides = b->numsides;
+
+                for ( int j = 0; j < b->numsides; j++ )
+                {
+                        dbrushside_t cp;
+                        cp.planenum = b->original_sides[j]->planenum;
+                        cp.texinfo = b->original_sides[j]->texinfo;
+                        cp.bevel = b->original_sides[j]->bevel;
+                        g_dbrushsides.push_back( cp );
+                }
+
+                // add any axis planes not contained in the brush to bevel off corners
+                /*
+                for ( int x = 0; x < 3; x++ )
+                {
+                        for ( int s = -1; s <= 1; s += 2 )
+                        {
+                                vec3_t normal;
+                                VectorCopy( vec3_origin, normal );
+                                normal[x] = s;
+                                float dist;
+                                if ( s == -1 )
+                                {
+                                        dist = -b->min
+                                }
+                        }
+                }
+                */
+
+                g_dbrushes.push_back( db );
+        }
+}
 
 // =====================================================================================
 //  EmitPlanes
@@ -1382,7 +1431,7 @@ static void     ProcessModels()
 
                 // sort the contents down so stone bites water, etc
                 first = g_entities[i].firstbrush;
-                brush_t *temps = (brush_t *)malloc( g_entities[i].numbrushes * sizeof( brush_t ) );
+                brush_t *temps = new brush_t[g_entities[i].numbrushes];
                 hlassume( temps, assume_NoMemory );
                 for ( j = 0; j < g_entities[i].numbrushes; j++ )
                 {
@@ -1415,7 +1464,7 @@ static void     ProcessModels()
                         b_placedcontents = true;
                         placedcontents = contents;
                 }
-                free( temps );
+                delete[] temps;
 
                 // csg them in order
                 if ( i == 0 ) // if its worldspawn....
@@ -1434,7 +1483,7 @@ static void     ProcessModels()
                 // write end of model marker
                 for ( j = 0; j < NUM_HULLS; j++ )
                 {
-                        fprintf( out[j], "-1 -1 -1 -1 -1\n" );
+                        fprintf( out[j], "-1 -1 -1 -1 -1 -1 -1\n" );
                         fprintf( out_detailbrush[j], "-1\n" );
                 }
         }
@@ -2402,6 +2451,7 @@ int             main( const int argc, char** argv )
                         }
 
                         EmitPlanes();
+                        EmitBrushes();
 
 
                         WriteBSP( g_Mapname );

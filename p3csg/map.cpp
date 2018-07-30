@@ -38,6 +38,7 @@ brush_t *CopyCurrentBrush( entity_t *entity, const brush_t *brush )
         memcpy( &g_brushsides[newb->firstside], &g_brushsides[brush->firstside], brush->numsides * sizeof( side_t ) );
         newb->entitynum = entity - g_entities;
         newb->brushnum = entity->numbrushes;
+        newb->original_sides = brush->original_sides;
         entity->numbrushes++;
         for ( int h = 0; h < NUM_HULLS; h++ )
         {
@@ -242,6 +243,8 @@ static void ParseBrush( entity_t* mapent )
                 g_numbrushsides++;
 
                 b->numsides++;
+                side->brushnum = b->brushnum;
+                b->original_sides.push_back( side );
 
                 side->bevel = false;
                 // read the three point plane definition
@@ -964,7 +967,7 @@ bool            ParseMapEntity()
                 newbrushes = mapent->numbrushes;
                 worldbrushes = g_entities[0].numbrushes;
 
-                temp = (brush_t*)Alloc( newbrushes * sizeof( brush_t ) );
+                temp = new brush_t[newbrushes];
                 memcpy( temp, g_mapbrushes + mapent->firstbrush, newbrushes * sizeof( brush_t ) );
 
                 for ( i = 0; i < newbrushes; i++ )
@@ -988,7 +991,7 @@ bool            ParseMapEntity()
                         g_entities[i].firstbrush += newbrushes;
                 }
                 memset( mapent, 0, sizeof( *mapent ) );
-                Free( temp );
+                delete[] temp;
                 return true;
         }
 

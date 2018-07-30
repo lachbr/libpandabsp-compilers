@@ -117,6 +117,9 @@ typedef struct side_s
         brush_texture_t td;
         bool			bevel;
         vec_t           planepts[3][3];
+        int planenum;
+        int texinfo;
+        int brushnum;
 } side_t;
 
 typedef struct bface_s
@@ -131,6 +134,8 @@ typedef struct bface_s
         int             backcontents;
         bool			bevel; //used for ExpandBrush
         BSPBoundingBox     bounds;
+        int brushnum;
+        int brushside;
 } bface_t;
 
 // NUM_HULLS should be no larger than MAX_MAP_HULLS
@@ -164,6 +169,7 @@ typedef struct brush_s
 
         int             contents;
         brushhull_t     hulls[NUM_HULLS];
+        pvector<side_t *> original_sides;
 } brush_t;
 
 typedef struct

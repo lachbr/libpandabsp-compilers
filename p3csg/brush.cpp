@@ -863,7 +863,7 @@ restart:
 // =====================================================================================
 //  MakeBrushPlanes
 // =====================================================================================
-bool            MakeBrushPlanes( brush_t* b )
+bool            MakeBrushPlanes( brush_t* b, int brushnum )
 {
         int             i;
         int             j;
@@ -918,7 +918,11 @@ bool            MakeBrushPlanes( brush_t* b )
                 b->hulls[0].faces = f;
                 f->texinfo = g_onlyents ? 0 : TexinfoForBrushTexture( f->plane, &s->td, origin
                 );
+                s->texinfo = f->texinfo;
+                s->planenum = f->planenum;
                 f->bevel = b->bevel || s->bevel;
+                f->brushnum = brushnum;
+                f->brushside = i;
         }
 
         return true;
@@ -1236,7 +1240,7 @@ void CreateBrush( const int brushnum ) //--vluzacn
                 return;
 
         //  HULL 0
-        MakeBrushPlanes( b );
+        MakeBrushPlanes( b, brushnum );
         MakeHullFaces( b, &b->hulls[0] );
 
         if ( contents == CONTENTS_HINT )

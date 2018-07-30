@@ -1,3 +1,10 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LocalDebuggerCommand>D:\OTHER\lachb\Documents\rpbmStudios\panda_hl_bsp_tools\Release\p3csg.exe</LocalDebuggerCommand>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerCommandArguments>sewer_entrance_room.map -threads 1 -dev 4</LocalDebuggerCommandArguments>
+    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\sewer_entrance_room</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerEnvironment>PATH=D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\bin;%PATH%</LocalDebuggerEnvironment>
+  </PropertyGroup>
 </Project>
