@@ -129,6 +129,7 @@ using std::endl;
 #pragma warning(disable: 4786)                      // identifier was truncated to '255' characters in the browser information
 #pragma warning(disable: 4305)                      // truncation from 'const double' to 'float'
 #pragma warning(disable: 4800)                     // forcing value to bool 'true' or 'false' (performance warning)
+#pragma warning(disable: 4005)
 #endif
 
 

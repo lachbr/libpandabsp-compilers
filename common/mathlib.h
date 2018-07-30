@@ -15,6 +15,8 @@
 #include <float.h>
 #endif
 
+#include <aa_luse.h>
+
 #if !defined(qmax) 
 #define qmax(a,b)            (((a) > (b)) ? (a) : (b)) // changed 'max' to 'qmax'. --vluzacn
 #endif
@@ -158,6 +160,16 @@ inline unsigned int rotr( unsigned value, unsigned int amt )
 // Misc
 //
 
+template< class T >
+inline T clamp( T const &val, T const &minVal, T const &maxVal )
+{
+        if ( val < minVal )
+                return minVal;
+        else if ( val > maxVal )
+                return maxVal;
+        else
+                return val;
+}
 
 inline bool    isPointFinite( const vec_t* p )
 {
@@ -168,6 +180,32 @@ inline bool    isPointFinite( const vec_t* p )
         return false;
 }
 
+inline float RemapValClamped( float val, float A, float B, float C, float D )
+{
+        if ( A == B )
+                return val >= B ? D : C;
+        float cVal = ( val - A ) / ( B - A );
+        cVal = clamp( cVal, 0.0f, 1.0f );
+
+        return C + ( D - C ) * cVal;
+}
+
+// convert texture to linear 0..1 value
+inline float TexLightToLinear( int c, int exponent )
+{
+        nassertr( exponent >= -128 && exponent <= 127, 0.0 );
+        
+        return (float)c * pow( 2.0, exponent ) / 255.0;
+}
+
+struct colorrgbexp32_t
+{
+        unsigned char r, g, b;
+        signed char exponent;
+};
+
+void VectorToColorRGBExp32( const LVector3 &v, colorrgbexp32_t &out );
+void ColorRGBExp32ToVector( const colorrgbexp32_t &color, LVector3 &out );
 
 //
 // Planetype Math

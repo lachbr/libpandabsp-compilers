@@ -81,6 +81,12 @@ int             g_dsurfedges_checksum;
 int             g_numentities;
 entity_t        g_entities[MAX_MAP_ENTITIES];
 
+pvector<dleafambientlighting_t> g_leafambientlighting;
+pvector<dleafambientindex_t> g_leafambientindex;
+pvector<dbrush_t> g_dbrushes;
+pvector<dbrushside_t> g_dbrushsides;
+pvector<unsigned short> g_dleafbrushes;
+
 std::string g_tex_contents_file = DEFAULT_TEXCONTENTS_FILE;
 map<string, contents_t> g_tex_contents;
 
@@ -380,6 +386,37 @@ static void     SwapBSPFile( const bool todisk )
                 g_dedges[i].v[0] = LittleShort( g_dedges[i].v[0] );
                 g_dedges[i].v[1] = LittleShort( g_dedges[i].v[1] );
         }
+
+        // leaf ambient index
+        for ( i = 0; i < (int)g_leafambientindex.size(); i++ )
+        {
+                dleafambientindex_t *idx = &g_leafambientindex[i];
+                idx->first_ambient_sample = LittleShort( idx->first_ambient_sample );
+                idx->num_ambient_samples = LittleShort( idx->num_ambient_samples );
+        }
+
+        // brush
+        for ( i = 0; i < (int)g_dbrushes.size(); i++ )
+        {
+                g_dbrushes[i].firstside = LittleLong( g_dbrushes[i].firstside );
+                g_dbrushes[i].numsides = LittleLong( g_dbrushes[i].numsides );
+                g_dbrushes[i].contents = LittleLong( g_dbrushes[i].contents );
+        }
+
+        // brush sides
+        for ( i = 0; i < (int)g_dbrushsides.size(); i++ )
+        {
+                dbrushside_t *side = &g_dbrushsides[i];
+                side->bevel = LittleShort( side->bevel );
+                side->planenum = LittleShort( side->bevel );
+                side->texinfo = LittleShort( side->texinfo );
+        }
+
+        // leaf brushes
+        for ( i = 0; i < (int)g_dleafbrushes.size(); i++ )
+        {
+                g_dleafbrushes[i] = LittleShort( g_dleafbrushes[i] );
+        }
 }
 
 // =====================================================================================
@@ -411,6 +448,13 @@ static int      CopyLump( int lump, void* dest, int size, const dheader_t* const
         memcpy( dest, (byte*)header + ofs, length );
 
         return length / size;
+}
+
+template<class T>
+static int CopyLump( int lump, pvector<T> &dest, const dheader_t* const header )
+{
+        dest.resize( header->lumps[lump].filelen / sizeof( T ) );
+        return CopyLump( lump, dest.data(), sizeof( T ), header );
 }
 
 
@@ -468,6 +512,13 @@ void            LoadBSPImage( dheader_t* const header )
         g_lightdatasize = CopyLump( LUMP_LIGHTING, g_dlightdata, 1, header );
         g_entdatasize = CopyLump( LUMP_ENTITIES, g_dentdata, 1, header );
 
+        // new lumps uses STL vectors and templates!
+        CopyLump( LUMP_BRUSHES, g_dbrushes, header );
+        CopyLump( LUMP_BRUSHSIDES, g_dbrushsides, header );
+        CopyLump( LUMP_LEAFBRUSHES, g_dleafbrushes, header );
+        CopyLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header );
+        CopyLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header );
+
         Free( header );                                          // everything has been copied out
 
                                                                  //
@@ -509,6 +560,12 @@ static void     AddLump( int lumpnum, void* data, int len, dheader_t* header, FI
         SafeWrite( bspfile, data, ( len + 3 ) & ~3 );
 }
 
+template<class T>
+static void AddLump( int lumpnum, pvector<T> &data, dheader_t *header, FILE *bspfile )
+{
+        AddLump( lumpnum, data.data(), data.size() * sizeof( T ), header, bspfile );
+}
+
 // =====================================================================================
 //  WriteBSPFile
 //      Swaps the bsp file in place, so it should not be referenced again
@@ -548,6 +605,13 @@ void            WriteBSPFile( const char* const filename )
         AddLump( LUMP_LIGHTING, g_dlightdata, g_lightdatasize, header, bspfile );
         AddLump( LUMP_VISIBILITY, g_dvisdata, g_visdatasize, header, bspfile );
         AddLump( LUMP_ENTITIES, g_dentdata, g_entdatasize, header, bspfile );
+
+        // new lumps uses STL vectors and templates!
+        AddLump( LUMP_BRUSHES, g_dbrushes, header, bspfile );
+        AddLump( LUMP_BRUSHSIDES, g_dbrushsides, header, bspfile );
+        AddLump( LUMP_LEAFBRUSHES, g_dleafbrushes, header, bspfile );
+        AddLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header, bspfile );
+        AddLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header, bspfile );
 
         fseek( bspfile, 0, SEEK_SET );
         SafeWrite( bspfile, header, sizeof( dheader_t ) );
@@ -1682,4 +1746,17 @@ contents_t GetTextureContents( const char *texname )
         }
 
         return CONTENTS_SOLID;
+}
+
+LRGBColor dface_AvgLightColor( dface_t *face, int style )
+{
+        int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
+        LRGBColor avg(0);
+        for ( int i = 0; i < luxels; i++ )
+        {
+                unsigned char *col = &g_dlightdata[face->lightofs + style * luxels * 3 + i * 3];
+                VectorAdd( avg, col, avg );
+        }
+        avg /= luxels;
+        return avg;
 }

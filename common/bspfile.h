@@ -3,6 +3,8 @@
 #include "cmdlib.h" //--vluzacn
 #include "mathlib.h"
 
+#include <pvector.h>
+
 #if _MSC_VER >= 1000
 #pragma once
 #endif
@@ -22,6 +24,7 @@
 // variable, but 400 brush entities is very stressful on the engine and network code as it is
 
 #define MAX_MAP_BRUSHES       32768
+#define MAX_MAP_BRUSHSIDES    65536
 // arbitrary, but large numbers of brushes generally require more lightmap's than the compiler can handle
 
 #define MAX_ENGINE_ENTITIES   16384 //1024 //vluzacn
@@ -47,6 +50,8 @@
 
 #define MAX_MAP_LEAFS        32760
 #define MAX_MAP_LEAFS_ENGINE 8192
+#define MAX_MAP_LEAFFACES    65536
+#define MAX_MAP_LEAFBRUSHES  65536
 // No problem has been observed in testmap or reported, except when viewing the map from outside (some leafs missing, no crash).
 // This problem indicates that engine's MAX_MAP_LEAFS is 8192 (for reason, see: Quake - gl_model.c - Mod_Init).
 // I don't know if visleafs > 8192 will cause Mod_DecompressVis overflow.
@@ -96,6 +101,8 @@
 #define MAX_LIGHTMAP_DIM 128 // Default is 16
 
 #define ENGINE_ENTITY_RANGE 4096.0
+
+#define MAX_LIGHTSTYLES 64
 //=============================================================================
 
 #define BSPVERSION  30
@@ -133,8 +140,13 @@ lump_t;
 #define LUMP_EDGES        12
 #define LUMP_SURFEDGES    13
 #define LUMP_MODELS       14
+#define LUMP_BRUSHES      15
+#define LUMP_BRUSHSIDES   16
+#define LUMP_LEAFAMBIENTLIGHTING 17
+#define LUMP_LEAFAMBIENTINDEX    18
+#define LUMP_LEAFBRUSHES         19
 //#define LUMP_ORIGFACES    15
-#define HEADER_LUMPS      15
+#define HEADER_LUMPS      20
 
 //#define LUMP_MISCPAD      -1
 //#define LUMP_ZEROPAD      -2
@@ -259,7 +271,8 @@ dedge_t;
 typedef struct dface_s
 {
         unsigned short	planenum;
-        short           side;
+        byte   side;
+        byte   on_node;
 
         int             firstedge;                             // we must support > 64k edges
         short           numedges;
@@ -277,8 +290,45 @@ typedef struct dface_s
         // done is only useful for lightmaps and very inefficient
         // for collisions.
         //int		    origface;				   
-}
-dface_t;
+} dface_t;
+
+struct compressedlightcube_t
+{
+        colorrgbexp32_t color[6];
+};
+
+struct dleafambientlighting_t
+{
+        compressedlightcube_t cube;
+        // fixed point fraction of leaf bounds
+        unsigned char x, y, z, pad; // pad is unused
+};
+
+struct dleafambientindex_t
+{
+        unsigned short num_ambient_samples;
+        unsigned short first_ambient_sample;
+};
+
+struct dbrush_t
+{
+        int firstside;
+        int numsides;
+        int contents;
+};
+
+struct dbrushside_t
+{
+        unsigned short planenum;
+        short texinfo;
+        //short dispinfo;
+        short bevel;
+};
+
+enum
+{
+        DLF_in_ambient_cube = 0x1,
+};
 
 #define AMBIENT_WATER   0
 #define AMBIENT_SKY     1
@@ -296,6 +346,9 @@ typedef struct
 
         short           mins[3];                               // for frustum culling
         short           maxs[3];
+
+        unsigned short firstleafbrush;
+        unsigned short numleafbrushes;
 
         unsigned short  firstmarksurface;
         unsigned short  nummarksurfaces;
@@ -377,6 +430,12 @@ extern int      g_numsurfedges;
 extern int      g_dsurfedges[MAX_MAP_SURFEDGES];
 extern int      g_dsurfedges_checksum;
 
+extern pvector<dleafambientlighting_t> g_leafambientlighting;
+extern pvector<dleafambientindex_t> g_leafambientindex;
+extern pvector<dbrush_t> g_dbrushes;
+extern pvector<dbrushside_t> g_dbrushsides;
+extern pvector<unsigned short> g_dleafbrushes;
+
 extern void     DecompressVis( const byte* src, byte* const dest, const unsigned int dest_length );
 extern int      CompressVis( const byte* const src, const unsigned int src_length, byte* dest, unsigned int dest_length );
 
@@ -446,5 +505,7 @@ extern std::string g_tex_contents_file;
 extern void SetTextureContentsFile( const char *path );
 extern void LoadTextureContents();
 extern contents_t GetTextureContents( const char *texname );
+
+LRGBColor dface_AvgLightColor( dface_t *face, int style );
 
 #endif //BSPFILE_H__
