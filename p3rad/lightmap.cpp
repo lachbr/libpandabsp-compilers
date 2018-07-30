@@ -1645,9 +1645,9 @@ typedef struct
 }
 facelight_t;
 
-static directlight_t* directlights[MAX_MAP_LEAFS];
+directlight_t* directlights[MAX_MAP_LEAFS];
 static facelight_t facelight[MAX_MAP_FACES];
-static int      numdlights;
+int      numdlights;
 
 
 // =====================================================================================
@@ -1688,8 +1688,7 @@ void            CreateDirectLights()
                         }
                 }
                 if (
-                        DotProduct( p->baselight, p->texturereflectivity ) / 3
-                > 0.0
+                        VectorAvg(p->baselight) >= g_dlight_threshold
                         && !( g_face_texlights[p->faceNumber]
                               && *ValueForKey( g_face_texlights[p->faceNumber], "_scale" )
                               && FloatForKey( g_face_texlights[p->faceNumber], "_scale" ) <= 0 )
@@ -3938,10 +3937,11 @@ void            BuildFacelights( const int facenum )
         // light from dlight_threshold and above is sent out, but the
         // texture itself should still be full bright
 
-        // if( VectorAvg( face_patches[facenum]->baselight ) >= dlight_threshold)       // Now all lighted surfaces glow
+        if ( g_face_patches[facenum] )       // Now all lighted surfaces glow
         {
                 //LRC:
-                if ( g_face_patches[facenum] )
+                
+                if ( VectorAvg( g_face_patches[facenum]->baselight ) >= g_dlight_threshold )
                 {
                         for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
                         {

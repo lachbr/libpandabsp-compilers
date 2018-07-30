@@ -1,4 +1,4 @@
-#if 0
+#if 1
 
 #ifndef LEAFAMBIENTLIGHTING_H
 #define LEAFAMBIENTLIGHTING_H

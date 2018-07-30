@@ -1,4 +1,4 @@
-#if 0
+#if 1
 
 #include "leaf_ambient_lighting.h"
 #include "qrad.h"
@@ -12,7 +12,7 @@
 
 FORCEINLINE PN_stdfloat inv_r_squared( const LVector3 &v )
 {
-        1.f / std::max( 1.f, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
+        return 1.f / std::max( 1.f, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
 }
 
 static LVector3i box_directions[6] = {
@@ -22,6 +22,36 @@ static LVector3i box_directions[6] = {
         LVector3i( 0, -1,  0 ),
         LVector3i( 0,  0,  1 ),
         LVector3i( 0,  0, -1 )
+};
+
+struct Ray
+{
+        Ray( const LPoint3 &s, const LPoint3 &e,
+             const LPoint3 &mi, const LPoint3 &ma )
+        {
+                start = s;
+                end = e;
+                mins = mi;
+                maxs = ma;
+                delta = end - start;
+
+                is_swept = delta.length_squared() != 0;
+                extents = maxs - mins;
+                is_ray = extents.length_squared() < 1e-6;
+                start_offset = ( mins + maxs ) / 2;
+                start = ( start + start_offset );
+                start_offset /= -1;
+        }
+
+        LPoint3 start;
+        LPoint3 end;
+        LPoint3 mins;
+        LPoint3 maxs;
+        LVector3 extents;
+        bool is_swept;
+        bool is_ray;
+        LVector3 start_offset;
+        LVector3 delta;
 };
 
 struct AmbientSample
@@ -34,7 +64,7 @@ struct Trace
 {
         LPoint3 start_pos;
         LPoint3 end_pos;
-        BSPPlane plane;
+        dplane_t plane;
         PN_stdfloat fraction;
         int contents;
         bool all_solid;
@@ -43,20 +73,20 @@ struct Trace
         LPoint3 mins;
         LPoint3 maxs;
         LVector3 extents;
-        BSPTexInfo *surface;
+        texinfo_t *surface;
 };
 
 #define NEVER_UPDATED -9999
 
 void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
-                        const LPoint3 &p1, const LPoint3 &p2, BSPBrush *brush )
+                        const LPoint3 &p1, const LPoint3 &p2, dbrush_t *brush )
 {
-        BSPPlane *plane, *clip_plane;
+        dplane_t *plane, *clip_plane;
         float dist;
         LVector3 ofs;
         float d1, d2;
         float f;
-        BSPBrushSide *side, *leadside;
+        dbrushside_t *side, *leadside;
 
         if ( !brush->numsides )
         {
@@ -160,7 +190,7 @@ void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
 
                         trace->fraction = enter_frac;
                         trace->plane.dist = clip_plane->dist;
-                        memcpy( trace->plane.normal, clip_plane->normal, sizeof( float ) * 3 );
+                        VectorCopy( clip_plane->normal, trace->plane.normal );
                         trace->plane.type = clip_plane->type;
                         if ( leadside->texinfo != -1 )
                         {
@@ -177,7 +207,7 @@ void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
 
 float trace_leaf_brushes( int leaf_id, const LVector3 &start, const LVector3 &end, Trace &trace_out )
 {
-        BSPLeaf *leaf = &g_dleafs[leaf_id];
+        dleaf_t *leaf = &g_dleafs[leaf_id];
         Trace trace;
         memset( &trace, 0, sizeof( Trace ) );
         trace.is_point = true;
@@ -187,8 +217,8 @@ float trace_leaf_brushes( int leaf_id, const LVector3 &start, const LVector3 &en
         for ( int i = 0; i < leaf->numleafbrushes; i++ )
         {
                 int brushnum = g_dleafbrushes[leaf->firstleafbrush + i];
-                BSPBrush *b = &g_dbrushes[brushnum];
-                if ( b->contents == C_solid )
+                dbrush_t *b = &g_dbrushes[brushnum];
+                if ( b->contents != CONTENTS_SOLID )
                 {
                         continue;
                 }
@@ -210,7 +240,7 @@ float trace_leaf_brushes( int leaf_id, const LVector3 &start, const LVector3 &en
 }
 
 typedef pvector<AmbientSample> vector_ambientsample;
-typedef pvector<BSPPlane> vector_dplane;
+typedef pvector<dplane_t> vector_dplane;
 pvector<vector_ambientsample> leaf_ambient_samples;
 
 class LeafSampler
@@ -245,7 +275,7 @@ public:
         void generate_leaf_sample_position( int leaf_id, const vector_dplane &leaf_planes,
                                             LVector3 &sample_pos )
         {
-                BSPLeaf *leaf = &g_dleafs[leaf_id];
+                dleaf_t *leaf = &g_dleafs[leaf_id];
 
                 float dx = leaf->maxs[0] - leaf->mins[0];
                 float dy = leaf->maxs[1] - leaf->mins[1];
@@ -258,7 +288,7 @@ public:
                         sample_pos[1] = leaf->mins[1] + _random.random_real( dy );
                         sample_pos[2] = leaf->mins[2] + _random.random_real( dz );
                         valid = true;
-                        for ( size_t j = leaf_planes.size() - 1; j >= 0 && valid; j-- )
+                        for ( int j = (int)leaf_planes.size() - 1; j >= 0 && valid; j-- )
                         {
                                 float dist = DotProduct( leaf_planes[j].normal, sample_pos ) - leaf_planes[j].dist;
                                 if ( dist < DIST_EPSILON )
@@ -341,8 +371,8 @@ void get_leaf_boundary_planes( vector_dplane &list, int leaf_id )
 
         while ( node_id >= 0 )
         {
-                BSPNode *node = &g_dnodes[node_id];
-                BSPPlane *node_plane = &g_dplanes[node->planenum];
+                dnode_t *node = &g_dnodes[node_id];
+                dplane_t *node_plane = &g_dplanes[node->planenum];
                 if ( node->children[0] == child )
                 {
                         // Front side
@@ -350,7 +380,7 @@ void get_leaf_boundary_planes( vector_dplane &list, int leaf_id )
                 }
                 else
                 {
-                        BSPPlane plane;
+                        dplane_t plane;
                         plane.dist = -node_plane->dist;
                         plane.normal[0] = -node_plane->normal[0];
                         plane.normal[1] = -node_plane->normal[1];
@@ -372,6 +402,10 @@ static directlight_t *find_ambient_sky_light()
                 for ( int i = 0; i < numdlights; i++ )
                 {
                         directlight_t *dl = directlights[i];
+                        if ( dl == nullptr )
+                        {
+                                continue;
+                        }
                         if ( dl->type == emit_skylight )
                         {
                                 found_light = dl;
@@ -383,37 +417,40 @@ static directlight_t *find_ambient_sky_light()
         return found_light;
 }
 
+class LightSurface;
+bool enumerate_nodes_along_ray( const Ray &ray, LightSurface *surf, int context );
+
 class LightSurface
 {
 public:
         LightSurface( int thread ) :
                 _thread( thread ), _surface( nullptr ),
-                _hit_frac( 0.0 ), _has_luxel( false )
+                _hit_frac( 1.0 ), _has_luxel( false )
         {
         }
 
         bool enumerate_node( int node_id, const Ray &ray,
                              float f, int context )
         {
-                BSPFace *sky_surface = nullptr;
+                dface_t *sky_surface = nullptr;
 
                 LVector3 pt;
                 VectorMA( ray.start, f, ray.delta, pt );
 
-                BSPNode *node = &g_dnodes[node_id];
-                BSPFace *face = &g_dfaces[node->firstface];
+                dnode_t *node = &g_dnodes[node_id];
+                
                 for ( int i = 0; i < node->numfaces; i++ )
                 {
-
+                        dface_t *face = &g_dfaces[node->firstface + i];
                         // Don't take into account faces that are in a leaf
-                        if ( !face->on_node )
+                        if ( face->on_node == 0 )
                         {
                                 continue;
                         }
 
                         // TODO: Don't test displacement faces
 
-                        BSPTexInfo *tex = &g_texinfo[face->texinfo];
+                        texinfo_t *tex = &g_texinfo[face->texinfo];
                         if ( tex->flags & TEX_SPECIAL )
                         {
                                 if ( test_point_against_sky_surface( pt, face ) )
@@ -442,18 +479,18 @@ public:
                              float end, int context )
         {
                 bool hit = false;
-                BSPLeaf *leaf = &g_dleafs[leaf_id];
+                dleaf_t *leaf = &g_dleafs[leaf_id];
                 for ( int i = 0; i < leaf->nummarksurfaces; i++ )
                 {
-                        BSPFace *face = &g_dfaces[leaf->firstmarksurface + i];
+                        dface_t *face = &g_dfaces[leaf->firstmarksurface + i];
 
-                        if ( face->on_node )
+                        if ( face->on_node == 1 )
                         {
                                 continue;
                         }
 
-                        BSPTexInfo *tex = &g_texinfo[face->texinfo];
-                        BSPPlane *plane = &g_dplanes[face->planenum];
+                        texinfo_t *tex = &g_texinfo[face->texinfo];
+                        dplane_t *plane = &g_dplanes[face->planenum];
 
                         // Backface cull
                         if ( DotProduct( plane->normal, ray.delta ) > 0 )
@@ -469,7 +506,7 @@ public:
 
                         int side = front < 0;
                         // Blow it off if it doesn't split the plane
-                        if ( ( back < 0 ) == side )
+                        if ( (int)( back < 0 ) == side )
                         {
                                 continue;
                         }
@@ -491,10 +528,10 @@ public:
                                 _surface = face;
                                 hit = true;
                                 _has_luxel = true;
-                        }
-
-                        return !hit;
+                        }  
                 }
+
+                return !hit;
         }
 
         bool find_intersection( const Ray &ray )
@@ -503,7 +540,7 @@ public:
         }
 
 private:
-        bool test_point_against_surface( const LVector3 &point, BSPFace *face, BSPTexInfo *tex )
+        bool test_point_against_surface( const LVector3 &point, dface_t *face, texinfo_t *tex )
         {
                 // Specials don't have lightmaps
                 if ( tex->flags & TEX_SPECIAL )
@@ -533,12 +570,12 @@ private:
                 return true;
         }
 
-        bool test_point_against_sky_surface( const LVector3 &point, BSPFace *face )
+        bool test_point_against_sky_surface( const LVector3 &point, dface_t *face )
         {
                 Winding winding( *face );
 
-                BSPPlane plane;
-                winding.get_plane( plane );
+                dplane_t plane;
+                winding.getPlane( plane );
 
                 vec3_t vpoint;
                 vpoint[0] = point[0];
@@ -549,40 +586,10 @@ private:
 
 public:
         int _thread;
-        BSPFace *_surface;
+        dface_t *_surface;
         float _hit_frac;
         LTexCoordf _luxel_coord;
         bool _has_luxel;
-};
-
-struct Ray
-{
-        Ray( const LPoint3 &s, const LPoint3 &e,
-             const LPoint3 &mi, const LPoint3 &ma )
-        {
-                start = s;
-                end = e;
-                mins = mi;
-                maxs = ma;
-                delta = end - start;
-
-                is_swept = delta.length_squared() != 0;
-                extents = maxs - mins;
-                is_ray = extents.length_squared() < 1e-6;
-                start_offset = ( mins + maxs ) / 2;
-                start = ( start + start_offset );
-                start_offset /= -1;
-        }
-
-        LPoint3 start;
-        LPoint3 end;
-        LPoint3 mins;
-        LPoint3 maxs;
-        LVector3 extents;
-        bool is_swept;
-        bool is_ray;
-        LVector3 start_offset;
-        LVector3 delta;
 };
 
 #define TEST_EPSILON	(0.03125)
@@ -595,10 +602,10 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
 
         while ( node_id >= 0 )
         {
-                BSPNode *node = &g_dnodes[node_id];
-                BSPPlane *plane = &g_dplanes[node->planenum];
+                dnode_t *node = &g_dnodes[node_id];
+                dplane_t *plane = &g_dplanes[node->planenum];
 
-                if ( plane->type == PT_z )
+                if ( plane->type == plane_z )
                 {
                         start_dot_n = ray.start[plane->type];
                         delta_dot_n = ray.delta[plane->type];
@@ -647,7 +654,7 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                                 }
                         }
 
-                        bool r = r_enumerate_nodes_along_ray( node->children[(int)side], ray, start,
+                        bool r = r_enumerate_nodes_along_ray( node->children[side], ray, start,
                                                               split_frac, surf, context );
                         if ( !r )
                         {
@@ -660,8 +667,8 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                                 return false;
                         }
 
-                        return r_enumerate_nodes_along_ray( node->children[!(int)side], ray, start,
-                                                            split_frac, surf, context );
+                        return r_enumerate_nodes_along_ray( node->children[!side], ray, split_frac,
+                                                            end, surf, context );
                 }
         }
 
@@ -674,10 +681,35 @@ bool enumerate_nodes_along_ray( const Ray &ray, LightSurface *surf, int context 
         return r_enumerate_nodes_along_ray( 0, ray, 0.0, 1.0, surf, context );
 }
 
-static void compute_lightmap_color_from_average( BSPFace *face, directlight_t *skylight,
+void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
+                                   LRGBColor &color )
+{
+        texinfo_t *texinfo = &g_texinfo[face->texinfo];
+        if ( texinfo )
+        {
+                if ( texinfo->flags & TEX_SPECIAL )
+                {
+                        if ( skylight )
+                        {
+                                // Add in sky ambient
+                                vec3_t linear;
+                                linear[0] = linear[1] = linear[2] = 255.0f;
+                                VectorDivide( skylight->diffuse_intensity, linear, color );
+                        }
+
+                } else
+                {
+                        vec3_t one;
+                        one[0] = one[1] = one[2] = 1.0f;
+                        VectorMultiply( color, one, color );
+                }
+        }
+}
+
+static void compute_lightmap_color_from_average( dface_t *face, directlight_t *skylight,
                                                  float scale, LVector3 *colors )
 {
-        BSPTexInfo *tex = &g_texinfo[face->texinfo];
+        texinfo_t *tex = &g_texinfo[face->texinfo];
         if ( tex->flags & TEX_SPECIAL )
         {
                 if ( skylight )
@@ -692,11 +724,8 @@ static void compute_lightmap_color_from_average( BSPFace *face, directlight_t *s
 
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
-                LRGBColor avg_color = get_bspface_avglightcolor( face, maps );
-                LRGBColor color;
-                color[0] = TextureToLinear( avg_color[0] );
-                color[1] = TextureToLinear( avg_color[1] );
-                color[2] = TextureToLinear( avg_color[2] );
+                LRGBColor avg_color = dface_AvgLightColor( face, maps );
+                LRGBColor color = avg_color / 255.0f;
 
                 compute_ambient_from_surface( face, skylight, color );
 
@@ -705,35 +734,7 @@ static void compute_lightmap_color_from_average( BSPFace *face, directlight_t *s
         }
 }
 
-void compute_ambient_from_surface( BSPFace *face, directlight_t *skylight,
-                                   LRGBColor &color )
-{
-        BSPTexInfo *texinfo = &g_texinfo[face->texinfo];
-        if ( texinfo )
-        {
-                if ( texinfo->flags & TEX_SPECIAL )
-                {
-                        if ( skylight )
-                        {
-                                // Add in sky ambient
-                                vec3_t linear;
-                                linear[0] = linear[1] = linear[2] = 255.0f;
-                                VectorDivide( skylight->diffuse_intensity, linear, color );
-                        }
-
-                }
-                else
-                {
-                        vec3_t one;
-                        one[0] = one[1] = one[2] = 1.0f;
-                        VectorMultiply( color, one, color );
-                }
-        }
-}
-
-#define clamp(val, bot, top) std::min(std::max(val, bot), top)
-
-void compute_lightmap_color_point_sample( BSPFace *face, directlight_t *skylight, LTexCoordf &coord, float scale, LVector3 *colors )
+void compute_lightmap_color_point_sample( dface_t *face, directlight_t *skylight, LTexCoordf &coord, float scale, LVector3 *colors )
 {
         // Face unaffected by light
         if ( face->lightofs == -1 )
@@ -750,16 +751,16 @@ void compute_lightmap_color_point_sample( BSPFace *face, directlight_t *skylight
         int offset = smax * tmax;
         // bumped lightmaps todo!
 
-        vec3_t *lightmap = (vec3_t *)&g_dlightdata[face->lightofs];
+        unsigned char *lightmap = (unsigned char *)&g_dlightdata[face->lightofs];
         lightmap += dt * smax + ds;
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
                 int style = face->styles[maps];
 
                 LRGBColor color;
-                color[0] = TextureToLinear( *lightmap[0] );
-                color[1] = TextureToLinear( *lightmap[1] );
-                color[2] = TextureToLinear( *lightmap[2] );
+                color[0] = ( lightmap[0] / 255.0 );
+                color[1] = ( lightmap[1] / 255.0 );
+                color[2] = ( lightmap[2] / 255.0 );
 
                 compute_ambient_from_surface( face, skylight, color );
                 colors[style] += color * scale;
@@ -857,6 +858,11 @@ void add_emit_surface_lights( const LVector3 &start, LVector3 *cube )
         {
                 directlight_t *dl = directlights[i];
 
+                if ( dl == nullptr )
+                {
+                        continue;
+                }
+
                 if ( !( dl->flags & DLF_in_ambient_cube ) )
                 {
                         continue;
@@ -867,7 +873,7 @@ void add_emit_surface_lights( const LVector3 &start, LVector3 *cube )
                         continue;
                 }
 
-                if ( test_line( vstart, dl->origin ) == C_solid )
+                if ( TestLine( vstart, dl->origin ) == CONTENTS_SOLID )
                 {
                         continue;
                 }
@@ -903,6 +909,9 @@ void add_emit_surface_lights( const LVector3 &start, LVector3 *cube )
                 }
         }
 }
+
+#define MAX_COORD_INTEGER (16384)
+#define COORD_EXTENT (2 * MAX_COORD_INTEGER)
 
 void compute_ambient_from_spherical_samples( int thread, const LVector3 &sample_pos,
                                              LVector3 *cube )
@@ -1025,10 +1034,11 @@ void add_sample_to_list( vector_ambientsample &list, const LVector3 &sample_pos,
 void compute_ambient_for_leaf( int thread, int leaf_id,
                                vector_ambientsample &list )
 {
-        if ( g_dleafs[leaf_id].contents == C_solid )
+        if ( g_dleafs[leaf_id].contents == CONTENTS_SOLID )
         {
                 // Don't generate any samples in solid leaves.
                 // NOTE: We copy the nearest non-solid leaf sample pointers into this leaf at the end.
+                std::cout << "Leaf " << leaf_id << " is solid" << std::endl;
                 return;
         }
 
@@ -1046,7 +1056,7 @@ void compute_ambient_for_leaf( int thread, int leaf_id,
 
         int volume_count = xsize * ysize * zsize;
         // Don't do any more than 128 samples
-        int sample_count = std::max( std::min( volume_count, 128 ), 1 );
+        int sample_count = clamp( volume_count, 1, 128 );
         LVector3 cube[6];
         for ( int i = 0; i < 6; i++ )
         {
@@ -1062,10 +1072,9 @@ static void thread_compute_leaf_ambient( int thread )
         vector_ambientsample list;
         while ( true )
         {
-                int leaf_id = get_thread_work();
+                int leaf_id = GetThreadWork();
                 if ( leaf_id == -1 )
                 {
-                        std::cout << "leaf_id == -1" << std::endl;
                         break;
                 }
 
@@ -1093,6 +1102,7 @@ static byte fixed_8_fraction( float t, float tMin, float tMax )
 void LeafAmbientLighting::
 compute_per_leaf_ambient_lighting()
 {
+        Log( "Computing per leaf ambient lighting...\n" );
 
         // Figure out which ambient lights should go in the per-leaf ambient cubes.
         int in_ambient_cube = 0;
@@ -1101,6 +1111,11 @@ compute_per_leaf_ambient_lighting()
         for ( int i = 0; i < numdlights; i++ )
         {
                 directlight_t *dl = directlights[i];
+
+                if ( dl == nullptr )
+                {
+                        continue;
+                }
 
                 if ( is_leaf_ambient_surface_light( dl ) )
                 {
@@ -1125,7 +1140,7 @@ compute_per_leaf_ambient_lighting()
 
         leaf_ambient_samples.resize( g_numleafs );
 
-        run_threads_on( g_numleafs, true, thread_compute_leaf_ambient );
+        RunThreadsOn( g_numleafs, true, thread_compute_leaf_ambient );
 
         // now write out the data :)
         g_leafambientindex.clear();
@@ -1140,7 +1155,6 @@ compute_per_leaf_ambient_lighting()
                 if ( list.size() == 0 )
                 {
                         g_leafambientindex[leaf_id].first_ambient_sample = 0;
-
                 }
                 else
                 {
@@ -1148,13 +1162,15 @@ compute_per_leaf_ambient_lighting()
 
                         for ( int i = 0; i < list.size(); i++ )
                         {
-                                BSPLeafAmbientLighting light;
+                                dleafambientlighting_t light;
                                 light.x = fixed_8_fraction( list[i].pos[0], g_dleafs[leaf_id].mins[0], g_dleafs[leaf_id].maxs[0] );
                                 light.y = fixed_8_fraction( list[i].pos[1], g_dleafs[leaf_id].mins[1], g_dleafs[leaf_id].maxs[1] );
                                 light.z = fixed_8_fraction( list[i].pos[2], g_dleafs[leaf_id].mins[2], g_dleafs[leaf_id].maxs[2] );
                                 light.pad = 0;
                                 for ( int side = 0; side < 6; side++ )
                                 {
+                                        LRGBColor temp;
+                                        VectorCopy( list[i].cube[side], temp );
                                         VectorToColorRGBExp32( list[i].cube[side], light.cube.color[side] );
                                 }
 
@@ -1163,19 +1179,22 @@ compute_per_leaf_ambient_lighting()
                 }
         }
 
-        /*
-        for (int i = 0; i < g_numleafs; i++) {
-        if (g_leafambientindex[i].num_ambient_samples == 0) {
-        if (g_dleafs[i].contents == C_solid) {
-        notify_info("Bad leaf ambient for leaf %d\n", i);
-        }
+        
+        for ( int i = 0; i < g_numleafs; i++ )
+        {
+                if ( g_leafambientindex[i].num_ambient_samples == 0 )
+                {
+                        if ( g_dleafs[i].contents == CONTENTS_SOLID )
+                        {
+                                Warning( "Bad leaf ambient for leaf %d\n", i );
+                        }
 
-        int ret_leaf = nearest_neighbor_with_light(i);
-        g_leafambientindex[i].num_ambient_samples = 0;
-        g_leafambientindex[i].first_ambient_sample = ret_leaf;
+                        //int ret_leaf = nearest_neighbor_with_light( i );
+                        //g_leafambientindex[i].num_ambient_samples = 0;
+                        //g_leafambientindex[i].first_ambient_sample = ret_leaf;
+                }
         }
-        }
-        */
+        
 }
 
 #endif

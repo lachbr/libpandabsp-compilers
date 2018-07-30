@@ -18,6 +18,7 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 
 #include "qrad.h"
 #include "radstaticprop.h"
+#include "leaf_ambient_lighting.h"
 
 #include <load_prc_file.h>
 
@@ -1204,9 +1205,7 @@ static vec_t    getScale( const patch_t* const patch )
 static bool		getEmitMode( const patch_t *patch )
 {
         bool emitmode = false;
-        vec_t value =
-                DotProduct( patch->baselight, patch->texturereflectivity ) / 3
-                ;
+        vec_t value = VectorAvg( patch->baselight );
         if ( g_face_texlights[patch->faceNumber] )
         {
                 if ( *ValueForKey( g_face_texlights[patch->faceNumber], "_scale" ) )
@@ -1214,13 +1213,9 @@ static bool		getEmitMode( const patch_t *patch )
                         value *= FloatForKey( g_face_texlights[patch->faceNumber], "_scale" );
                 }
         }
-        if ( value > 0.0 )
+        if ( value >= g_dlight_threshold )
         {
                 emitmode = true;
-        }
-        if ( value < g_dlight_threshold )
-        {
-                emitmode = false;
         }
         if ( g_face_texlights[patch->faceNumber] )
         {
@@ -2562,9 +2557,6 @@ static void     RadWorld()
 
         FreePositionMaps();
 
-        // free up the direct lights now that we have facelights
-        DeleteDirectLights();
-
         if ( g_numbounce > 0 )
         {
                 // build transfer lists
@@ -2612,6 +2604,13 @@ static void     RadWorld()
         {
                 Verbose( "Maximum brightness loss (too many light styles on a face) = %f @(%f, %f, %f)\n", g_maxdiscardedlight, g_maxdiscardedpos[0], g_maxdiscardedpos[1], g_maxdiscardedpos[2] );
         }
+
+        // misc light computations
+        LeafAmbientLighting::compute_per_leaf_ambient_lighting();
+
+        // free up the direct lights now that we have facelights
+        DeleteDirectLights();
+
         MdlLightHack();
         ReduceLightmap();
         if ( g_lightdatasize == 0 )

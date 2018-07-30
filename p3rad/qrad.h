@@ -56,13 +56,13 @@
 #define DEFAULT_AMBIENT_BLUE        0.0
 // 188 is the fullbright threshold for Goldsrc, regardless of the brightness and gamma settings in the graphic options.
 // However, hlrad can only control the light values of each single light style. So the final in-game brightness may exceed 188 if you have set a high value in the "custom appearance" of the light, or if the face receives light from different styles.
-#define DEFAULT_LIMITTHRESHOLD		188.0
+#define DEFAULT_LIMITTHRESHOLD		255.0
 #define DEFAULT_TEXSCALE            true
 #define DEFAULT_CHOP                64.0
 #define DEFAULT_TEXCHOP             32.0
 #define DEFAULT_LIGHTSCALE          1.0 //1.0 //vluzacn
 #define DEFAULT_DLIGHT_THRESHOLD	0.1
-#define DEFAULT_DLIGHT_SCALE        1.0 //2.0 //vluzacn
+#define DEFAULT_DLIGHT_SCALE        2.0 //2.0 //vluzacn
 #define DEFAULT_SMOOTHING_VALUE     50.0
 #define DEFAULT_SMOOTHING2_VALUE	-1.0
 #define DEFAULT_INCREMENTAL         false
@@ -94,9 +94,9 @@
 #define DEFAULT_COLOUR_GAMMA_GREEN		0.55
 #define DEFAULT_COLOUR_GAMMA_BLUE		0.55
 
-#define DEFAULT_COLOUR_LIGHTSCALE_RED		2.0 //1.0 //vluzacn
-#define DEFAULT_COLOUR_LIGHTSCALE_GREEN		2.0 //1.0 //vluzacn
-#define DEFAULT_COLOUR_LIGHTSCALE_BLUE		2.0 //1.0 //vluzacn
+#define DEFAULT_COLOUR_LIGHTSCALE_RED		1.0 //1.0 //vluzacn
+#define DEFAULT_COLOUR_LIGHTSCALE_GREEN		1.0 //1.0 //vluzacn
+#define DEFAULT_COLOUR_LIGHTSCALE_BLUE		1.0 //1.0 //vluzacn
 
 #define DEFAULT_COLOUR_JITTER_HACK_RED		0.0
 #define DEFAULT_COLOUR_JITTER_HACK_GREEN	0.0
@@ -225,6 +225,7 @@ typedef struct directlight_s
         struct patch_s	*patch;
         vec_t			texlightgap;
         bool			topatch;
+        int flags;
 } directlight_t;
 
 
@@ -369,6 +370,11 @@ extern void LoadTextures();
 //
 // qrad globals
 //
+
+extern int             leafparents[MAX_MAP_LEAFS];
+extern int             nodeparents[MAX_MAP_NODES];
+extern int numdlights;
+extern directlight_t* directlights[MAX_MAP_LEAFS];
 
 extern patch_t* g_face_patches[MAX_MAP_FACES];
 extern entity_t* g_face_entity[MAX_MAP_FACES];
