@@ -227,6 +227,21 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
                                                                //
                                                                // write the marksurfaces
                                                                //
+        //
+        // write the leafbrushes
+        //
+        leaf_p->firstleafbrush = g_dleafbrushes.size();
+        for ( size_t bnum = 0; bnum < node->brushlist.size(); bnum++ )
+        {
+                int brushnum = node->brushlist[bnum];
+                if ( std::find( g_dleafbrushes.begin(), g_dleafbrushes.end(), brushnum ) == g_dleafbrushes.end() )
+                {
+                        g_dleafbrushes.push_back( brushnum );
+                }
+        }
+        leaf_p->numleafbrushes = g_dleafbrushes.size() - leaf_p->firstleafbrush;
+
+        
         leaf_p->firstmarksurface = g_nummarksurfaces;
 
         hlassume( node->markfaces != NULL, assume_EmptySolid );
@@ -303,10 +318,11 @@ static void     WriteFace( face_t* f )
         g_numfaces++;
 
         df->planenum = WritePlane( f->planenum );
-        df->side = f->planenum & 1;
+        df->side = (byte)(f->planenum & 1);
         df->firstedge = g_numsurfedges;
         df->numedges = f->numpoints;
         df->texinfo = WriteTexinfo( f->texturenum );
+        df->on_node = (byte)(f->original != NULL);
 
         // Save original side/face data
 

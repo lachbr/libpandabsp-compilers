@@ -25,6 +25,7 @@
 //  Each node or leaf will have a set of portals that completely enclose
 //  the volume of the node and pass into an adjacent node.
 #include <vector>
+#include <bitset>
 
 int             g_maxnode_size = DEFAULT_MAXNODE_SIZE;
 
@@ -1253,12 +1254,9 @@ static void MakeLeaf( node_t *leafnode )
         if ( !( leafnode->isportalleaf && leafnode->contents == CONTENTS_SOLID ) )
         {
                 nummarkfaces = 0;
+                std::bitset<MAX_MAP_BRUSHES> brushes_added;
                 for ( surf = leafnode->surfaces; surf; surf = surf->next )
                 {
-                        if ( !surf->onnode )
-                        {
-                                continue;
-                        }
                         if ( !surf->onnode )
                         {
                                 continue;
@@ -1269,11 +1267,13 @@ static void MakeLeaf( node_t *leafnode )
                                 { // because it is not on node or its content is solid
                                         continue;
                                 }
-                                if ( f->original == NULL )
-                                {
-                                        continue;
-                                }
                                 hlassume( nummarkfaces < MAX_LEAF_FACES, assume_MAX_LEAF_FACES );
+
+                                if ( !brushes_added.test( f->brushnum ) )
+                                {
+                                        leafnode->brushlist.push_back( f->brushnum );
+                                        brushes_added.set( f->brushnum );
+                                }
 
                                 markfaces[nummarkfaces++] = f->original;
                         }

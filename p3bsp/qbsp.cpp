@@ -719,7 +719,7 @@ node_t*         AllocNode()
 {
         node_t*         n;
 
-        n = (node_t*)malloc( sizeof( node_t ) );
+        n = new node_t;
         memset( n, 0, sizeof( node_t ) );
 
         return n;
@@ -958,7 +958,7 @@ static surfchain_t* ReadSurfs( FILE* file )
 {
         int             r;
         int				detaillevel;
-        int             planenum, g_texinfo, contents, numpoints;
+        int             planenum, g_texinfo, contents, numpoints, brushnum, brushside;
         face_t*         f;
         int             i;
         double          v[3];
@@ -971,7 +971,9 @@ static surfchain_t* ReadSurfs( FILE* file )
                 if ( file == polyfiles[2] && g_nohull2 )
                         break;
                 line++;
-                r = fscanf( file, "%i %i %i %i %i\n", &detaillevel, &planenum, &g_texinfo, &contents, &numpoints );
+                r = fscanf( file, "%i %i %i %i %i %i %i\n",
+                            &detaillevel, &planenum, &g_texinfo,
+                            &contents, &brushnum, &brushside, &numpoints );
                 if ( r == 0 || r == -1 )
                 {
                         return NULL;
@@ -981,7 +983,7 @@ static surfchain_t* ReadSurfs( FILE* file )
                         Developer( DEVELOPER_LEVEL_MEGASPAM, "inaccuracy: average %.8f max %.8f\n", inaccuracy_total / inaccuracy_count, inaccuracy_max );
                         break;
                 }
-                if ( r != 5 )
+                if ( r != 7 )
                 {
                         Error( "ReadSurfs (line %i): scanf failure", line );
                 }
@@ -1027,6 +1029,8 @@ static surfchain_t* ReadSurfs( FILE* file )
                 f->contents = contents;
                 f->numpoints = numpoints;
                 f->next = validfaces[planenum];
+                f->brushnum = brushnum;
+                f->brushside = brushside;
                 validfaces[planenum] = f;
 
                 SetFaceType( f );

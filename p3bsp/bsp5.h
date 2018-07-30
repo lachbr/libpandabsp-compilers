@@ -97,6 +97,8 @@ typedef struct face_s                                      // This structure is 
         vec3_t          pts[MAXEDGES];                         // FIXME: change to use winding_t
 
                                                                //side_t	    *originalface; // save the "side" this face came from
+        int brushnum;
+        int brushside;
 
 }
 face_t;
@@ -166,6 +168,7 @@ typedef struct node_s
         int             valid;                                 // for flood filling
         int             occupied;                              // light number in leaf for outside filling
         int				empty;
+        pvector<int> brushlist; // index into g_dbrushes
 }
 node_t;
 
