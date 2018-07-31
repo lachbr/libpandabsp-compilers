@@ -90,9 +90,11 @@
 // ------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
 
-#define DEFAULT_COLOUR_GAMMA_RED		0.55
-#define DEFAULT_COLOUR_GAMMA_GREEN		0.55
-#define DEFAULT_COLOUR_GAMMA_BLUE		0.55
+// Brian: just use 1.0 for gamma in rad, we can adjust it ourselves in game
+#define DEFAULT_GAMMA 1.0
+#define DEFAULT_COLOUR_GAMMA_RED		DEFAULT_GAMMA
+#define DEFAULT_COLOUR_GAMMA_GREEN		DEFAULT_GAMMA
+#define DEFAULT_COLOUR_GAMMA_BLUE		DEFAULT_GAMMA
 
 #define DEFAULT_COLOUR_LIGHTSCALE_RED		1.0 //1.0 //vluzacn
 #define DEFAULT_COLOUR_LIGHTSCALE_GREEN		1.0 //1.0 //vluzacn

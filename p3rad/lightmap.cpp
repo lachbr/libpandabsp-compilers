@@ -4336,6 +4336,7 @@ void PrecompLightmapOffsets()
 
         }
 }
+
 void ReduceLightmap()
 {
         pvector<colorrgbexp32_t> oldlightdata = g_dlightdata;
@@ -4360,40 +4361,6 @@ void ReduceLightmap()
                         }
                         continue;
                 }
-#if 0 //debug. --vluzacn
-                const char *lightmapcolor = ValueForKey( g_face_entity[facenum], "zhlt_rad" );
-                if ( *lightmapcolor )
-                {
-                        hlassume( MAXLIGHTMAPS == 4, assume_first );
-                        int styles[4], values[4][3];
-                        if ( sscanf( lightmapcolor, "%d=%d,%d,%d %d=%d,%d,%d %d=%d,%d,%d %d=%d,%d,%d"
-                                     , &styles[0], &values[0][0], &values[0][1], &values[0][2]
-                                     , &styles[1], &values[1][0], &values[1][1], &values[1][2]
-                                     , &styles[2], &values[2][0], &values[2][1], &values[2][2]
-                                     , &styles[3], &values[3][0], &values[3][1], &values[3][2]
-                        ) != 16 )
-                        {
-                                Error( "Bad value for 'zhlt_rad'." );
-                        }
-                        f->lightofs = g_lightdatasize;
-                        int i, k;
-                        for ( k = 0; k < 4; k++ )
-                        {
-                                f->styles[k] = 255;
-                        }
-                        for ( k = 0; k < 4 && styles[k] != 255; k++ )
-                        {
-                                f->styles[k] = styles[k];
-                                hlassume( g_lightdatasize + fl->numsamples * 3 <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING );
-                                for ( i = 0; i < fl->numsamples; i++ )
-                                {
-                                        VectorCopy( values[k], (byte *)&g_dlightdata[g_lightdatasize + i * 3] );
-                                }
-                                g_lightdatasize += fl->numsamples * 3;
-                        }
-                        continue;
-                }
-#endif
                 if ( f->lightofs == -1 )
                 {
                         continue;
@@ -4729,12 +4696,13 @@ void            FinalLightFace( const int facenum )
                         {
                                 VectorAdd( lb, original_basiclight[j], lb );
                         }
+
                         // ------------------------------------------------------------------------
                         // Changes by Adam Foster - afoster@compsoc.man.ac.uk
                         // colour lightscale:
-                        lb[0] *= g_colour_lightscale[0];
-                        lb[1] *= g_colour_lightscale[1];
-                        lb[2] *= g_colour_lightscale[2];
+                        //lb[0] *= g_colour_lightscale[0];
+                        //lb[1] *= g_colour_lightscale[1];
+                        //lb[2] *= g_colour_lightscale[2];
                         // ------------------------------------------------------------------------
 
                         // clip from the bottom first
@@ -4753,14 +4721,14 @@ void            FinalLightFace( const int facenum )
                         // AJM: your code is formatted really wierd, and i cant understand a damn thing. 
                         //      so i reformatted it into a somewhat readable "normal" fashion. :P
 
-                        if ( g_colour_qgamma[0] != 1.0 )
-                                lb[0] = (float)pow( lb[0] / 255.0f, g_colour_qgamma[0] ) * 255.0f;
+                        //if ( g_colour_qgamma[0] != 1.0 )
+                        //        lb[0] = (float)pow( lb[0] / 255.0f, g_colour_qgamma[0] ) * 255.0f;
 
-                        if ( g_colour_qgamma[1] != 1.0 )
-                                lb[1] = (float)pow( lb[1] / 255.0f, g_colour_qgamma[1] ) * 255.0f;
+                        //if ( g_colour_qgamma[1] != 1.0 )
+                        //        lb[1] = (float)pow( lb[1] / 255.0f, g_colour_qgamma[1] ) * 255.0f;
 
-                        if ( g_colour_qgamma[2] != 1.0 )
-                                lb[2] = (float)pow( lb[2] / 255.0f, g_colour_qgamma[2] ) * 255.0f;
+                        //if ( g_colour_qgamma[2] != 1.0 )
+                        //        lb[2] = (float)pow( lb[2] / 255.0f, g_colour_qgamma[2] ) * 255.0f;
 
                         // Two different ways of adding noise to the lightmap - colour jitter
                         // (red, green and blue channels are independent), and mono jitter
@@ -4771,30 +4739,11 @@ void            FinalLightFace( const int facenum )
                         // Got really weird results when it was set to limit values to 256.0f - it
                         // was as if r, g or b could wrap, going close to zero.
 
-
-                        // clip from the top
-                        //{
-                        //        vec_t max = VectorMaximum( lb );
-                        //        if ( g_limitthreshold >= 0 && max > g_limitthreshold )
-                        //        {
-                        //                if ( !g_drawoverload )
-                        //                {
-                        //                        VectorScale( lb, g_limitthreshold / max, lb );
-                        //                }
-                        //        }
-                        //        else
-                        //        {
-                        //                if ( g_drawoverload )
-                        //                {
-                        //                        VectorScale( lb, 0.1, lb ); // darken good points
-                        //                }
-                        //        }
-                        //}
-
-                        for ( i = 0; i < 3; ++i )
-                                if ( lb[i] < g_minlight )
-                                        lb[i] = g_minlight;
+                        //for ( i = 0; i < 3; ++i )
+                        //        if ( lb[i] < g_minlight )
+                        //                lb[i] = g_minlight;
                         // ------------------------------------------------------------------------
+
                         if ( k == 0 )
                         {
                                 VectorCopy( lb, final_basiclight[j] );
@@ -4804,18 +4753,18 @@ void            FinalLightFace( const int facenum )
                                 VectorSubtract( lb, final_basiclight[j], lb );
                         }
 
-                        if ( k == 0 )
-                        {
-                                if ( g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2] )
-                                        for ( i = 0; i < 3; i++ )
-                                                lb[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
-                                if ( g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2] )
-                                {
-                                        temp_rand = (float)rand() / RAND_MAX - 0.5;
-                                        for ( i = 0; i < 3; i++ )
-                                                lb[i] += g_jitter_hack[i] * temp_rand;
-                                }
-                        }
+                        //if ( k == 0 )
+                        //{
+                        //        if ( g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2] )
+                        //                for ( i = 0; i < 3; i++ )
+                        //                        lb[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
+                        //        if ( g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2] )
+                        //        {
+                        //                temp_rand = (float)rand() / RAND_MAX - 0.5;
+                        //                for ( i = 0; i < 3; i++ )
+                        //                        lb[i] += g_jitter_hack[i] * temp_rand;
+                        //        }
+                        //}
 
                         //for ( i = 0; i < 3; ++i )
                         //{
