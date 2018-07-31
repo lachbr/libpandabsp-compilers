@@ -536,7 +536,6 @@ extern funcCheckVisBit g_CheckVisBit;
 extern bool CheckVisBitBackwards( unsigned receiver, unsigned emitter, const vec3_t &backorigin, const vec3_t &backnormal
                                   , vec3_t &transparency_out
 );
-extern void	    MdlLightHack( void );
 
 // qradutil.c
 extern vec_t    PatchPlaneDist( const patch_t* const patch );
