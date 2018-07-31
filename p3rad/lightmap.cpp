@@ -4777,10 +4777,6 @@ void            FinalLightFace( const int facenum )
                                 LVector3 vcol;
                                 VectorCopy( lb, vcol );
                                 VectorToColorRGBExp32( vcol, *col );
-                                if ( VectorMaximum( vcol ) > 255.0 )
-                                {
-                                        Log( "Overbright lightmap sample.\n" );
-                                }
                         }
                 }
         }
