@@ -22,8 +22,7 @@ int             g_visdatasize;
 byte            g_dvisdata[MAX_MAP_VISIBILITY];
 int             g_dvisdata_checksum;
 
-int             g_lightdatasize;
-byte*           g_dlightdata;
+pvector<colorrgbexp32_t> g_dlightdata;
 int             g_dlightdata_checksum;
 
 int             g_numtexrefs;
@@ -440,10 +439,6 @@ static int      CopyLump( int lump, void* dest, int size, const dheader_t* const
         {
                 hlassume( g_max_map_texref > length, assume_MAX_MAP_MIPTEX );
         }
-        else if ( lump == LUMP_LIGHTING && dest == (void*)g_dlightdata )
-        {
-                hlassume( g_max_map_lightdata > length, assume_MAX_MAP_LIGHTING );
-        }
 
         memcpy( dest, (byte*)header + ofs, length );
 
@@ -509,7 +504,6 @@ void            LoadBSPImage( dheader_t* const header )
         g_numedges = CopyLump( LUMP_EDGES, g_dedges, sizeof( dedge_t ), header );
         g_numtexrefs = CopyLump( LUMP_TEXTURES, g_dtexrefs, sizeof( texref_t ), header );
         g_visdatasize = CopyLump( LUMP_VISIBILITY, g_dvisdata, 1, header );
-        g_lightdatasize = CopyLump( LUMP_LIGHTING, g_dlightdata, 1, header );
         g_entdatasize = CopyLump( LUMP_ENTITIES, g_dentdata, 1, header );
 
         // new lumps uses STL vectors and templates!
@@ -518,6 +512,7 @@ void            LoadBSPImage( dheader_t* const header )
         CopyLump( LUMP_LEAFBRUSHES, g_dleafbrushes, header );
         CopyLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header );
         CopyLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header );
+        CopyLump( LUMP_LIGHTING, g_dlightdata, header );
 
         Free( header );                                          // everything has been copied out
 
@@ -540,7 +535,7 @@ void            LoadBSPImage( dheader_t* const header )
         g_dedges_checksum = FastChecksum( g_dedges, g_numedges * sizeof( g_dedges[0] ) );
         g_dtexrefs_checksum = FastChecksum( g_dtexrefs, g_numedges * sizeof( g_dtexrefs[0] ) );
         g_dvisdata_checksum = FastChecksum( g_dvisdata, g_visdatasize * sizeof( g_dvisdata[0] ) );
-        g_dlightdata_checksum = FastChecksum( g_dlightdata, g_lightdatasize * sizeof( g_dlightdata[0] ) );
+        g_dlightdata_checksum = FastChecksum( g_dlightdata.data(), g_dlightdata.size() * sizeof( colorrgbexp32_t ) );
         g_dentdata_checksum = FastChecksum( g_dentdata, g_entdatasize * sizeof( g_dentdata[0] ) );
 }
 
@@ -602,7 +597,6 @@ void            WriteBSPFile( const char* const filename )
         AddLump( LUMP_EDGES, g_dedges, g_numedges * sizeof( dedge_t ), header, bspfile );
         AddLump( LUMP_MODELS, g_dmodels, g_nummodels * sizeof( dmodel_t ), header, bspfile );
         AddLump( LUMP_TEXTURES, g_dtexrefs, g_numtexrefs * sizeof( texref_t ), header, bspfile );
-        AddLump( LUMP_LIGHTING, g_dlightdata, g_lightdatasize, header, bspfile );
         AddLump( LUMP_VISIBILITY, g_dvisdata, g_visdatasize, header, bspfile );
         AddLump( LUMP_ENTITIES, g_dentdata, g_entdatasize, header, bspfile );
 
@@ -612,6 +606,7 @@ void            WriteBSPFile( const char* const filename )
         AddLump( LUMP_LEAFBRUSHES, g_dleafbrushes, header, bspfile );
         AddLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header, bspfile );
         AddLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header, bspfile );
+        AddLump( LUMP_LIGHTING, g_dlightdata, header, bspfile );
 
         fseek( bspfile, 0, SEEK_SET );
         SafeWrite( bspfile, header, sizeof( dheader_t ) );
@@ -1145,7 +1140,7 @@ void            PrintBSPFileSizes()
         totalmemory += ArrayUsage( "edges", g_numedges, ENTRIES( g_dedges ), ENTRYSIZE( g_dedges ) );
         totalmemory += ArrayUsage( "texrefs", g_numtexrefs, ENTRIES( g_dtexrefs ), ENTRYSIZE( g_dtexrefs ) );
 
-        totalmemory += GlobUsage( "lightdata", g_lightdatasize, g_max_map_lightdata );
+        totalmemory += GlobUsage( "lightdata", g_dlightdata.size(), g_max_map_lightdata );
         totalmemory += GlobUsage( "visdata", g_visdatasize, sizeof( g_dvisdata ) );
         totalmemory += GlobUsage( "entdata", g_entdatasize, sizeof( g_dentdata ) );
         if ( numallocblocks == -1 )
@@ -1634,14 +1629,14 @@ entity_t *FindTargetEntity( const char* const target )
 
 void            dtexdata_init()
 {
-        g_dlightdata = (byte*)AllocBlock( g_max_map_lightdata );
-        hlassume( g_dlightdata != NULL, assume_NoMemory );
+        //g_dlightdata = (colorrgbexp32_t*)AllocBlock( g_max_map_lightdata );
+        //hlassume( g_dlightdata != NULL, assume_NoMemory );
 }
 
 void CDECL      dtexdata_free()
 {
-        FreeBlock( g_dlightdata );
-        g_dlightdata = NULL;
+        //FreeBlock( g_dlightdata );
+        //g_dlightdata = NULL;
 }
 
 // =====================================================================================
@@ -1754,8 +1749,10 @@ LRGBColor dface_AvgLightColor( dface_t *face, int style )
         LRGBColor avg(0);
         for ( int i = 0; i < luxels; i++ )
         {
-                unsigned char *col = &g_dlightdata[face->lightofs + style * luxels * 3 + i * 3];
-                VectorAdd( avg, col, avg );
+                colorrgbexp32_t col = g_dlightdata[face->lightofs + style * luxels + i];
+                LVector3 vcol( 0 );
+                ColorRGBExp32ToVector( col, vcol );
+                VectorAdd( avg, vcol, avg );
         }
         avg /= luxels;
         return avg;

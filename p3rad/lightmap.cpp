@@ -4180,7 +4180,7 @@ void PrecompLightmapOffsets()
         int             i; //LRC
         patch_t*        patch; //LRC
 
-        g_lightdatasize = 0;
+        g_dlightdata.clear();
 
         for ( facenum = 0; facenum < g_numfaces; facenum++ )
         {
@@ -4324,18 +4324,22 @@ void PrecompLightmapOffsets()
                         continue;
                 }
 
-                f->lightofs = g_lightdatasize;
-                g_lightdatasize += fl->numsamples * 3 * lightstyles;
-                hlassume( g_lightdatasize <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING ); //lightdata
+                f->lightofs = g_dlightdata.size();
+                for ( int i = 0; i < fl->numsamples * lightstyles; i++ )
+                {
+                        // Initialize all samples for this face.
+                        colorrgbexp32_t sample;
+                        memset( &sample, 0, sizeof( colorrgbexp32_t ) );
+                        g_dlightdata.push_back( sample );
+                }
+                hlassume( g_dlightdata.size() <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING ); //lightdata
 
         }
 }
 void ReduceLightmap()
 {
-        byte *oldlightdata = (byte *)malloc( g_lightdatasize );
-        hlassume( oldlightdata != NULL, assume_NoMemory );
-        memcpy( oldlightdata, g_dlightdata, g_lightdatasize );
-        g_lightdatasize = 0;
+        pvector<colorrgbexp32_t> oldlightdata = g_dlightdata;
+        g_dlightdata.clear();
 
         int facenum;
         for ( facenum = 0; facenum < g_numfaces; facenum++ )
@@ -4349,7 +4353,7 @@ void ReduceLightmap()
                 // just need to zero the lightmap so that it won't contribute to lightdata size
                 if ( IntForKey( g_face_entity[facenum], "zhlt_striprad" ) )
                 {
-                        f->lightofs = g_lightdatasize;
+                        f->lightofs = g_dlightdata.size();
                         for ( int k = 0; k < MAXLIGHTMAPS; k++ )
                         {
                                 f->styles[k] = 255;
@@ -4399,7 +4403,7 @@ void ReduceLightmap()
                 int oldofs;
                 unsigned char oldstyles[MAXLIGHTMAPS];
                 oldofs = f->lightofs;
-                f->lightofs = g_lightdatasize;
+                f->lightofs = g_dlightdata.size();
                 for ( k = 0; k < MAXLIGHTMAPS; k++ )
                 {
                         oldstyles[k] = f->styles[k];
@@ -4411,278 +4415,25 @@ void ReduceLightmap()
                         unsigned char maxb = 0;
                         for ( i = 0; i < fl->numsamples; i++ )
                         {
-                                unsigned char *v = &oldlightdata[oldofs + fl->numsamples * 3 * k + i * 3];
-                                maxb = qmax( maxb, VectorMaximum( v ) );
+                                colorrgbexp32_t col = oldlightdata[oldofs + fl->numsamples * k + i];
+                                LVector3 vcol( 0 );
+                                ColorRGBExp32ToVector( col, vcol );
+                                maxb = qmax( maxb, VectorMaximum( vcol ) );
                         }
                         if ( maxb <= 0 ) // black
                         {
                                 continue;
                         }
                         f->styles[numstyles] = oldstyles[k];
-                        hlassume( g_lightdatasize + fl->numsamples * 3 * ( numstyles + 1 ) <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING );
-                        memcpy( &g_dlightdata[f->lightofs + fl->numsamples * 3 * numstyles], &oldlightdata[oldofs + fl->numsamples * 3 * k], fl->numsamples * 3 );
+                        hlassume( g_dlightdata.size() + fl->numsamples * ( numstyles + 1 ) <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING );
+                        for ( int j = 0; j < fl->numsamples; j++ )
+                        {
+                                g_dlightdata.push_back(oldlightdata[oldofs + fl->numsamples * k + j]);
+                        }
                         numstyles++;
                 }
-                g_lightdatasize += fl->numsamples * 3 * numstyles;
-        }
-        free( oldlightdata );
-}
-
-
-// Change the sample light right under a mdl file entity's origin.
-// Use this when "mdl" in shadow has incorrect brightness.
-
-const int MLH_MAXFACECOUNT = 16;
-const int MLH_MAXSAMPLECOUNT = 4;
-const vec_t MLH_LEFT = 0;
-const vec_t MLH_RIGHT = 1;
-
-typedef struct
-{
-        vec3_t origin;
-        vec3_t floor;
-        struct
-        {
-                int num;
-                struct
-                {
-                        bool exist;
-                        int seq;
-                }
-                style[ALLSTYLES];
-                struct
-                {
-                        int num;
-                        vec3_t pos;
-                        unsigned char* ( style[ALLSTYLES] );
-                }
-                sample[MLH_MAXSAMPLECOUNT];
-                int samplecount;
-        }
-        face[MLH_MAXFACECOUNT];
-        int facecount;
-} mdllight_t;
-
-int MLH_AddFace( mdllight_t *ml, int facenum )
-{
-        dface_t *f = &g_dfaces[facenum];
-        int i, j;
-        for ( i = 0; i < ml->facecount; i++ )
-        {
-                if ( ml->face[i].num == facenum )
-                {
-                        return -1;
-                }
-        }
-        if ( ml->facecount >= MLH_MAXFACECOUNT )
-        {
-                return -1;
-        }
-        i = ml->facecount;
-        ml->facecount++;
-        ml->face[i].num = facenum;
-        ml->face[i].samplecount = 0;
-        for ( j = 0; j < ALLSTYLES; j++ )
-        {
-                ml->face[i].style[j].exist = false;
-        }
-        for ( j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++ )
-        {
-                ml->face[i].style[f->styles[j]].exist = true;
-                ml->face[i].style[f->styles[j]].seq = j;
-        }
-        return i;
-}
-void MLH_AddSample( mdllight_t *ml, int facenum, int w, int h, int s, int t, const vec3_t pos )
-{
-        dface_t *f = &g_dfaces[facenum];
-        int i, j;
-        int r = MLH_AddFace( ml, facenum );
-        if ( r == -1 )
-        {
-                return;
-        }
-        int size = w * h;
-        int num = s + w * t;
-        for ( i = 0; i < ml->face[r].samplecount; i++ )
-        {
-                if ( ml->face[r].sample[i].num == num )
-                {
-                        return;
-                }
-        }
-        if ( ml->face[r].samplecount >= MLH_MAXSAMPLECOUNT )
-        {
-                return;
-        }
-        i = ml->face[r].samplecount;
-        ml->face[r].samplecount++;
-        ml->face[r].sample[i].num = num;
-        VectorCopy( pos, ml->face[r].sample[i].pos );
-        for ( j = 0; j < ALLSTYLES; j++ )
-        {
-                if ( ml->face[r].style[j].exist )
-                {
-                        ml->face[r].sample[i].style[j] = &g_dlightdata[f->lightofs + ( num + size * ml->face[r].style[j].seq ) * 3];
-                }
         }
 }
-void MLH_CalcExtents( const dface_t *f, int *texturemins, int *extents )
-{
-        int bmins[2];
-        int bmaxs[2];
-        int i;
-
-        GetFaceExtents( f - g_dfaces, bmins, bmaxs );
-        for ( i = 0; i < 2; i++ )
-        {
-                texturemins[i] = bmins[i] * TEXTURE_STEP;
-                extents[i] = ( bmaxs[i] - bmins[i] ) * TEXTURE_STEP;
-        }
-}
-void MLH_GetSamples_r( mdllight_t *ml, int nodenum, const float *start, const float *end )
-{
-        if ( nodenum < 0 )
-                return;
-        dnode_t *node = &g_dnodes[nodenum];
-        dplane_t *plane;
-        float front, back, frac;
-        float mid[3];
-        int side;
-        plane = &g_dplanes[node->planenum];
-        front = DotProduct( start, plane->normal ) - plane->dist;
-        back = DotProduct( end, plane->normal ) - plane->dist;
-        side = front < 0;
-        if ( ( back < 0 ) == side )
-        {
-                MLH_GetSamples_r( ml, node->children[side], start, end );
-                return;
-        }
-        frac = front / ( front - back );
-        mid[0] = start[0] + ( end[0] - start[0] ) * frac;
-        mid[1] = start[1] + ( end[1] - start[1] ) * frac;
-        mid[2] = start[2] + ( end[2] - start[2] ) * frac;
-        MLH_GetSamples_r( ml, node->children[side], start, mid );
-        if ( ml->facecount > 0 )
-        {
-                return;
-        }
-        {
-                int i;
-                for ( i = 0; i < node->numfaces; i++ )
-                {
-                        dface_t *f = &g_dfaces[node->firstface + i];
-                        texinfo_t *tex = &g_texinfo[f->texinfo];
-                        const char *texname = GetTextureByNumber( f->texinfo );
-                        contents_t contents = GetTextureContents( texname );
-                        if ( contents == CONTENTS_SKY )
-                        {
-                                continue;
-                        }
-                        if ( f->lightofs == -1 )
-                        {
-                                continue;
-                        }
-                        int s = (int)( DotProduct( mid, tex->vecs[0] ) + tex->vecs[0][3] );
-                        int t = (int)( DotProduct( mid, tex->vecs[1] ) + tex->vecs[1][3] );
-                        int texturemins[2], extents[2];
-                        MLH_CalcExtents( f, texturemins, extents );
-                        if ( s < texturemins[0] || t < texturemins[1] )
-                        {
-                                continue;
-                        }
-                        int ds = s - texturemins[0];
-                        int dt = t - texturemins[1];
-                        if ( ds > extents[0] || dt > extents[1] )
-                        {
-                                continue;
-                        }
-                        ds >>= 4;
-                        dt >>= 4;
-                        MLH_AddSample( ml, node->firstface + i, extents[0] / TEXTURE_STEP + 1, extents[1] / TEXTURE_STEP + 1, ds, dt, mid );
-                        break;
-                }
-        }
-        if ( ml->facecount > 0 )
-        {
-                VectorCopy( mid, ml->floor );
-                return;
-        }
-        MLH_GetSamples_r( ml, node->children[!side], mid, end );
-}
-void MLH_mdllightCreate( mdllight_t *ml )
-{
-        // code from Quake
-        float p[3];
-        float end[3];
-        ml->facecount = 0;
-        VectorCopy( ml->origin, ml->floor );
-        VectorCopy( ml->origin, p );
-        VectorCopy( ml->origin, end );
-        end[2] -= 2048;
-        MLH_GetSamples_r( ml, 0, p, end );
-}
-
-int MLH_CopyLight( const vec3_t from, const vec3_t to )
-{
-        int i, j, k, count = 0;
-        mdllight_t mlfrom, mlto;
-        VectorCopy( from, mlfrom.origin );
-        VectorCopy( to, mlto.origin );
-        MLH_mdllightCreate( &mlfrom );
-        MLH_mdllightCreate( &mlto );
-        if ( mlfrom.facecount == 0 || mlfrom.face[0].samplecount == 0 )
-                return -1;
-        for ( i = 0; i < mlto.facecount; ++i )
-                for ( j = 0; j < mlto.face[i].samplecount; ++j, ++count )
-                        for ( k = 0; k < ALLSTYLES; ++k )
-                                if ( mlto.face[i].style[k].exist && mlfrom.face[0].style[k].exist )
-                                {
-                                        VectorCopy( mlfrom.face[0].sample[0].style[k], mlto.face[i].sample[j].style[k] );
-                                        Developer( DEVELOPER_LEVEL_SPAM, "Mdl Light Hack: face (%d) sample (%d) style (%d) position (%f,%f,%f)\n",
-                                                   mlto.face[i].num, mlto.face[i].sample[j].num, k,
-                                                   mlto.face[i].sample[j].pos[0], mlto.face[i].sample[j].pos[1], mlto.face[i].sample[j].pos[2] );
-                                }
-        Developer( DEVELOPER_LEVEL_MESSAGE, "Mdl Light Hack: %d sample light copied from (%f,%f,%f) to (%f,%f,%f)\n",
-                   count, mlfrom.floor[0], mlfrom.floor[1], mlfrom.floor[2], mlto.floor[0], mlto.floor[1], mlto.floor[2] );
-        return count;
-}
-
-void MdlLightHack()
-{
-        int ient;
-        entity_t *ent1, *ent2;
-        vec3_t origin1, origin2;
-        const char *target;
-        int used = 0, countent = 0, countsample = 0, r;
-        for ( ient = 0; ient < g_numentities; ++ient )
-        {
-                ent1 = &g_entities[ient];
-                target = ValueForKey( ent1, "zhlt_copylight" );
-                if ( !strcmp( target, "" ) )
-                        continue;
-                used = 1;
-                ent2 = FindTargetEntity( target );
-                if ( ent2 == NULL )
-                {
-                        Warning( "target entity '%s' not found", target );
-                        continue;
-                }
-                GetVectorForKey( ent1, "origin", origin1 );
-                GetVectorForKey( ent2, "origin", origin2 );
-                r = MLH_CopyLight( origin2, origin1 );
-                if ( r < 0 )
-                        Warning( "can not copy light from (%f,%f,%f)", origin2[0], origin2[1], origin2[2] );
-                else
-                {
-                        countent += 1;
-                        countsample += r;
-                }
-        }
-        if ( used )
-                Log( "Adjust mdl light: modified %d samples for %d entities\n", countsample, countent );
-}
-
 
 typedef struct facelightlist_s
 {
@@ -4918,8 +4669,7 @@ void            FinalLightFace( const int facenum )
         int             lightstyles;
         dface_t*        f;
         vec3_t			*original_basiclight;
-        int( *final_basiclight )[3];
-        int				lbi[3];
+        vec3_t                  *final_basiclight;
 
         // ------------------------------------------------------------------------
         // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -4957,7 +4707,7 @@ void            FinalLightFace( const int facenum )
         minlight = FloatForKey( g_face_entity[facenum], "_minlight" ) * 128;
 
         original_basiclight = (vec3_t *)calloc( fl->numsamples, sizeof( vec3_t ) );
-        final_basiclight = ( int( *)[3] )calloc( fl->numsamples, sizeof( int[3] ) );
+        final_basiclight = ( vec3_t *)calloc( fl->numsamples, sizeof( vec3_t ) );
         hlassume( original_basiclight != NULL, assume_NoMemory );
         hlassume( final_basiclight != NULL, assume_NoMemory );
         for ( k = 0; k < lightstyles; k++ )
@@ -5004,13 +4754,13 @@ void            FinalLightFace( const int facenum )
                         //      so i reformatted it into a somewhat readable "normal" fashion. :P
 
                         if ( g_colour_qgamma[0] != 1.0 )
-                                lb[0] = (float)pow( lb[0] / 256.0f, g_colour_qgamma[0] ) * 256.0f;
+                                lb[0] = (float)pow( lb[0] / 255.0f, g_colour_qgamma[0] ) * 255.0f;
 
                         if ( g_colour_qgamma[1] != 1.0 )
-                                lb[1] = (float)pow( lb[1] / 256.0f, g_colour_qgamma[1] ) * 256.0f;
+                                lb[1] = (float)pow( lb[1] / 255.0f, g_colour_qgamma[1] ) * 255.0f;
 
                         if ( g_colour_qgamma[2] != 1.0 )
-                                lb[2] = (float)pow( lb[2] / 256.0f, g_colour_qgamma[2] ) * 256.0f;
+                                lb[2] = (float)pow( lb[2] / 255.0f, g_colour_qgamma[2] ) * 255.0f;
 
                         // Two different ways of adding noise to the lightmap - colour jitter
                         // (red, green and blue channels are independent), and mono jitter
@@ -5023,63 +4773,65 @@ void            FinalLightFace( const int facenum )
 
 
                         // clip from the top
-                        {
-                                vec_t max = VectorMaximum( lb );
-                                if ( g_limitthreshold >= 0 && max > g_limitthreshold )
-                                {
-                                        if ( !g_drawoverload )
-                                        {
-                                                VectorScale( lb, g_limitthreshold / max, lb );
-                                        }
-                                }
-                                else
-                                {
-                                        if ( g_drawoverload )
-                                        {
-                                                VectorScale( lb, 0.1, lb ); // darken good points
-                                        }
-                                }
-                        }
+                        //{
+                        //        vec_t max = VectorMaximum( lb );
+                        //        if ( g_limitthreshold >= 0 && max > g_limitthreshold )
+                        //        {
+                        //                if ( !g_drawoverload )
+                        //                {
+                        //                        VectorScale( lb, g_limitthreshold / max, lb );
+                        //                }
+                        //        }
+                        //        else
+                        //        {
+                        //                if ( g_drawoverload )
+                        //                {
+                        //                        VectorScale( lb, 0.1, lb ); // darken good points
+                        //                }
+                        //        }
+                        //}
+
                         for ( i = 0; i < 3; ++i )
                                 if ( lb[i] < g_minlight )
                                         lb[i] = g_minlight;
                         // ------------------------------------------------------------------------
-                        for ( i = 0; i < 3; ++i )
-                        {
-                                lbi[i] = (int)floor( lb[i] + 0.5 );
-                                if ( lbi[i] < 0 ) lbi[i] = 0;
-                        }
                         if ( k == 0 )
                         {
-                                VectorCopy( lbi, final_basiclight[j] );
+                                VectorCopy( lb, final_basiclight[j] );
                         }
                         else
                         {
-                                VectorSubtract( lbi, final_basiclight[j], lbi );
+                                VectorSubtract( lb, final_basiclight[j], lb );
                         }
+
                         if ( k == 0 )
                         {
                                 if ( g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2] )
                                         for ( i = 0; i < 3; i++ )
-                                                lbi[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
+                                                lb[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
                                 if ( g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2] )
                                 {
                                         temp_rand = (float)rand() / RAND_MAX - 0.5;
                                         for ( i = 0; i < 3; i++ )
-                                                lbi[i] += g_jitter_hack[i] * temp_rand;
+                                                lb[i] += g_jitter_hack[i] * temp_rand;
                                 }
                         }
-                        for ( i = 0; i < 3; ++i )
-                        {
-                                if ( lbi[i] < 0 ) lbi[i] = 0;
-                                if ( lbi[i] > 255 ) lbi[i] = 255;
-                        }
-                        {
-                                unsigned char* colors = &g_dlightdata[f->lightofs + k * fl->numsamples * 3 + j * 3];
 
-                                colors[0] = (unsigned char)lbi[0];
-                                colors[1] = (unsigned char)lbi[1];
-                                colors[2] = (unsigned char)lbi[2];
+                        //for ( i = 0; i < 3; ++i )
+                        //{
+                        //        if ( lbi[i] < 0 ) lbi[i] = 0;
+                        //        if ( lbi[i] > 255 ) lbi[i] = 255;
+                        //}
+
+                        {
+                                colorrgbexp32_t *col = &g_dlightdata[f->lightofs + k * fl->numsamples + j];
+                                LVector3 vcol;
+                                VectorCopy( lb, vcol );
+                                VectorToColorRGBExp32( vcol, *col );
+                                if ( VectorMaximum( vcol ) > 255.0 )
+                                {
+                                        Log( "Overbright lightmap sample.\n" );
+                                }
                         }
                 }
         }

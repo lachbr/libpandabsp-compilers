@@ -2611,13 +2611,12 @@ static void     RadWorld()
         // free up the direct lights now that we have facelights
         DeleteDirectLights();
 
-        MdlLightHack();
         ReduceLightmap();
-        if ( g_lightdatasize == 0 )
-        {
-                g_lightdatasize = 1;
-                g_dlightdata[0] = 0;
-        }
+        //if ( g_lightdatasize == 0 )
+        //{
+        //        g_lightdatasize = 1;
+        //        g_dlightdata[0] = 0;
+        //}
 }
 
 // =====================================================================================

@@ -374,8 +374,7 @@ extern int      g_visdatasize;
 extern byte     g_dvisdata[MAX_MAP_VISIBILITY];
 extern int      g_dvisdata_checksum;
 
-extern int      g_lightdatasize;
-extern byte*    g_dlightdata;
+extern pvector<colorrgbexp32_t>    g_dlightdata;
 extern int      g_dlightdata_checksum;
 
 extern int      g_numtexrefs;
