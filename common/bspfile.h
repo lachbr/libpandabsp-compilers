@@ -122,8 +122,7 @@
 typedef struct
 {
         int             fileofs, filelen;
-}
-lump_t;
+} lump_t;
 
 #define LUMP_ENTITIES      0
 #define LUMP_PLANES        1
@@ -145,8 +144,12 @@ lump_t;
 #define LUMP_LEAFAMBIENTLIGHTING 17
 #define LUMP_LEAFAMBIENTINDEX    18
 #define LUMP_LEAFBRUSHES         19
+#define LUMP_STATICPROPS         20
+#define LUMP_STATICPROPVERTEXDATA 21
+#define LUMP_STATICPROPLIGHTING   22
+
 //#define LUMP_ORIGFACES    15
-#define HEADER_LUMPS      20
+#define HEADER_LUMPS      23
 
 //#define LUMP_MISCPAD      -1
 //#define LUMP_ZEROPAD      -2
@@ -158,44 +161,31 @@ typedef struct
         int             headnode[MAX_MAP_HULLS];
         int             visleafs;                              // not including the solid leaf 0
         int             firstface, numfaces;
-}
-dmodel_t;
+} dmodel_t;
 
 typedef struct
 {
         int             ident;
         int             version;
         lump_t          lumps[HEADER_LUMPS];
-}
-dheader_t;
-
-/*
-typedef struct
-{
-char		    name[MAX_TEXTURE_NAME];
-}
-dtexlump_t;
-*/
+} dheader_t;
 
 typedef struct texref_s
 {
         char            name[MAX_TEXTURE_NAME];
-}
-texref_t;
+} texref_t;
 
 typedef struct dvertex_s
 {
         float           point[3];
-}
-dvertex_t;
+} dvertex_t;
 
 typedef struct
 {
         float           normal[3];
         float           dist;
         planetypes      type;                                  // PLANE_X - PLANE_ANYZ ?remove? trivial to regenerate
-}
-dplane_t;
+} dplane_t;
 
 typedef enum
 {
@@ -225,8 +215,7 @@ typedef enum
         CONTENTS_TOEMPTY = -32,
         CONTENTS_PROP = -33,
         CONTENTS_CLIP = -34,
-}
-contents_t;
+} contents_t;
 
 // !!! if this is changed, it must be changed in asm_i386.h too !!!
 typedef struct
@@ -237,15 +226,13 @@ typedef struct
         short           maxs[3];
         unsigned short  firstface;
         unsigned short  numfaces;                              // counting both sides
-}
-dnode_t;
+} dnode_t;
 
 typedef struct
 {
         int             planenum;
         short           children[2];                           // negative numbers are contents
-}
-dclipnode_t;
+} dclipnode_t;
 
 typedef struct texinfo_s
 {
@@ -254,8 +241,7 @@ typedef struct texinfo_s
         int             lightmap_scale;
         int             texref;
         int             flags;
-}
-texinfo_t;
+} texinfo_t;
 
 #define TEX_SPECIAL     1                                  // sky or slime or null, no lightmap or 256 subdivision
 
@@ -264,8 +250,7 @@ texinfo_t;
 typedef struct dedge_s
 {
         unsigned short  v[2];                                  // vertex numbers
-}
-dedge_t;
+} dedge_t;
 
 #define MAXLIGHTMAPS    4
 typedef struct dface_s
@@ -354,8 +339,37 @@ typedef struct
         unsigned short  nummarksurfaces;
 
         byte            ambient_level[NUM_AMBIENTS];
-}
-dleaf_t;
+} dleaf_t;
+
+enum
+{
+        STATICPROPFLAGS_NOLIGHTING = 0x0,
+        STATICPROPFLAGS_STATICLIGHTING = 0x1,
+        STATICPROPFLAGS_DYNAMICLIGHTING = 0x2,
+};
+
+struct dstaticprop_t
+{
+        float pos[3];
+        float hpr[3];
+        float scale[3];
+
+        char name[128]; // path to model
+        unsigned short flags;
+
+        // hopefully the prop doesn't have >256 GeomVertexDatas...
+        short first_vertex_data; // index into LUMP_STATICPROPVERTEXDATA
+        short num_vertex_datas;
+
+        unsigned char shadows;
+};
+
+struct dstaticpropvertexdata_t
+{
+        // assuming the order of vertex datas is the same each time the prop is loaded
+        unsigned short first_lighting_sample; // index into LUMP_STATICPROPLIGHTING
+        unsigned short num_lighting_samples;
+};
 
 //============================================================================
 
@@ -434,6 +448,9 @@ extern pvector<dleafambientindex_t> g_leafambientindex;
 extern pvector<dbrush_t> g_dbrushes;
 extern pvector<dbrushside_t> g_dbrushsides;
 extern pvector<unsigned short> g_dleafbrushes;
+extern pvector<dstaticprop_t> g_dstaticprops;
+extern pvector<dstaticpropvertexdata_t> g_dstaticpropvertexdatas;
+extern pvector<colorrgbexp32_t> g_staticproplighting;
 
 extern void     DecompressVis( const byte* src, byte* const dest, const unsigned int dest_length );
 extern int      CompressVis( const byte* const src, const unsigned int src_length, byte* dest, unsigned int dest_length );
@@ -487,6 +504,8 @@ extern void            GetVectorForKey( const entity_t* const ent, const char* c
 extern entity_t* FindTargetEntity( const char* const target );
 extern epair_t* ParseEpair();
 extern entity_t* EntityForModel( int modnum );
+
+extern int FastChecksum( const void* const buffer, int bytes );
 
 //
 // Texture Related Stuff

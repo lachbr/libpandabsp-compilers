@@ -226,6 +226,10 @@ planetypes;
 #define last_axial plane_z
 #define DIR_EPSILON 0.0001
 
+#define MAX_COORD_INTEGER (16384)
+#define COORD_EXTENT (2 * MAX_COORD_INTEGER)
+#define MAX_TRACE_LENGTH			( 1.732050807569 * COORD_EXTENT )
+
 inline planetypes PlaneTypeForNormal( vec3_t normal )
 {
         vec_t           ax, ay, az;
@@ -257,6 +261,11 @@ inline planetypes PlaneTypeForNormal( vec3_t normal )
                 return plane_anyy;
         }
         return plane_anyz;
+}
+
+FORCEINLINE PN_stdfloat inv_r_squared( const LVector3 &v )
+{
+        return 1.f / std::max( 1.f, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
 }
 
 #endif //MATHLIB_H__

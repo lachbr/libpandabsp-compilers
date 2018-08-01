@@ -85,6 +85,9 @@ pvector<dleafambientindex_t> g_leafambientindex;
 pvector<dbrush_t> g_dbrushes;
 pvector<dbrushside_t> g_dbrushsides;
 pvector<unsigned short> g_dleafbrushes;
+pvector<dstaticprop_t> g_dstaticprops;
+pvector<dstaticpropvertexdata_t> g_dstaticpropvertexdatas;
+pvector<colorrgbexp32_t> g_staticproplighting;
 
 std::string g_tex_contents_file = DEFAULT_TEXCONTENTS_FILE;
 map<string, contents_t> g_tex_contents;
@@ -95,7 +98,7 @@ map<string, contents_t> g_tex_contents;
 * ===============
 */
 
-static int      FastChecksum( const void* const buffer, int bytes )
+int FastChecksum( const void* const buffer, int bytes )
 {
         int             checksum = 0;
         char*           buf = (char*)buffer;
@@ -431,7 +434,7 @@ static int      CopyLump( int lump, void* dest, int size, const dheader_t* const
 
         if ( length % size )
         {
-                Error( "LoadBSPFile: odd lump size" );
+                Error( "LoadBSPFile: odd lump size for lump %i, length %i, size %i", lump, length, size );
         }
 
         //special handling for tex and lightdata to keep things from exploding - KGP
@@ -513,6 +516,9 @@ void            LoadBSPImage( dheader_t* const header )
         CopyLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header );
         CopyLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header );
         CopyLump( LUMP_LIGHTING, g_dlightdata, header );
+        CopyLump( LUMP_STATICPROPS, g_dstaticprops, header );
+        CopyLump( LUMP_STATICPROPVERTEXDATA, g_dstaticpropvertexdatas, header );
+        CopyLump( LUMP_STATICPROPLIGHTING, g_staticproplighting, header );
 
         Free( header );                                          // everything has been copied out
 
@@ -607,6 +613,9 @@ void            WriteBSPFile( const char* const filename )
         AddLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header, bspfile );
         AddLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header, bspfile );
         AddLump( LUMP_LIGHTING, g_dlightdata, header, bspfile );
+        AddLump( LUMP_STATICPROPS, g_dstaticprops, header, bspfile );
+        AddLump( LUMP_STATICPROPVERTEXDATA, g_dstaticpropvertexdatas, header, bspfile );
+        AddLump( LUMP_STATICPROPLIGHTING, g_staticproplighting, header, bspfile );
 
         fseek( bspfile, 0, SEEK_SET );
         SafeWrite( bspfile, header, sizeof( dheader_t ) );
