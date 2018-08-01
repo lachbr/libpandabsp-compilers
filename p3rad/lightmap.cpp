@@ -2483,7 +2483,7 @@ void BuildDiffuseNormals()
         free( edges );
         free( triangles );
 }
-static void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
+void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
                                    , byte* styles
                                    , int step
                                    , int texref
@@ -2504,16 +2504,20 @@ static void     GatherSampleLight( const vec3_t pos, const byte* const pvs, cons
         bool			sky_used = false;
         vec3_t			testline_origin;
         vec3_t			adds[ALLSTYLES];
-        int				style;
+        int				style = 0;
         memset( adds, 0, ALLSTYLES * sizeof( vec3_t ) );
-        bool			lighting_diversify;
-        vec_t			lighting_power;
-        vec_t			lighting_scale;
-        lighting_power = g_lightingconeinfo[texref][0];
-        lighting_scale = g_lightingconeinfo[texref][1];
-        lighting_diversify = ( lighting_power != 1.0 || lighting_scale != 1.0 );
+        bool			lighting_diversify = false;
+        vec_t			lighting_power = 1.0;
+        vec_t			lighting_scale = 1.0;
+        if ( texref != -1 )
+        {
+                lighting_power = g_lightingconeinfo[texref][0];
+                lighting_scale = g_lightingconeinfo[texref][1];
+                lighting_diversify = ( lighting_power != 1.0 || lighting_scale != 1.0 );
+        }
         vec3_t			texlightgap_textoworld[2];
         // calculates textoworld
+        if ( texlightgap_surfacenum != -1 )
         {
                 dface_t *f = &g_dfaces[texlightgap_surfacenum];
                 const dplane_t *dp = getPlaneFromFace( f );
@@ -2766,7 +2770,7 @@ static void     GatherSampleLight( const vec3_t pos, const byte* const pvs, cons
                                                         }
                                                         dot2 = -DotProduct( delta, l->normal );
                                                         // discard the texlight if the spot is too close to the texlight plane
-                                                        if ( l->texlightgap > 0 )
+                                                        if ( l->texlightgap > 0 && texlightgap_surfacenum != -1 )
                                                         {
                                                                 vec_t test;
 
@@ -2963,7 +2967,6 @@ static void     GatherSampleLight( const vec3_t pos, const byte* const pvs, cons
                         {
                                 styles[style_index] = style;
                         }
-
                         VectorAdd( sample[style_index], adds[style], sample[style_index] );
                 }
                 else

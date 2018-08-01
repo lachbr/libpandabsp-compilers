@@ -94,6 +94,9 @@ struct RADStaticProp
 {
         int leafnum;
         pvector<PT( RADCollisionPolygon )> polygons;
+        NodePath mdl;
+        bool shadows;
+        int propnum;
 };
 
 struct TestGroup
@@ -107,5 +110,6 @@ extern pvector<RADStaticProp *> g_static_props;
 
 extern void LoadStaticProps();
 extern bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leafnum );
+extern void DoComputeStaticPropLighting();
 
 #endif // RADSTATICPROP_H

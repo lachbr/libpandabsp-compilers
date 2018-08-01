@@ -19,6 +19,7 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 #include "qrad.h"
 #include "radstaticprop.h"
 #include "leaf_ambient_lighting.h"
+#include <virtualFileSystem.h>
 
 #include <load_prc_file.h>
 
@@ -2607,6 +2608,7 @@ static void     RadWorld()
 
         // misc light computations
         LeafAmbientLighting::compute_per_leaf_ambient_lighting();
+        DoComputeStaticPropLighting();
 
         // free up the direct lights now that we have facelights
         DeleteDirectLights();
@@ -3095,7 +3097,7 @@ int             main( const int argc, char** argv )
         const char*     mapname_from_arg = NULL;
         const char*     user_lights = NULL;
 
-        load_prc_file_data( "", "model-path /d/OTHER/lachb/Documents/ttsp/game/resources" );
+        load_prc_file_data( "", "model-path /d/OTHER/lachb/Documents/cio/game/resources" );
         load_prc_file_data( "", "assert-abort 0" );
         load_prc_file_data( "", "load-file-type egg pandaegg" );
         load_prc_file_data( "", "egg-object-type-portal          <Scalar> portal { 1 }" );
@@ -3126,6 +3128,9 @@ int             main( const int argc, char** argv )
         load_prc_file_data( "", "egg-object-type-ghost           <Scalar> collide-mask { 0 }" );
         load_prc_file_data( "", "egg-object-type-glow            <Scalar> blend { add }" );
         load_prc_file_data( "", "egg-object-type-direct-widget   <Scalar> collide-mask { 0x80000000 } <Collide> { Polyset descend }" );
+        load_prc_file_data( "", "model-cache-dir" );
+        load_prc_file_data( "", "model-cache-model #f" );
+        load_prc_file_data( "", "model-cache-textures #f" );
         load_prc_file_data( "", "default-model-extension .egg" );
 
         RADCollisionPolygon::init_type();
@@ -3915,6 +3920,22 @@ int             main( const int argc, char** argv )
                                 g_softsky = false;
                         }
                         Settings();
+
+                        VirtualFileSystem *vfs = VirtualFileSystem::get_global_ptr();
+                        for ( size_t i = 0; i < g_multifiles.size(); i++ )
+                        {
+                                Filename file = Filename::from_os_specific( g_multifiles[i] );
+                                cout << file.get_fullpath() << endl;
+                                if ( !vfs->mount( file, ".", VirtualFileSystem::MF_read_only ) )
+                                {
+                                        Warning( "Could not mount multifile from %s!\n", file.get_fullpath().c_str() );
+                                }
+                                else
+                                {
+                                        Log( "Mounted multifile %s.\n", file.get_fullpath().c_str() );
+                                }
+                        }
+
                         LoadStaticProps();
                         LoadTextures();
                         LoadRadFiles( g_Mapname, user_lights, argv[0] );

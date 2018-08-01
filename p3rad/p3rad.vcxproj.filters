@@ -85,6 +85,12 @@
     <ClCompile Include="compress.cpp">
       <Filter>rad</Filter>
     </ClCompile>
+    <ClCompile Include="lightingutils.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\halton.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\template\basictypes.h">
@@ -149,6 +155,12 @@
     </ClInclude>
     <ClInclude Include="compress.h">
       <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="lightingutils.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\halton.h">
+      <Filter>common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

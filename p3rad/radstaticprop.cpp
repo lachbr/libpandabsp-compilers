@@ -10,9 +10,11 @@
 #include <nodePathCollection.h>
 #include <lightMutexHolder.h>
 #include <look_at.h>
+#include <virtualFileSystem.h>
 
 #include "threads.h"
 #include "qrad.h"
+#include "lightingutils.h"
 
 TypeHandle RADCollisionPolygon::_type_handle;
 
@@ -21,32 +23,6 @@ pvector<RADStaticProp *> g_static_props;
 
 bool g_collisions_loaded = false;
 LightMutex g_prop_lock( "RadStaticPropRayCastLock" );
-
-int        LeafNumFromPoint( const vec3_t point )
-{
-        int             nodenum;
-        vec_t           dist;
-        dnode_t*        node;
-        dplane_t*       plane;
-
-        nodenum = 0;
-        while ( nodenum >= 0 )
-        {
-                node = &g_dnodes[nodenum];
-                plane = &g_dplanes[node->planenum];
-                dist = DotProduct( point, plane->normal ) - plane->dist;
-                if ( dist >= 0.0 )
-                {
-                        nodenum = node->children[0];
-                }
-                else
-                {
-                        nodenum = node->children[1];
-                }
-        }
-
-        return ~nodenum;
-}
 
 void LoadStaticProps()
 {
@@ -68,105 +44,82 @@ void LoadStaticProps()
 
         Loader *loader = Loader::get_global_ptr();
 
-        for ( int entnum = 0; entnum < g_numentities; entnum++ )
+        for ( size_t i = 0; i < g_dstaticprops.size(); i++ )
         {
-                entity_t *ent = &g_entities[entnum];
+                dstaticprop_t *prop = &g_dstaticprops[i];
+                string mdl_path = prop->name;
 
-                string classname = ValueForKey( ent, "classname" );
-                if ( classname == "prop_static" )
+                NodePath propnp( loader->load_sync( Filename( mdl_path ) ) );
+                if ( !propnp.is_empty() )
                 {
-                        if ( IntForKey( ent, "shadows" ) == 0 )
+                        propnp.set_scale( prop->scale[0] * PANDA_TO_HAMMER, prop->scale[1] * PANDA_TO_HAMMER, prop->scale[2] * PANDA_TO_HAMMER );
+                        propnp.set_pos( prop->pos[0], prop->pos[1], prop->pos[2] );
+                        propnp.set_hpr( prop->hpr[1] - 90, prop->hpr[0], prop->hpr[2] );
+
+                        // Which leaf does the prop reside in?
+                        dleaf_t *leaf = PointInLeaf( prop->pos );
+
+                        bool shadow_caster = prop->shadows;
+
+                        RADStaticProp *sprop = new RADStaticProp;
+                        sprop->shadows = shadow_caster;
+                        sprop->leafnum = leaf - g_dleafs;
+                        sprop->mdl = propnp;
+                        sprop->propnum = (int)i;
+
+                        // Apply all transforms and attribs to the vertices so they are now in world space,
+                        // but do not remove any nodes or rearrange the vertices.
+                        propnp.clear_model_nodes();
+                        propnp.flatten_light();
+
+                        NodePathCollection npc = propnp.find_all_matches( "**/+GeomNode" );
+                        for ( int i = 0; i < npc.get_num_paths(); i++ )
                         {
-                                // This prop will not cast shadows.
-                                cout << "Static prop will not cast shadows." << endl;
-                                continue;
-                        }
-
-                        string mdl_path = ValueForKey( ent, "modelpath" );
-
-                        cout << "Loading static prop " << mdl_path << endl;
-
-                        vec3_t scale;
-                        GetVectorForKey( ent, "scale", scale );
-
-                        vec3_t origin;
-                        GetVectorForKey( ent, "origin", origin );
-
-                        vec3_t angles;
-                        GetVectorForKey( ent, "angles", angles );
-
-                        NodePath propnp( loader->load_sync( Filename( mdl_path ) ) );
-                        if ( !propnp.is_empty() )
-                        {
-                                propnp.set_scale( scale[0] * PANDA_TO_HAMMER, scale[1] * PANDA_TO_HAMMER, scale[2] * PANDA_TO_HAMMER );
-                                propnp.set_pos( origin[0], origin[1], origin[2] );
-                                propnp.set_hpr( angles[1], angles[0], angles[2] );
-
-                                // Which leaf does the prop reside in?
-                                int leafnum = LeafNumFromPoint( origin );
-
-                                NodePathCollection shnpc = propnp.find_all_matches( "**/*shadow*" );
-                                for ( int i = 0; i < shnpc.get_num_paths(); i++ )
+                                NodePath geomnp = npc.get_path( i );
+                                LMatrix4 mat_to_world = geomnp.get_net_transform()->get_mat();
+                                GeomNode *gn = DCAST( GeomNode, geomnp.node() );
+                                for ( int j = 0; j < gn->get_num_geoms(); j++ )
                                 {
-                                        shnpc.get_path( i ).remove_node();
-                                }
-
-                                propnp.clear_model_nodes();
-                                propnp.flatten_strong();
-
-                                RADStaticProp *sprop = new RADStaticProp;
-                                sprop->leafnum = leafnum;
-
-                                NodePathCollection npc = propnp.find_all_matches( "**/+GeomNode" );
-                                for ( int i = 0; i < npc.get_num_paths(); i++ )
-                                {
-                                        NodePath geomnp = npc.get_path( i );
-                                        GeomNode *gn = DCAST( GeomNode, geomnp.node() );
-                                        for ( int j = 0; j < gn->get_num_geoms(); j++ )
+                                        PT( Geom ) geom = gn->get_geom( j )->decompose();
+                                        const GeomVertexData *vdata = geom->get_vertex_data();
+                                        GeomVertexReader vreader( vdata, InternalName::get_vertex() );
+                                        std::stringstream ss;
+                                        ss << gn->get_name() << "-" << j;
+                                        PT( CollisionNode ) cnode = new CollisionNode( ss.str() );
+                                        for ( int k = 0; k < geom->get_num_primitives(); k++ )
                                         {
-                                                PT( Geom ) geom = gn->get_geom( j )->decompose();
-                                                const GeomVertexData *vdata = geom->get_vertex_data();
-                                                GeomVertexReader vreader( vdata, InternalName::get_vertex() );
-                                                std::stringstream ss;
-                                                ss << gn->get_name() << "-" << j;
-                                                PT( CollisionNode ) cnode = new CollisionNode( ss.str() );
-                                                for ( int k = 0; k < geom->get_num_primitives(); k++ )
+                                                const GeomPrimitive *prim = geom->get_primitive( k );
+                                                for ( int l = 0; l < prim->get_num_primitives(); l++ )
                                                 {
-                                                        const GeomPrimitive *prim = geom->get_primitive( k );
-                                                        for ( int l = 0; l < prim->get_num_primitives(); l++ )
+                                                        int start = prim->get_primitive_start( l );
+                                                        int end = prim->get_primitive_end( l );
+
+                                                        pvector<LPoint3> verts;
+                                                        for ( int m = start; m < end; m++ )
                                                         {
-                                                                int start = prim->get_primitive_start( l );
-                                                                int end = prim->get_primitive_end( l );
-
-                                                                pvector<LPoint3> verts;
-                                                                for ( int m = start; m < end; m++ )
-                                                                {
-                                                                        vreader.set_row( prim->get_vertex( m ) );
-                                                                        verts.push_back( vreader.get_data3f() );
-                                                                }
-
-                                                                PT( RADCollisionPolygon ) poly = nullptr;
-                                                                if ( verts.size() == 3 )
-                                                                        poly = new RADCollisionPolygon( verts[0], verts[1], verts[2] );
-                                                                else if ( verts.size() == 4 )
-                                                                        poly = new RADCollisionPolygon( verts[0], verts[1], verts[2], verts[3] );
-                                                                if ( poly != nullptr )
-                                                                        sprop->polygons.push_back( poly );
+                                                                vreader.set_row( prim->get_vertex( m ) );
+                                                                verts.push_back( vreader.get_data3f() );
                                                         }
+
+                                                        PT( RADCollisionPolygon ) poly = nullptr;
+                                                        if ( verts.size() == 3 )
+                                                                poly = new RADCollisionPolygon( verts[0], verts[1], verts[2] );
+                                                        else if ( verts.size() == 4 )
+                                                                poly = new RADCollisionPolygon( verts[0], verts[1], verts[2], verts[3] );
+                                                        if ( poly != nullptr )
+                                                                sprop->polygons.push_back( poly );
                                                 }
                                         }
                                 }
-
-                                g_static_props.push_back( sprop );
-
-                                propnp.remove_node();
-
-                                cout << "Successfully loaded static prop " << mdl_path << endl;
                         }
-                        else
-                        {
-                                cout << "Warning! Could not load static prop " << mdl_path << ", no shadows" << endl;
-                        }
+
+                        g_static_props.push_back( sprop );
+
+                        cout << "Successfully loaded static prop " << mdl_path << endl;
+                }
+                else
+                {
+                        cout << "Warning! Could not load static prop " << mdl_path << ", no shadows" << endl;
                 }
         }
 }
@@ -189,7 +142,7 @@ bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leaf
         for ( size_t i = 0; i < g_static_props.size(); i++ )
         {
                 RADStaticProp *sprop = g_static_props[i];
-                if ( sprop->leafnum != leafnum )
+                if ( !sprop->shadows || sprop->leafnum != leafnum )
                         continue;
                 for ( size_t polynum = 0; polynum < sprop->polygons.size(); polynum++ )
                 {
@@ -204,6 +157,127 @@ bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leaf
         }
 
         return false;
+}
+
+void BuildGeomNodes_r( PandaNode *node, pvector<PT( GeomNode )> &list )
+{
+        if ( node->is_of_type( GeomNode::get_class_type() ) )
+        {
+                list.push_back( DCAST( GeomNode, node ) );
+        }
+
+        for ( int i = 0; i < node->get_num_children(); i++ )
+        {
+                BuildGeomNodes_r( node->get_child( i ), list );
+        }
+}
+
+pvector<PT( GeomNode )> BuildGeomNodes( const NodePath &root )
+{
+        pvector<PT( GeomNode )> list;
+
+        BuildGeomNodes_r( root.node(), list );
+
+        return list;
+}
+
+struct VDataDef
+{
+        CPT( GeomVertexData ) vdata;
+        LMatrix4 mat_to_world;
+};
+
+void ComputeStaticPropLighting( int thread )
+{
+        int prop_idx = thread;//GetThreadWork();
+        if ( prop_idx == -1 )
+        {
+                return;
+        }
+        RADStaticProp *prop = g_static_props[prop_idx];
+        if ( prop == nullptr )
+        {
+                Warning( "ThreadComputeStaticPropLighting: prop is nullptr on thread %i\n", thread );
+                return;
+        }
+        if ( !g_dstaticprops[prop->propnum].flags & STATICPROPFLAGS_STATICLIGHTING )
+        {
+                return;
+        }
+
+        pvector<VDataDef> vdatas;
+        
+        // transform all vertices to be in world space
+        prop->mdl.clear_model_nodes();
+        prop->mdl.flatten_light();
+
+        // we're not using NodePath::find_all_matches() because we need a consistent order in the list
+        pvector<PT( GeomNode )> geomnodes = BuildGeomNodes( prop->mdl );
+        for ( size_t i = 0; i < geomnodes.size(); i++ )
+        {
+                PT( GeomNode ) gn = geomnodes[i];
+                for ( int j = 0; j < gn->get_num_geoms(); j++ )
+                {
+                        CPT( Geom ) geom = gn->get_geom( j );
+                        CPT( GeomVertexData ) vdata = geom->get_vertex_data();
+
+                        VDataDef def;
+                        def.vdata = vdata;
+                        def.mat_to_world = NodePath( gn ).get_net_transform()->get_mat();
+                        vdatas.push_back( def );
+                }
+        }
+
+        dstaticprop_t *dprop = &g_dstaticprops[prop->propnum];
+
+        //ThreadLock();
+        dprop->first_vertex_data = g_dstaticpropvertexdatas.size();
+
+        for ( size_t i = 0; i < vdatas.size(); i++ )
+        {
+                CPT( GeomVertexData ) vdata = vdatas[i].vdata;
+                GeomVertexReader vtx_reader( vdata, InternalName::get_vertex() );
+                GeomVertexReader norm_reader( vdata, InternalName::get_normal() );
+
+                dstaticpropvertexdata_t dvdata;
+                dvdata.first_lighting_sample = g_staticproplighting.size();
+
+                for ( int row = 0; row < vdata->get_num_rows(); row++ )
+                {
+                        vtx_reader.set_row( row );
+                        norm_reader.set_row( row );
+
+                        LVector3 world_pos( vtx_reader.get_data3f() );
+                        LNormalf world_normal( norm_reader.get_data3f() );
+
+                        LVector3 direct_col( 0 );
+                        ComputeDirectLightingAtPoint( world_pos, world_normal, direct_col );
+
+                        LVector3 indirect_col( 0 );
+                        ComputeIndirectLightingAtPoint( world_pos, world_normal, indirect_col, false );
+
+                        colorrgbexp32_t sample;
+                        VectorToColorRGBExp32( direct_col + indirect_col, sample );
+                        g_staticproplighting.push_back( sample );
+                }
+                dvdata.num_lighting_samples = g_staticproplighting.size() - dvdata.first_lighting_sample;
+
+                g_dstaticpropvertexdatas.push_back( dvdata );
+        }
+        dprop->num_vertex_datas = g_dstaticpropvertexdatas.size() - dprop->first_vertex_data;
+
+        //ThreadUnlock();
+}
+
+void DoComputeStaticPropLighting()
+{
+        //NamedRunThreadsOnIndividual( (int)g_static_props.size(), g_estimate, ComputeStaticPropLighting );
+
+        Log( "Computing static prop lighting...\n" );
+        for ( size_t i = 0; i < g_static_props.size(); i++ )
+        {
+                ComputeStaticPropLighting( i );
+        }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

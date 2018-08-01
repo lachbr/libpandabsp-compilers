@@ -144,6 +144,7 @@
     <ClCompile Include="..\common\cmdlib.cpp" />
     <ClCompile Include="..\common\cmdlinecfg.cpp" />
     <ClCompile Include="..\common\filelib.cpp" />
+    <ClCompile Include="..\common\halton.cpp" />
     <ClCompile Include="..\common\log.cpp" />
     <ClCompile Include="..\common\mathlib.cpp" />
     <ClCompile Include="..\common\messages.cpp" />
@@ -153,6 +154,7 @@
     <ClCompile Include="compress.cpp" />
     <ClCompile Include="leaf_ambient_lighting.cpp" />
     <ClCompile Include="lerp.cpp" />
+    <ClCompile Include="lightingutils.cpp" />
     <ClCompile Include="lightmap.cpp" />
     <ClCompile Include="loadtextures.cpp" />
     <ClCompile Include="mathutil.cpp" />
@@ -169,6 +171,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\common\anorms.h" />
+    <ClInclude Include="..\common\halton.h" />
     <ClInclude Include="..\template\basictypes.h" />
     <ClInclude Include="..\common\blockmem.h" />
     <ClInclude Include="..\common\boundingbox.h" />
@@ -183,6 +186,7 @@
     <ClInclude Include="..\common\mathtypes.h" />
     <ClInclude Include="..\common\messages.h" />
     <ClInclude Include="leaf_ambient_lighting.h" />
+    <ClInclude Include="lightingutils.h" />
     <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />

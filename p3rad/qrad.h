@@ -242,6 +242,13 @@ typedef unsigned char transfer_data_t;
 
 typedef unsigned char rgb_transfer_data_t;
 
+extern void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
+                            , byte* styles
+                            , int step
+                            , int texref
+                            , int texlightgap_surfacenum
+);
+
 #define MAX_COMPRESSED_TRANSFER_INDEX_SIZE ((1 << 12) - 1)
 
 #define	MAX_PATCHES	(65535*16) // limited by transfer_index_t
