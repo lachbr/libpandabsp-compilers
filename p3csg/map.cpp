@@ -1019,6 +1019,34 @@ bool            ParseMapEntity()
                                  classname, (double)ENGINE_ENTITY_RANGE, mapent->origin[0], mapent->origin[1], mapent->origin[2] );
                 }
         }
+
+        if ( !strcmp( ValueForKey( mapent, "classname" ), "prop_static" ) )
+        {
+                // static props are consumed and emitted to the BSP file
+                dstaticprop_t prop;
+                strcpy( prop.name, ValueForKey( mapent, "modelpath" ) );
+
+                vec3_t scale;
+                GetVectorForKey( mapent, "scale", scale );
+                VectorCopy( scale, prop.scale );
+
+                vec3_t origin;
+                GetVectorForKey( mapent, "origin", origin );
+                VectorCopy( origin, prop.pos );
+
+                vec3_t angles;
+                GetVectorForKey( mapent, "angles", angles );
+                VectorCopy( angles, prop.hpr );
+
+                prop.shadows = (unsigned char)IntForKey( mapent, "shadows" );
+                prop.first_vertex_data = -1; // will be filled in by p3rad
+                prop.num_vertex_datas = 0;
+                prop.flags = STATICPROPFLAGS_STATICLIGHTING;
+                g_dstaticprops.push_back( prop );
+                DeleteCurrentEntity( mapent );
+                return true;
+        }
+
         return true;
 }
 
