@@ -453,16 +453,6 @@ static void ComputeLeafAmbientLighting( int thread )
         }
 }
 
-// maps a float to a byte fraction between min & max
-static byte fixed_8_fraction( float t, float tMin, float tMax )
-{
-        if ( tMax <= tMin )
-                return 0;
-
-        float frac = RemapValClamped( t, tMin, tMax, 0.0f, 255.0f );
-        return byte( frac + 0.5f );
-}
-
 void LeafAmbientLighting::
 compute_per_leaf_ambient_lighting()
 {

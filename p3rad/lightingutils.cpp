@@ -472,9 +472,9 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
         {
                 if ( skylight )
                 {
-                        LVector3 amb( skylight->diffuse_intensity[0] / 255.0,
-                                      skylight->diffuse_intensity[1] / 255.0,
-                                      skylight->diffuse_intensity[2] / 255.0 );
+                        LVector3 amb( skylight->diffuse_intensity[0],
+                                      skylight->diffuse_intensity[1],
+                                      skylight->diffuse_intensity[2] );
                         colors[0] += amb * scale;
                 }
                 return;
@@ -483,7 +483,7 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
                 LRGBColor avg_color = dface_AvgLightColor( face, maps );
-                LRGBColor color = avg_color / 255.0f;
+                LRGBColor color = avg_color;
 
                 compute_ambient_from_surface( face, skylight, color );
 
@@ -517,7 +517,6 @@ void compute_lightmap_color_point_sample( dface_t *face, directlight_t *skylight
 
                 LVector3 color( 0 );
                 ColorRGBExp32ToVector( *lightmap, color );
-                color /= 255;
 
                 compute_ambient_from_surface( face, skylight, color );
                 colors[style] += color * scale;

@@ -207,6 +207,16 @@ struct colorrgbexp32_t
 void VectorToColorRGBExp32( const LVector3 &v, colorrgbexp32_t &out );
 void ColorRGBExp32ToVector( const colorrgbexp32_t &color, LVector3 &out );
 
+// maps a float to a byte fraction between min & max
+INLINE unsigned char fixed_8_fraction( float t, float tMin, float tMax )
+{
+        if ( tMax <= tMin )
+                return 0;
+
+        float frac = RemapValClamped( t, tMin, tMax, 0.0f, 255.0f );
+        return (unsigned char)( frac + 0.5f );
+}
+
 //
 // Planetype Math
 //
