@@ -449,9 +449,7 @@ void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
                         if ( skylight )
                         {
                                 // Add in sky ambient
-                                vec3_t linear;
-                                linear[0] = linear[1] = linear[2] = 255.0f;
-                                VectorDivide( skylight->diffuse_intensity, linear, color );
+                                VectorCopy( skylight->diffuse_intensity, color );
                         }
 
                 }

@@ -106,7 +106,7 @@ public:
                                 if ( t != 1.0 )
                                 {
                                         LVector3 delta = start - sample_pos;
-                                        if ( delta.dot( normal ) > 0 )
+                                        if ( DotProduct(delta, normal) > 0 )
                                         {
                                                 valid = false;
                                                 break;
@@ -152,7 +152,7 @@ void get_leaf_boundary_planes( vector_dplane &list, int leaf_id )
 {
         list.clear();
         int node_id = leafparents[leaf_id];
-        int child = ~leaf_id;
+        int child = -( leaf_id + 1 );
 
         while ( node_id >= 0 )
         {
@@ -165,12 +165,14 @@ void get_leaf_boundary_planes( vector_dplane &list, int leaf_id )
                 }
                 else
                 {
+                        // Back side
                         dplane_t plane;
                         plane.dist = -node_plane->dist;
                         plane.normal[0] = -node_plane->normal[0];
                         plane.normal[1] = -node_plane->normal[1];
                         plane.normal[2] = -node_plane->normal[2];
                         plane.type = node_plane->type;
+                        list.push_back( plane );
                 }
                 child = node_id;
                 node_id = nodeparents[child];
@@ -422,7 +424,7 @@ void compute_ambient_for_leaf( int thread, int leaf_id,
         // Don't do any more than 128 samples
         int sample_count = clamp( volume_count, 1, 128 );
         LVector3 cube[6];
-        for ( int i = 0; i < 6; i++ )
+        for ( int i = 0; i < sample_count; i++ )
         {
                 LVector3 sample_pos;
                 sampler.generate_leaf_sample_position( leaf_id, leaf_planes, sample_pos );
@@ -490,16 +492,18 @@ compute_per_leaf_ambient_lighting()
                 }
         }
 
-        leaf_ambient_samples.resize( g_numleafs );
+        int numleafs = g_dmodels[0].visleafs + 1;
 
-        NamedRunThreadsOnIndividual( g_numleafs, g_estimate, ComputeLeafAmbientLighting );
+        leaf_ambient_samples.resize( numleafs );
+
+        NamedRunThreadsOn( numleafs, g_estimate, ComputeLeafAmbientLighting );
 
         // now write out the data :)
         g_leafambientindex.clear();
         g_leafambientlighting.clear();
-        g_leafambientindex.resize( g_numleafs );
-        g_leafambientlighting.reserve( g_numleafs * 4 );
-        for ( int leaf_id = 0; leaf_id < g_numleafs; leaf_id++ )
+        g_leafambientindex.resize( numleafs );
+        g_leafambientlighting.reserve( numleafs * 4 );
+        for ( int leaf_id = 0; leaf_id < numleafs; leaf_id++ )
         {
                 const vector_ambientsample &list = leaf_ambient_samples[leaf_id];
                 g_leafambientindex[leaf_id].num_ambient_samples = list.size();
@@ -532,7 +536,7 @@ compute_per_leaf_ambient_lighting()
         }
 
         
-        for ( int i = 0; i < g_numleafs; i++ )
+        for ( int i = 0; i < numleafs; i++ )
         {
                 if ( g_leafambientindex[i].num_ambient_samples == 0 )
                 {

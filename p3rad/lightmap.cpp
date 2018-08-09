@@ -3602,9 +3602,7 @@ void            BuildFacelights( const int facenum )
         CalcFaceVectors( &l );
         CalcFaceExtents( &l );
         CalcPoints( &l );
-        CalcLightmap( &l
-                      , f_styles
-        );
+        CalcLightmap( &l, f_styles );
 
         lightmapwidth = l.texsize[0] + 1;
         lightmapheight = l.texsize[1] + 1;
