@@ -91,6 +91,9 @@
     <ClCompile Include="..\common\halton.cpp">
       <Filter>common</Filter>
     </ClCompile>
+    <ClCompile Include="..\common\bsptools.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\template\basictypes.h">
@@ -160,6 +163,9 @@
       <Filter>rad</Filter>
     </ClInclude>
     <ClInclude Include="..\common\halton.h">
+      <Filter>common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\bsptools.h">
       <Filter>common</Filter>
     </ClInclude>
   </ItemGroup>

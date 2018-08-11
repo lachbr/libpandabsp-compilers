@@ -141,6 +141,7 @@
     <ClCompile Include="..\common\anorms.cpp" />
     <ClCompile Include="..\common\blockmem.cpp" />
     <ClCompile Include="..\common\bspfile.cpp" />
+    <ClCompile Include="..\common\bsptools.cpp" />
     <ClCompile Include="..\common\cmdlib.cpp" />
     <ClCompile Include="..\common\cmdlinecfg.cpp" />
     <ClCompile Include="..\common\filelib.cpp" />
@@ -171,6 +172,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\common\anorms.h" />
+    <ClInclude Include="..\common\bsptools.h" />
     <ClInclude Include="..\common\halton.h" />
     <ClInclude Include="..\template\basictypes.h" />
     <ClInclude Include="..\common\blockmem.h" />
