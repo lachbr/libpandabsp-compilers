@@ -786,7 +786,7 @@ static surfchain_t* SurflistFromValidFaces()
         sc->surfaces = NULL;
 
         // grab planes from both sides
-        for ( i = 0; i < g_numplanes; i += 2 )
+        for ( i = 0; i < g_bspdata->numplanes; i += 2 )
         {
                 if ( !validfaces[i] && !validfaces[i + 1] )
                 {
@@ -845,14 +845,14 @@ bool            CheckFaceForNull( const face_t* const f )
 {
         if ( f->contents == CONTENTS_SKY )
         {
-                const char *name = GetTextureByNumber( f->texturenum );
+                const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
                 if ( strncasecmp( name, "sky", 3 ) ) // for env_rain
                         return true;
         }
         // null faces are only of facetype face_null if we are using null texture stripping
         if ( g_bUseNullTex )
         {
-                const char *name = GetTextureByNumber( f->texturenum );
+                const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
                 if ( !strncasecmp( name, "null", 4 ) )
                         return true;
                 return false;
@@ -867,7 +867,7 @@ bool            CheckFaceForNull( const face_t* const f )
 // =====================================================================================
 bool            CheckFaceForEnv_Sky( const face_t* const f )
 {
-        const char *name = GetTextureByNumber( f->texturenum );
+        const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
         if ( !strncasecmp( name, "env_sky", 7 ) )
                 return true;
         return false;
@@ -885,7 +885,7 @@ bool            CheckFaceForEnv_Sky( const face_t* const f )
 // =====================================================================================
 bool            CheckFaceForHint( const face_t* const f )
 {
-        const char *name = GetTextureByNumber( f->texturenum );
+        const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
         if ( !strncasecmp( name, "hint", 4 ) )
                 return true;
         return false;
@@ -897,7 +897,7 @@ bool            CheckFaceForHint( const face_t* const f )
 // =====================================================================================
 bool            CheckFaceForSkip( const face_t* const f )
 {
-        const char *name = GetTextureByNumber( f->texturenum );
+        const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
         if ( !strncasecmp( name, "skip", 4 ) )
                 return true;
         return false;
@@ -905,7 +905,7 @@ bool            CheckFaceForSkip( const face_t* const f )
 
 bool CheckFaceForDiscardable( const face_t *f )
 {
-        const char *name = GetTextureByNumber( f->texturenum );
+        const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
         if ( !strncasecmp( name, "SOLIDHINT", 9 ) )
                 return true;
         return false;
@@ -991,11 +991,11 @@ static surfchain_t* ReadSurfs( FILE* file )
                 {
                         Error( "ReadSurfs (line %i): %i > MAXPOINTS\nThis is caused by a face with too many verticies (typically found on end-caps of high-poly cylinders)\n", line, numpoints );
                 }
-                if ( planenum > g_numplanes )
+                if ( planenum > g_bspdata->numplanes )
                 {
                         Error( "ReadSurfs (line %i): %i > g_numplanes\n", line, planenum );
                 }
-                if ( g_texinfo > g_numtexinfo )
+                if ( g_texinfo > g_bspdata->numtexinfo )
                 {
                         Error( "ReadSurfs (line %i): %i > g_numtexinfo", line, g_texinfo );
                 }
@@ -1004,7 +1004,7 @@ static surfchain_t* ReadSurfs( FILE* file )
                         Error( "ReadSurfs (line %i): detaillevel %i < 0", line, detaillevel );
                 }
 
-                if ( !strcasecmp( GetTextureByNumber( g_texinfo ), "skip" ) )
+                if ( !strcasecmp( GetTextureByNumber( g_bspdata, g_texinfo ), "skip" ) )
                 {
                         Verbose( "ReadSurfs (line %i): skipping a surface", line );
 
@@ -1143,12 +1143,12 @@ static bool     ProcessModel()
                 return false;                                      // all models are done
         detailbrushes = ReadBrushes( brushfiles[0] );
 
-        hlassume( g_nummodels < MAX_MAP_MODELS, assume_MAX_MAP_MODELS );
+        hlassume( g_bspdata->nummodels < MAX_MAP_MODELS, assume_MAX_MAP_MODELS );
 
-        startleafs = g_numleafs;
-        int modnum = g_nummodels;
-        model = &g_dmodels[modnum];
-        g_nummodels++;
+        startleafs = g_bspdata->numleafs;
+        int modnum = g_bspdata->nummodels;
+        model = &g_bspdata->dmodels[modnum];
+        g_bspdata->nummodels++;
 
         //    Log("ProcessModel: %i (%i f)\n", modnum, model->numfaces);
 
@@ -1191,7 +1191,7 @@ static bool     ProcessModel()
 
         // build all the portals in the bsp tree
         // some portals are solid polygons, and some are paths to other leafs
-        if ( g_nummodels == 1 && !g_nofill )                       // assume non-world bmodels are simple
+        if ( g_bspdata->nummodels == 1 && !g_nofill )                       // assume non-world bmodels are simple
         {
                 if ( !g_noinsidefill )
                         FillInside( nodes );
@@ -1206,8 +1206,8 @@ static bool     ProcessModel()
         MakeFaceEdges();
 
         // emit the faces for the bsp file
-        model->headnode[0] = g_numnodes;
-        model->firstface = g_numfaces;
+        model->headnode[0] = g_bspdata->numnodes;
+        model->firstface = g_bspdata->numfaces;
         bool novisiblebrushes = false;
         // model->headnode[0]<0 will crash HL, so must split it.
         if ( nodes->planenum == -1 )
@@ -1215,7 +1215,7 @@ static bool     ProcessModel()
                 novisiblebrushes = true;
                 if ( nodes->markfaces[0] != NULL )
                         hlassume( false, assume_EmptySolid );
-                if ( g_numplanes == 0 )
+                if ( g_bspdata->numplanes == 0 )
                         Error( "No valid planes.\n" );
                 nodes->planenum = 0; // arbitrary plane
                 nodes->children[0] = AllocNode();
@@ -1247,8 +1247,8 @@ static bool     ProcessModel()
                 VectorFill( nodes->maxs, 0 );
         }
         WriteDrawNodes( nodes );
-        model->numfaces = g_numfaces - model->firstface;
-        model->visleafs = g_numleafs - startleafs;
+        model->numfaces = g_bspdata->numfaces - model->firstface;
+        model->visleafs = g_bspdata->numleafs - startleafs;
 
         if ( g_noclip )
         {
@@ -1300,7 +1300,7 @@ static bool     ProcessModel()
                 nodes = SolidBSP( surfs,
                                   detailbrushes,
                                   modnum == 0 );
-                if ( g_nummodels == 1 && !g_nofill )                   // assume non-world bmodels are simple
+                if ( g_bspdata->nummodels == 1 && !g_nofill )                   // assume non-world bmodels are simple
                 {
                         nodes = FillOutside( nodes, ( g_bLeaked != true ), g_hullnum );
                 }
@@ -1317,7 +1317,7 @@ static bool     ProcessModel()
                 }
                 else
                 {
-                        model->headnode[g_hullnum] = g_numclipnodes;
+                        model->headnode[g_hullnum] = g_bspdata->numclipnodes;
                         WriteClipNodes( nodes );
                 }
         }
@@ -1325,8 +1325,8 @@ skipclip:
 
         {
                 entity_t *ent;
-                ent = EntityForModel( modnum );
-                if ( ent != &g_entities[0] && *ValueForKey( ent, "zhlt_minsmaxs" ) )
+                ent = EntityForModel( g_bspdata, modnum );
+                if ( ent != &g_bspdata->entities[0] && *ValueForKey( ent, "zhlt_minsmaxs" ) )
                 {
                         double origin[3], mins[3], maxs[3];
                         VectorClear( origin );
@@ -1342,13 +1342,13 @@ skipclip:
                    model->mins[0], model->mins[1], model->mins[2], model->maxs[0], model->maxs[1], model->maxs[2] );
         if ( model->mins[0] > model->maxs[0] )
         {
-                entity_t *ent = EntityForModel( g_nummodels - 1 );
-                if ( g_nummodels - 1 != 0 && ent == &g_entities[0] )
+                entity_t *ent = EntityForModel( g_bspdata, g_bspdata->nummodels - 1 );
+                if ( g_bspdata->nummodels - 1 != 0 && ent == &g_bspdata->entities[0] )
                 {
                         ent = NULL;
                 }
                 Warning( "Empty solid entity: model %d (entity: classname \"%s\", origin \"%s\", targetname \"%s\")",
-                         g_nummodels - 1,
+                         g_bspdata->nummodels - 1,
                          ( ent ? ValueForKey( ent, "classname" ) : "unknown" ),
                          ( ent ? ValueForKey( ent, "origin" ) : "unknown" ),
                          ( ent ? ValueForKey( ent, "targetname" ) : "unknown" ) );
@@ -1357,13 +1357,13 @@ skipclip:
         }
         else if ( novisiblebrushes )
         {
-                entity_t *ent = EntityForModel( g_nummodels - 1 );
-                if ( g_nummodels - 1 != 0 && ent == &g_entities[0] )
+                entity_t *ent = EntityForModel( g_bspdata, g_bspdata->nummodels - 1 );
+                if ( g_bspdata->nummodels - 1 != 0 && ent == &g_bspdata->entities[0] )
                 {
                         ent = NULL;
                 }
                 Warning( "No visible brushes in solid entity: model %d (entity: classname \"%s\", origin \"%s\", targetname \"%s\", range (%.0f,%.0f,%.0f) - (%.0f,%.0f,%.0f))",
-                         g_nummodels - 1,
+                         g_bspdata->nummodels - 1,
                          ( ent ? ValueForKey( ent, "classname" ) : "unknown" ),
                          ( ent ? ValueForKey( ent, "origin" ) : "unknown" ),
                          ( ent ? ValueForKey( ent, "targetname" ) : "unknown" ),
@@ -1550,8 +1550,8 @@ static void     ProcessFile( const char* const filename )
 
         // load the output of csg
         safe_snprintf( g_bspfilename, _MAX_PATH, "%s.bsp", filename );
-        LoadBSPFile( g_bspfilename );
-        ParseEntities();
+        g_bspdata = LoadBSPFile( g_bspfilename );
+        ParseEntities( g_bspdata );
 
         Settings(); // AJM: moved here due to info_compile_parameters entity
 
@@ -1564,10 +1564,10 @@ static void     ProcessFile( const char* const filename )
                         Warning( "Couldn't open %s", name );
 #undef dplane_t
 #undef g_dplanes
-                        for ( i = 0; i < g_numplanes; i++ )
+                        for ( i = 0; i < g_bspdata->numplanes; i++ )
                         {
                                 plane_t *mp = &g_mapplanes[i];
-                                dplane_t *dp = &g_dplanes[i];
+                                dplane_t *dp = &g_bspdata->dplanes[i];
                                 VectorCopy( dp->normal, mp->normal );
                                 mp->dist = dp->dist;
                                 mp->type = dp->type;
@@ -1577,11 +1577,11 @@ static void     ProcessFile( const char* const filename )
                 }
                 else
                 {
-                        if ( q_filelength( planefile ) != g_numplanes * sizeof( dplane_t ) )
+                        if ( q_filelength( planefile ) != g_bspdata->numplanes * sizeof( dplane_t ) )
                         {
                                 Error( "Invalid plane data" );
                         }
-                        SafeRead( planefile, g_dplanes, g_numplanes * sizeof( dplane_t ) );
+                        SafeRead( planefile, g_dplanes, g_bspdata->numplanes * sizeof( dplane_t ) );
                         fclose( planefile );
                 }
         }

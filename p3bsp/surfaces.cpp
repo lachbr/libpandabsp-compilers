@@ -39,7 +39,7 @@ void            SubdivideFace( face_t* f, face_t** prevptr )
         {
                 return;
         }
-        tex = &g_texinfo[f->texturenum];
+        tex = &g_bspdata->texinfo[f->texturenum];
 
         if ( tex->flags & TEX_SPECIAL )
         {
@@ -307,17 +307,17 @@ static int      GetVertex( const vec3_t in, const int planenum )
         hv->next = hashverts[h];
         hashverts[h] = hv;
         VectorCopy( vert, hv->point );
-        hv->num = g_numvertexes;
+        hv->num = g_bspdata->numvertexes;
         hlassume( hv->num != MAX_MAP_VERTS, assume_MAX_MAP_VERTS );
         hvert_p++;
 
         // emit a vertex
-        hlassume( g_numvertexes < MAX_MAP_VERTS, assume_MAX_MAP_VERTS );
+        hlassume( g_bspdata->numvertexes < MAX_MAP_VERTS, assume_MAX_MAP_VERTS );
 
-        g_dvertexes[g_numvertexes].point[0] = vert[0];
-        g_dvertexes[g_numvertexes].point[1] = vert[1];
-        g_dvertexes[g_numvertexes].point[2] = vert[2];
-        g_numvertexes++;
+        g_bspdata->dvertexes[g_bspdata->numvertexes].point[0] = vert[0];
+        g_bspdata->dvertexes[g_bspdata->numvertexes].point[1] = vert[1];
+        g_bspdata->dvertexes[g_bspdata->numvertexes].point[2] = vert[2];
+        g_bspdata->numvertexes++;
 
         return hv->num;
 }
@@ -339,9 +339,9 @@ int             GetEdge( const vec3_t p1, const vec3_t p2, face_t* f )
 
         v1 = GetVertex( p1, f->planenum );
         v2 = GetVertex( p2, f->planenum );
-        for ( i = firstmodeledge; i < g_numedges; i++ )
+        for ( i = firstmodeledge; i < g_bspdata->numedges; i++ )
         {
-                edge = &g_dedges[i];
+                edge = &g_bspdata->dedges[i];
                 if ( v1 == edge->v[1] && v2 == edge->v[0] && !edgefaces[i][1] && edgefaces[i][0]->contents == f->contents
                      && edgefaces[i][0]->planenum != ( f->planenum ^ 1 )
                      && edgefaces[i][0]->contents == f->contents
@@ -353,9 +353,9 @@ int             GetEdge( const vec3_t p1, const vec3_t p2, face_t* f )
         }
 
         // emit an edge
-        hlassume( g_numedges < MAX_MAP_EDGES, assume_MAX_MAP_EDGES );
-        edge = &g_dedges[g_numedges];
-        g_numedges++;
+        hlassume( g_bspdata->numedges < MAX_MAP_EDGES, assume_MAX_MAP_EDGES );
+        edge = &g_bspdata->dedges[g_bspdata->numedges];
+        g_bspdata->numedges++;
         edge->v[0] = v1;
         edge->v[1] = v2;
         edgefaces[i][0] = f;
@@ -369,6 +369,6 @@ int             GetEdge( const vec3_t p1, const vec3_t p2, face_t* f )
 void            MakeFaceEdges()
 {
         InitHash();
-        firstmodeledge = g_numedges;
-        firstmodelface = g_numfaces;
+        firstmodeledge = g_bspdata->numedges;
+        firstmodelface = g_bspdata->numfaces;
 }

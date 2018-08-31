@@ -534,7 +534,7 @@ static surface_t* ChoosePlaneFromList( surface_t* surfaces, const vec3_t mins, c
 
         planecount = 0;
         totalsplit = 0;
-        tmpvalue = ( double( *)[2] )malloc( g_numplanes * sizeof( double[2] ) );
+        tmpvalue = ( double( *)[2] )malloc( g_bspdata->numplanes * sizeof( double[2] ) );
         surfacetree = BuildSurfaceTree( surfaces, ON_EPSILON );
 
         //
@@ -1204,15 +1204,15 @@ static void     LinkLeafFaces( surface_t* planelist, node_t* leafnode )
         }
         if ( surf )
         {
-                entity_t *ent = EntityForModel( g_nummodels - 1 );
-                if ( g_nummodels - 1 != 0 && ent == &g_entities[0] )
+                entity_t *ent = EntityForModel( g_bspdata, g_bspdata->nummodels - 1 );
+                if ( g_bspdata->nummodels - 1 != 0 && ent == &g_bspdata->entities[0] )
                 {
                         ent = NULL;
                 }
                 Warning( "Ambiguous leafnode content ( %s and %s ) at (%.0f,%.0f,%.0f)-(%.0f,%.0f,%.0f) in hull %d of model %d (entity: classname \"%s\", origin \"%s\", targetname \"%s\")",
                          ContentsToString( ContentsForRank( r ) ), ContentsToString( ContentsForRank( rank ) ),
                          leafnode->mins[0], leafnode->mins[1], leafnode->mins[2], leafnode->maxs[0], leafnode->maxs[1], leafnode->maxs[2],
-                         g_hullnum, g_nummodels - 1,
+                         g_hullnum, g_bspdata->nummodels - 1,
                          ( ent ? ValueForKey( ent, "classname" ) : "unknown" ),
                          ( ent ? ValueForKey( ent, "origin" ) : "unknown" ),
                          ( ent ? ValueForKey( ent, "targetname" ) : "unknown" ) );

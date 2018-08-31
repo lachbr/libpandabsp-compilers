@@ -63,8 +63,8 @@
 #endif
 
 
-#define	MAXEDGES			48                 // 32
-#define	MAXPOINTS			28                 // don't let a base face get past this
+#define	MAXEDGES			128                 // 32
+#define	MAXPOINTS			256                 // don't let a base face get past this
 // because it can be split more later
 #define MAXNODESIZE     1024                               // Valve default is 1024
 

@@ -60,7 +60,7 @@ static int WritePlane( int planenum )
 // =====================================================================================
 static int WriteTexinfo( int texinfo )
 {
-        if ( texinfo < 0 || texinfo >= g_numtexinfo )
+        if ( texinfo < 0 || texinfo >= g_bspdata->numtexinfo )
         {
                 Error( "Bad texinfo number %d.\n", texinfo );
         }
@@ -80,7 +80,7 @@ static int WriteTexinfo( int texinfo )
         int c;
         hlassume( g_nummappedtexinfo < MAX_MAP_TEXINFO, assume_MAX_MAP_TEXINFO );
         c = g_nummappedtexinfo;
-        g_mappedtexinfo[g_nummappedtexinfo] = g_texinfo[texinfo];
+        g_mappedtexinfo[g_nummappedtexinfo] = g_bspdata->texinfo[texinfo];
         g_texinfomap.insert( texinfomap_t::value_type( texinfo, g_nummappedtexinfo ) );
         g_nummappedtexinfo++;
         return c;
@@ -127,8 +127,8 @@ static int      WriteClipNodes_r( node_t* node
 
         dclipnode_t tmpclipnode; // this clipnode will be inserted into g_dclipnodes[c] if it can't be merged
         cn = &tmpclipnode;
-        c = g_numclipnodes;
-        g_numclipnodes++;
+        c = g_bspdata->numclipnodes;
+        g_bspdata->numclipnodes++;
         if ( node->planenum & 1 )
         {
                 Error( "WriteClipNodes_r: odd planenum" );
@@ -146,17 +146,17 @@ static int      WriteClipNodes_r( node_t* node
         if ( g_noclipnodemerge || output == outputmap->end() )
         {
                 hlassume( c < MAX_MAP_CLIPNODES, assume_MAX_MAP_CLIPNODES );
-                g_dclipnodes[c] = *cn;
+                g_bspdata->dclipnodes[c] = *cn;
                 ( *outputmap )[MakeKey( *cn )] = c;
         }
         else
         {
                 count_mergedclipnodes++;
-                if ( g_numclipnodes != c + 1 )
+                if ( g_bspdata->numclipnodes != c + 1 )
                 {
                         Error( "Merge clipnodes: internal error" );
                 }
-                g_numclipnodes = c;
+                g_bspdata->numclipnodes = c;
                 c = output->second; // use existing clipnode
         }
 
@@ -187,12 +187,12 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
         face_t**        fp;
         face_t*         f;
         dleaf_t*        leaf_p;
-        int				leafnum = g_numleafs;
+        int				leafnum = g_bspdata->numleafs;
 
         // emit a leaf
-        hlassume( g_numleafs < MAX_MAP_LEAFS, assume_MAX_MAP_LEAFS );
-        leaf_p = &g_dleafs[g_numleafs];
-        g_numleafs++;
+        hlassume( g_bspdata->numleafs < MAX_MAP_LEAFS, assume_MAX_MAP_LEAFS );
+        leaf_p = &g_bspdata->dleafs[g_bspdata->numleafs];
+        g_bspdata->numleafs++;
 
         leaf_p->contents = portalleaf->contents;
 
@@ -230,19 +230,19 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
         //
         // write the leafbrushes
         //
-        leaf_p->firstleafbrush = g_dleafbrushes.size();
+        leaf_p->firstleafbrush = g_bspdata->dleafbrushes.size();
         for ( size_t bnum = 0; bnum < node->brushlist.size(); bnum++ )
         {
                 int brushnum = node->brushlist[bnum];
-                if ( std::find( g_dleafbrushes.begin(), g_dleafbrushes.end(), brushnum ) == g_dleafbrushes.end() )
+                if ( std::find( g_bspdata->dleafbrushes.begin(), g_bspdata->dleafbrushes.end(), brushnum ) == g_bspdata->dleafbrushes.end() )
                 {
-                        g_dleafbrushes.push_back( brushnum );
+                        g_bspdata->dleafbrushes.push_back( brushnum );
                 }
         }
-        leaf_p->numleafbrushes = g_dleafbrushes.size() - leaf_p->firstleafbrush;
+        leaf_p->numleafbrushes = g_bspdata->dleafbrushes.size() - leaf_p->firstleafbrush;
 
         
-        leaf_p->firstmarksurface = g_nummarksurfaces;
+        leaf_p->firstmarksurface = g_bspdata->nummarksurfaces;
 
         hlassume( node->markfaces != NULL, assume_EmptySolid );
 
@@ -260,7 +260,7 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
                         }
                         bool ishidden = false;
                         {
-                                const char *name = GetTextureByNumber( f->texturenum );
+                                const char *name = GetTextureByNumber( g_bspdata, f->texturenum );
                                 if ( strlen( name ) >= 7 && !strcasecmp( &name[strlen( name ) - 7], "_HIDDEN" ) )
                                 {
                                         ishidden = true;
@@ -271,15 +271,15 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
                                 f = f->original;
                                 continue;
                         }
-                        g_dmarksurfaces[g_nummarksurfaces] = f->outputnumber;
-                        hlassume( g_nummarksurfaces < MAX_MAP_MARKSURFACES, assume_MAX_MAP_MARKSURFACES );
-                        g_nummarksurfaces++;
+                        g_bspdata->dmarksurfaces[g_bspdata->nummarksurfaces] = f->outputnumber;
+                        hlassume( g_bspdata->nummarksurfaces < MAX_MAP_MARKSURFACES, assume_MAX_MAP_MARKSURFACES );
+                        g_bspdata->nummarksurfaces++;
                         f = f->original;                               // grab tjunction split faces
                 } while ( f );
         }
         free( node->markfaces );
 
-        leaf_p->nummarksurfaces = g_nummarksurfaces - leaf_p->firstmarksurface;
+        leaf_p->nummarksurfaces = g_bspdata->nummarksurfaces - leaf_p->firstmarksurface;
         return leafnum;
 }
 
@@ -311,15 +311,15 @@ static void     WriteFace( face_t* f )
                 return;
         }
 
-        f->outputnumber = g_numfaces;
+        f->outputnumber = g_bspdata->numfaces;
 
-        df = &g_dfaces[g_numfaces];
-        hlassume( g_numfaces < MAX_MAP_FACES, assume_MAX_MAP_FACES );
-        g_numfaces++;
+        df = &g_bspdata->dfaces[g_bspdata->numfaces];
+        hlassume( g_bspdata->numfaces < MAX_MAP_FACES, assume_MAX_MAP_FACES );
+        g_bspdata->numfaces++;
 
         df->planenum = WritePlane( f->planenum );
         df->side = (byte)(f->planenum & 1);
-        df->firstedge = g_numsurfedges;
+        df->firstedge = g_bspdata->numsurfedges;
         df->numedges = f->numpoints;
         df->texinfo = WriteTexinfo( f->texturenum );
         df->on_node = (byte)(f->original != NULL);
@@ -330,9 +330,9 @@ static void     WriteFace( face_t* f )
         for ( i = 0; i < f->numpoints; i++ )
         {
                 e = f->outputedges[i];
-                hlassume( g_numsurfedges < MAX_MAP_SURFEDGES, assume_MAX_MAP_SURFEDGES );
-                g_dsurfedges[g_numsurfedges] = e;
-                g_numsurfedges++;
+                hlassume( g_bspdata->numsurfedges < MAX_MAP_SURFEDGES, assume_MAX_MAP_SURFEDGES );
+                g_bspdata->dsurfedges[g_bspdata->numsurfedges] = e;
+                g_bspdata->numsurfedges++;
         }
         free( f->outputedges );
         f->outputedges = NULL;
@@ -371,12 +371,12 @@ static int WriteDrawNodes_r( node_t *node, const node_t *portalleaf )
         dnode_t*        n;
         int             i;
         face_t*         f;
-        int nodenum = g_numnodes;
+        int nodenum = g_bspdata->numnodes;
 
         // emit a node
-        hlassume( g_numnodes < MAX_MAP_NODES, assume_MAX_MAP_NODES );
-        n = &g_dnodes[g_numnodes];
-        g_numnodes++;
+        hlassume( g_bspdata->numnodes < MAX_MAP_NODES, assume_MAX_MAP_NODES );
+        n = &g_bspdata->dnodes[g_bspdata->numnodes];
+        g_bspdata->numnodes++;
 
         vec3_t mins, maxs;
 #if 0
@@ -407,14 +407,14 @@ static int WriteDrawNodes_r( node_t *node, const node_t *portalleaf )
                 Error( "WriteDrawNodes_r: odd planenum" );
         }
         n->planenum = WritePlane( node->planenum );
-        n->firstface = g_numfaces;
+        n->firstface = g_bspdata->numfaces;
 
         for ( f = node->faces; f; f = f->next )
         {
                 WriteFace( f );
         }
 
-        n->numfaces = g_numfaces - n->firstface;
+        n->numfaces = g_bspdata->numfaces - n->firstface;
 
         //
         // recursively output the other nodes
@@ -579,20 +579,20 @@ void            BeginBSPFile()
         g_nummappedtexinfo = 0;
         g_texinfomap.clear();
         count_mergedclipnodes = 0;
-        g_nummodels = 0;
-        g_numfaces = 0;
-        g_numnodes = 0;
-        g_numclipnodes = 0;
-        g_numvertexes = 0;
-        g_nummarksurfaces = 0;
-        g_numsurfedges = 0;
+        g_bspdata->nummodels = 0;
+        g_bspdata->numfaces = 0;
+        g_bspdata->numnodes = 0;
+        g_bspdata->numclipnodes = 0;
+        g_bspdata->numvertexes = 0;
+        g_bspdata->nummarksurfaces = 0;
+        g_bspdata->numsurfedges = 0;
 
         // edge 0 is not used, because 0 can't be negated
-        g_numedges = 1;
+        g_bspdata->numedges = 1;
 
         // leaf 0 is common solid with no faces
-        g_numleafs = 1;
-        g_dleafs[0].contents = CONTENTS_SOLID;
+        g_bspdata->numleafs = 1;
+        g_bspdata->dleafs[0].contents = CONTENTS_SOLID;
 }
 
 // =====================================================================================
@@ -602,31 +602,31 @@ void            FinishBSPFile()
 {
         Verbose( "--- FinishBSPFile ---\n" );
 
-        if ( g_dmodels[0].visleafs > MAX_MAP_LEAFS_ENGINE )
+        if ( g_bspdata->dmodels[0].visleafs > MAX_MAP_LEAFS_ENGINE )
         {
-                Warning( "Number of world leaves(%d) exceeded MAX_MAP_LEAFS(%d)\nIf you encounter problems when running your map, consider this the most likely cause.\n", g_dmodels[0].visleafs, MAX_MAP_LEAFS_ENGINE );
+                Warning( "Number of world leaves(%d) exceeded MAX_MAP_LEAFS(%d)\nIf you encounter problems when running your map, consider this the most likely cause.\n", g_bspdata->dmodels[0].visleafs, MAX_MAP_LEAFS_ENGINE );
         }
-        if ( g_dmodels[0].numfaces > MAX_MAP_WORLDFACES )
+        if ( g_bspdata->dmodels[0].numfaces > MAX_MAP_WORLDFACES )
         {
-                Warning( "Number of world faces(%d) exceeded %d. Some faces will disappear in game.\nTo reduce world faces, change some world brushes (including func_details) to func_walls.\n", g_dmodels[0].numfaces, MAX_MAP_WORLDFACES );
+                Warning( "Number of world faces(%d) exceeded %d. Some faces will disappear in game.\nTo reduce world faces, change some world brushes (including func_details) to func_walls.\n", g_bspdata->dmodels[0].numfaces, MAX_MAP_WORLDFACES );
         }
         Developer( DEVELOPER_LEVEL_MESSAGE, "count_mergedclipnodes = %d\n", count_mergedclipnodes );
         if ( !g_noclipnodemerge )
         {
-                Log( "Reduced %d clipnodes to %d\n", g_numclipnodes + count_mergedclipnodes, g_numclipnodes );
+                Log( "Reduced %d clipnodes to %d\n", g_bspdata->numclipnodes + count_mergedclipnodes, g_bspdata->numclipnodes );
         }
         if ( !g_noopt )
         {
                 {
-                        Log( "Reduced %d texinfos to %d\n", g_numtexinfo, g_nummappedtexinfo );
+                        Log( "Reduced %d texinfos to %d\n", g_bspdata->numtexinfo, g_nummappedtexinfo );
                         for ( int i = 0; i < g_nummappedtexinfo; i++ )
                         {
-                                g_texinfo[i] = g_mappedtexinfo[i];
+                                g_bspdata->texinfo[i] = g_mappedtexinfo[i];
                         }
-                        g_numtexinfo = g_nummappedtexinfo;
+                        g_bspdata->numtexinfo = g_nummappedtexinfo;
                 }
                 {
-                        int g_old_numtexrefs = g_numtexrefs;
+                        int g_old_numtexrefs = g_bspdata->numtexrefs;
                         /*
                         bool *Used = (bool *)calloc (g_old_numtexrefs, sizeof(bool));
                         int Num = 0, Size = 0;
@@ -749,17 +749,17 @@ void            FinishBSPFile()
                         free (Map);
                         */
                 }
-                Log( "Reduced %d planes to %d\n", g_numplanes, gNumMappedPlanes );
+                Log( "Reduced %d planes to %d\n", g_bspdata->numplanes, gNumMappedPlanes );
                 for ( int counter = 0; counter < gNumMappedPlanes; counter++ )
                 {
                         g_dplanes[counter] = gMappedPlanes[counter];
                 }
-                g_numplanes = gNumMappedPlanes;
+                g_bspdata->numplanes = gNumMappedPlanes;
         }
         else
         {
-                hlassume( g_numtexinfo < MAX_MAP_TEXINFO, assume_MAX_MAP_TEXINFO );
-                hlassume( g_numplanes < MAX_MAP_PLANES, assume_MAX_MAP_PLANES );
+                hlassume( g_bspdata->numtexinfo < MAX_MAP_TEXINFO, assume_MAX_MAP_TEXINFO );
+                hlassume( g_bspdata->numplanes < MAX_MAP_PLANES, assume_MAX_MAP_PLANES );
         }
         if ( !g_nobrink )
         {
@@ -776,20 +776,20 @@ void            FinishBSPFile()
                 hlassume( headnode != NULL, assume_NoMemory );
 
                 int i, j, level;
-                for ( i = 0; i < g_nummodels; i++ )
+                for ( i = 0; i < g_bspdata->nummodels; i++ )
                 {
-                        dmodel_t *m = &g_dmodels[i];
+                        dmodel_t *m = &g_bspdata->dmodels[i];
                         Developer( DEVELOPER_LEVEL_MESSAGE, " model %d\n", i );
                         for ( j = 1; j < NUM_HULLS; j++ )
                         {
-                                brinkinfo[i][j] = CreateBrinkinfo( g_dclipnodes, m->headnode[j] );
+                                brinkinfo[i][j] = CreateBrinkinfo( g_bspdata->dclipnodes, m->headnode[j] );
                         }
                 }
                 for ( level = BrinkAny; level > BrinkNone; level-- )
                 {
                         numclipnodes = 0;
                         count_mergedclipnodes = 0;
-                        for ( i = 0; i < g_nummodels; i++ )
+                        for ( i = 0; i < g_bspdata->nummodels; i++ )
                         {
                                 for ( j = 1; j < NUM_HULLS; j++ )
                                 {
@@ -803,12 +803,12 @@ void            FinishBSPFile()
                                         break;
                                 }
                         }
-                        if ( i == g_nummodels )
+                        if ( i == g_bspdata->nummodels )
                         {
                                 break;
                         }
                 }
-                for ( i = 0; i < g_nummodels; i++ )
+                for ( i = 0; i < g_bspdata->nummodels; i++ )
                 {
                         for ( j = 1; j < NUM_HULLS; j++ )
                         {
@@ -826,12 +826,12 @@ void            FinishBSPFile()
                                 Warning( "Not all brinks have been fixed because clipnode data is almost full." );
                         }
                         Developer( DEVELOPER_LEVEL_MESSAGE, "count_mergedclipnodes = %d\n", count_mergedclipnodes );
-                        Log( "Increased %d clipnodes to %d.\n", g_numclipnodes, numclipnodes );
-                        g_numclipnodes = numclipnodes;
-                        memcpy( g_dclipnodes, clipnodes, numclipnodes * sizeof( dclipnode_t ) );
-                        for ( i = 0; i < g_nummodels; i++ )
+                        Log( "Increased %d clipnodes to %d.\n", g_bspdata->numclipnodes, numclipnodes );
+                        g_bspdata->numclipnodes = numclipnodes;
+                        memcpy( g_bspdata->dclipnodes, clipnodes, numclipnodes * sizeof( dclipnode_t ) );
+                        for ( i = 0; i < g_bspdata->nummodels; i++ )
                         {
-                                dmodel_t *m = &g_dmodels[i];
+                                dmodel_t *m = &g_bspdata->dmodels[i];
                                 for ( j = 1; j < NUM_HULLS; j++ )
                                 {
                                         m->headnode[j] = headnode[i][j];
@@ -844,26 +844,26 @@ void            FinishBSPFile()
         }
 
 #ifdef PLATFORM_CAN_CALC_EXTENT
-        WriteExtentFile( g_extentfilename );
+        WriteExtentFile( g_bspdata, g_extentfilename );
 #else
         Warning( "The " PLATFORM_VERSIONSTRING " version of hlbsp couldn't create extent file. The lack of extent file may cause hlrad error." );
 #endif
         if ( g_chart )
         {
-                PrintBSPFileSizes();
+                PrintBSPFileSizes( g_bspdata );
         }
 
 #undef dplane_t // this allow us to temporarily access the raw data directly without the layer of indirection
 #undef g_dplanes
-        for ( int i = 0; i < g_numplanes; i++ )
+        for ( int i = 0; i < g_bspdata->numplanes; i++ )
         {
                 plane_t *mp = &g_mapplanes[i];
-                dplane_t *dp = &g_dplanes[i];
+                dplane_t *dp = &g_bspdata->dplanes[i];
                 VectorCopy( mp->normal, dp->normal );
                 dp->dist = mp->dist;
                 dp->type = mp->type;
         }
 #define dplane_t plane_t
 #define g_dplanes g_mapplanes
-        WriteBSPFile( g_bspfilename );
+        WriteBSPFile( g_bspdata, g_bspfilename );
 }

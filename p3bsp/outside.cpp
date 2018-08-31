@@ -454,14 +454,14 @@ node_t*         FillOutside( node_t* node, const bool leakfile, const unsigned h
         // we know if we leak inside
         //
         inside = false;
-        for ( i = 1; i < g_numentities; i++ )
+        for ( i = 1; i < g_bspdata->numentities; i++ )
         {
-                GetVectorForKey( &g_entities[i], "origin", origin );
-                cl = ValueForKey( &g_entities[i], "classname" );
+                GetVectorForKey( &g_bspdata->entities[i], "origin", origin );
+                cl = ValueForKey( &g_bspdata->entities[i], "classname" );
                 if ( !isClassnameAllowableOutside( cl ) )
                 {
                         /*if (!VectorCompare(origin, vec3_origin))
-                        */ if ( *ValueForKey( &g_entities[i], "origin" ) ) //--vluzacn
+                        */ if ( *ValueForKey( &g_bspdata->entities[i], "origin" ) ) //--vluzacn
                         {
                                 origin[2] += 1;                            // so objects on floor are ok
 
@@ -542,12 +542,12 @@ gotit:;
 
         if ( ret )
         {
-                GetVectorForKey( &g_entities[hit_occupied], "origin", origin );
+                GetVectorForKey( &g_bspdata->entities[hit_occupied], "origin", origin );
 
 
                 {
                         Warning( "=== LEAK in hull %i ===\nEntity %s @ (%4.0f,%4.0f,%4.0f)",
-                                 hullnum, ValueForKey( &g_entities[hit_occupied], "classname" ), origin[0], origin[1], origin[2] );
+                                 hullnum, ValueForKey( &g_bspdata->entities[hit_occupied], "classname" ), origin[0], origin[1], origin[2] );
                         PrintOnce(
                                 "\n  A LEAK is a hole in the map, where the inside of it is exposed to the\n"
                                 "(unwanted) outside region.  The entity listed in the error is just a helpful\n"
@@ -657,13 +657,13 @@ void			FillInside( node_t* node )
         int i;
         g_outside_node.empty = 0;
         ResetMark_r( node );
-        for ( i = 1; i < g_numentities; i++ )
+        for ( i = 1; i < g_bspdata->numentities; i++ )
         {
-                if ( *ValueForKey( &g_entities[i], "origin" ) )
+                if ( *ValueForKey( &g_bspdata->entities[i], "origin" ) )
                 {
                         vec3_t origin;
                         node_t* innode;
-                        GetVectorForKey( &g_entities[i], "origin", origin );
+                        GetVectorForKey( &g_bspdata->entities[i], "origin", origin );
                         origin[2] += 1;
                         innode = PointInLeaf( node, origin );
                         MarkOccupied_r( innode );
