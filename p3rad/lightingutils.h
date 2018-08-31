@@ -10,7 +10,7 @@
 class LightSurface : public BaseBSPEnumerator
 {
 public:
-        LightSurface( int thread );
+        LightSurface( int thread, bspdata_t *data );
 
         virtual bool enumerate_node( int node_id, const Ray &ray,
                                      float f, int context );

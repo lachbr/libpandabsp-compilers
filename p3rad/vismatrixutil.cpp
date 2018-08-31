@@ -228,7 +228,7 @@ void            MakeScales( const int threadnum )
                 bool lighting_diversify;
                 vec_t lighting_power;
                 vec_t lighting_scale;
-                int texref = g_texinfo[g_dfaces[patch->faceNumber].texinfo].texref;
+                int texref = g_bspdata->texinfo[g_bspdata->dfaces[patch->faceNumber].texinfo].texref;
                 lighting_power = g_lightingconeinfo[texref][0];
                 lighting_scale = g_lightingconeinfo[texref][1];
                 lighting_diversify = ( lighting_power != 1.0 || lighting_scale != 1.0 );
@@ -495,7 +495,7 @@ void            MakeRGBScales( const int threadnum )
                 bool lighting_diversify;
                 vec_t lighting_power;
                 vec_t lighting_scale;
-                int texref = g_texinfo[g_dfaces[patch->faceNumber].texinfo].texref;
+                int texref = g_bspdata->texinfo[g_bspdata->dfaces[patch->faceNumber].texinfo].texref;
                 lighting_power = g_lightingconeinfo[texref][0];
                 lighting_scale = g_lightingconeinfo[texref][1];
                 lighting_diversify = ( lighting_power != 1.0 || lighting_scale != 1.0 );

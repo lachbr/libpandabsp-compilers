@@ -38,8 +38,8 @@ static void     MakeTnode( const int nodenum )
 
         t = tnode_p++;
 
-        node = g_dnodes + nodenum;
-        plane = g_dplanes + node->planenum;
+        node = g_bspdata->dnodes + nodenum;
+        plane = g_bspdata->dplanes + node->planenum;
 
         t->type = plane->type;
         VectorCopy( plane->normal, t->normal );
@@ -296,7 +296,7 @@ void ViewTNode()
 void            MakeTnodes( dmodel_t* /*bm*/ )
 {
         // 32 byte align the structs
-        tnodes = (tnode_t*)calloc( ( g_numnodes + 1 ), sizeof( tnode_t ) );
+        tnodes = (tnode_t*)calloc( ( g_bspdata->numnodes + 1 ), sizeof( tnode_t ) );
 
         // The alignment doesn't have any effect at all. --vluzacn
         int ofs = 31 - (int)( ( (uintptr_t)tnodes + (uintptr_t)31 ) & (uintptr_t)31 );
@@ -327,7 +327,7 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
         {
                 // We're in a leaf!
                 int leafnum = ~node;
-                dleaf_t *leaf = &g_dleafs[leafnum];
+                dleaf_t *leaf = &g_bspdata->dleafs[leafnum];
 
                 if ( StaticPropIntersectionTest( start, stop, leafnum ) )
                 {
@@ -668,27 +668,27 @@ void BuildFaceEdges( opaqueface_t *f )
 void CreateOpaqueNodes()
 {
         int i, j;
-        opaquemodels = (opaquemodel_t *)calloc( g_nummodels, sizeof( opaquemodel_t ) );
-        opaquenodes = (opaquenode_t *)calloc( g_numnodes, sizeof( opaquenode_t ) );
-        opaquefaces = (opaqueface_t *)calloc( g_numfaces, sizeof( opaqueface_t ) );
-        for ( i = 0; i < g_numfaces; i++ )
+        opaquemodels = (opaquemodel_t *)calloc( g_bspdata->nummodels, sizeof( opaquemodel_t ) );
+        opaquenodes = (opaquenode_t *)calloc( g_bspdata->numnodes, sizeof( opaquenode_t ) );
+        opaquefaces = (opaqueface_t *)calloc( g_bspdata->numfaces, sizeof( opaqueface_t ) );
+        for ( i = 0; i < g_bspdata->numfaces; i++ )
         {
                 opaqueface_t *of = &opaquefaces[i];
-                dface_t *df = &g_dfaces[i];
-                of->winding = new Winding( *df );
+                dface_t *df = &g_bspdata->dfaces[i];
+                of->winding = new Winding( *df, g_bspdata );
                 if ( of->winding->m_NumPoints < 3 )
                 {
                         delete of->winding;
                         of->winding = NULL;
                 }
-                of->plane = g_dplanes[df->planenum];
+                of->plane = g_bspdata->dplanes[df->planenum];
                 if ( df->side )
                 {
                         VectorInverse( of->plane.normal );
                         of->plane.dist = -of->plane.dist;
                 }
                 of->texinfo = df->texinfo;
-                texinfo_t *info = &g_texinfo[of->texinfo];
+                texinfo_t *info = &g_bspdata->texinfo[of->texinfo];
                 for ( j = 0; j < 2; j++ )
                 {
                         for ( int k = 0; k < 4; k++ )
@@ -701,27 +701,27 @@ void CreateOpaqueNodes()
                 of->tex_image = tex->image;
 
         }
-        for ( i = 0; i < g_numnodes; i++ )
+        for ( i = 0; i < g_bspdata->numnodes; i++ )
         {
                 opaquenode_t *on = &opaquenodes[i];
-                dnode_t *dn = &g_dnodes[i];
-                on->type = g_dplanes[dn->planenum].type;
-                VectorCopy( g_dplanes[dn->planenum].normal, on->normal );
-                on->dist = g_dplanes[dn->planenum].dist;
+                dnode_t *dn = &g_bspdata->dnodes[i];
+                on->type = g_bspdata->dplanes[dn->planenum].type;
+                VectorCopy( g_bspdata->dplanes[dn->planenum].normal, on->normal );
+                on->dist = g_bspdata->dplanes[dn->planenum].dist;
                 on->children[0] = dn->children[0];
                 on->children[1] = dn->children[1];
                 on->firstface = dn->firstface;
                 on->numfaces = dn->numfaces;
                 on->numfaces = MergeOpaqueFaces( on->firstface, on->numfaces );
         }
-        for ( i = 0; i < g_numfaces; i++ )
+        for ( i = 0; i < g_bspdata->numfaces; i++ )
         {
                 BuildFaceEdges( &opaquefaces[i] );
         }
-        for ( i = 0; i < g_nummodels; i++ )
+        for ( i = 0; i < g_bspdata->nummodels; i++ )
         {
                 opaquemodel_t *om = &opaquemodels[i];
-                dmodel_t *dm = &g_dmodels[i];
+                dmodel_t *dm = &g_bspdata->dmodels[i];
                 om->headnode = dm->headnode[0];
                 for ( j = 0; j < 3; j++ )
                 {
@@ -734,7 +734,7 @@ void CreateOpaqueNodes()
 void DeleteOpaqueNodes()
 {
         int i;
-        for ( i = 0; i < g_numfaces; i++ )
+        for ( i = 0; i < g_bspdata->numfaces; i++ )
         {
                 opaqueface_t *of = &opaquefaces[i];
                 if ( of->winding )
@@ -933,7 +933,7 @@ int TestPointOpaque_r( int nodenum, bool solid, const vec3_t point )
         {
                 if ( nodenum < 0 )
                 {
-                        if ( solid && g_dleafs[-nodenum - 1].contents == CONTENTS_SOLID )
+                        if ( solid && g_bspdata->dleafs[-nodenum - 1].contents == CONTENTS_SOLID )
                                 return 1;
                         else
                                 return 0;

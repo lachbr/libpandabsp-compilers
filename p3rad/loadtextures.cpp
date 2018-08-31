@@ -26,7 +26,7 @@ void LoadTextures()
                 Log( "Load Textures:\n" );
         }
 
-        g_numtextures = g_numtexrefs;
+        g_numtextures = g_bspdata->numtexrefs;
         g_textures = (radtexture_t *)malloc( g_numtextures * sizeof( radtexture_t ) );
         hlassume( g_textures != NULL, assume_NoMemory );
         int i;
@@ -40,7 +40,7 @@ void LoadTextures()
                 }
                 else
                 {
-                        texref_t *tref = &g_dtexrefs[i];
+                        texref_t *tref = &g_bspdata->dtexrefs[i];
                         string name = tref->name;
 
                         PNMImage *img = new PNMImage;

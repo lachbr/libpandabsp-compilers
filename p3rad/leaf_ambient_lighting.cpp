@@ -60,7 +60,7 @@ public:
         void generate_leaf_sample_position( int leaf_id, const vector_dplane &leaf_planes,
                                             LVector3 &sample_pos )
         {
-                dleaf_t *leaf = &g_dleafs[leaf_id];
+                dleaf_t *leaf = &g_bspdata->dleafs[leaf_id];
 
                 float dx = leaf->maxs[0] - leaf->mins[0];
                 float dy = leaf->maxs[1] - leaf->mins[1];
@@ -156,8 +156,8 @@ void get_leaf_boundary_planes( vector_dplane &list, int leaf_id )
 
         while ( node_id >= 0 )
         {
-                dnode_t *node = &g_dnodes[node_id];
-                dplane_t *node_plane = &g_dplanes[node->planenum];
+                dnode_t *node = &g_bspdata->dnodes[node_id];
+                dplane_t *node_plane = &g_bspdata->dplanes[node->planenum];
                 if ( node->children[0] == child )
                 {
                         // Front side
@@ -400,7 +400,7 @@ void add_sample_to_list( vector_ambientsample &list, const LVector3 &sample_pos,
 void compute_ambient_for_leaf( int thread, int leaf_id,
                                vector_ambientsample &list )
 {
-        if ( g_dleafs[leaf_id].contents == CONTENTS_SOLID )
+        if ( g_bspdata->dleafs[leaf_id].contents == CONTENTS_SOLID )
         {
                 // Don't generate any samples in solid leaves.
                 // NOTE: We copy the nearest non-solid leaf sample pointers into this leaf at the end.
@@ -413,9 +413,9 @@ void compute_ambient_for_leaf( int thread, int leaf_id,
         get_leaf_boundary_planes( leaf_planes, leaf_id );
         list.clear();
 
-        int xsize = ( g_dleafs[leaf_id].maxs[0] - g_dleafs[leaf_id].mins[0] ) / 32;
-        int ysize = ( g_dleafs[leaf_id].maxs[1] - g_dleafs[leaf_id].mins[1] ) / 32;
-        int zsize = ( g_dleafs[leaf_id].maxs[2] - g_dleafs[leaf_id].mins[2] ) / 64;
+        int xsize = ( g_bspdata->dleafs[leaf_id].maxs[0] - g_bspdata->dleafs[leaf_id].mins[0] ) / 32;
+        int ysize = ( g_bspdata->dleafs[leaf_id].maxs[1] - g_bspdata->dleafs[leaf_id].mins[1] ) / 32;
+        int zsize = ( g_bspdata->dleafs[leaf_id].maxs[2] - g_bspdata->dleafs[leaf_id].mins[2] ) / 64;
         xsize = std::max( xsize, 1 );
         ysize = std::max( ysize, 1 );
         zsize = std::max( zsize, 1 );
@@ -492,36 +492,36 @@ compute_per_leaf_ambient_lighting()
                 }
         }
 
-        int numleafs = g_dmodels[0].visleafs + 1;
+        int numleafs = g_bspdata->dmodels[0].visleafs + 1;
 
         leaf_ambient_samples.resize( numleafs );
 
         NamedRunThreadsOn( numleafs, g_estimate, ComputeLeafAmbientLighting );
 
         // now write out the data :)
-        g_leafambientindex.clear();
-        g_leafambientlighting.clear();
-        g_leafambientindex.resize( numleafs );
-        g_leafambientlighting.reserve( numleafs * 4 );
+        g_bspdata->leafambientindex.clear();
+        g_bspdata->leafambientlighting.clear();
+        g_bspdata->leafambientindex.resize( numleafs );
+        g_bspdata->leafambientlighting.reserve( numleafs * 4 );
         for ( int leaf_id = 0; leaf_id < numleafs; leaf_id++ )
         {
                 const vector_ambientsample &list = leaf_ambient_samples[leaf_id];
-                g_leafambientindex[leaf_id].num_ambient_samples = list.size();
+                g_bspdata->leafambientindex[leaf_id].num_ambient_samples = list.size();
 
                 if ( list.size() == 0 )
                 {
-                        g_leafambientindex[leaf_id].first_ambient_sample = 0;
+                        g_bspdata->leafambientindex[leaf_id].first_ambient_sample = 0;
                 }
                 else
                 {
-                        g_leafambientindex[leaf_id].first_ambient_sample = g_leafambientlighting.size();
+                        g_bspdata->leafambientindex[leaf_id].first_ambient_sample = g_bspdata->leafambientlighting.size();
 
                         for ( int i = 0; i < list.size(); i++ )
                         {
                                 dleafambientlighting_t light;
-                                light.x = fixed_8_fraction( list[i].pos[0], g_dleafs[leaf_id].mins[0], g_dleafs[leaf_id].maxs[0] );
-                                light.y = fixed_8_fraction( list[i].pos[1], g_dleafs[leaf_id].mins[1], g_dleafs[leaf_id].maxs[1] );
-                                light.z = fixed_8_fraction( list[i].pos[2], g_dleafs[leaf_id].mins[2], g_dleafs[leaf_id].maxs[2] );
+                                light.x = fixed_8_fraction( list[i].pos[0], g_bspdata->dleafs[leaf_id].mins[0], g_bspdata->dleafs[leaf_id].maxs[0] );
+                                light.y = fixed_8_fraction( list[i].pos[1], g_bspdata->dleafs[leaf_id].mins[1], g_bspdata->dleafs[leaf_id].maxs[1] );
+                                light.z = fixed_8_fraction( list[i].pos[2], g_bspdata->dleafs[leaf_id].mins[2], g_bspdata->dleafs[leaf_id].maxs[2] );
                                 light.pad = 0;
                                 for ( int side = 0; side < 6; side++ )
                                 {
@@ -530,7 +530,7 @@ compute_per_leaf_ambient_lighting()
                                         VectorToColorRGBExp32( list[i].cube[side], light.cube.color[side] );
                                 }
 
-                                g_leafambientlighting.push_back( light );
+                                g_bspdata->leafambientlighting.push_back( light );
                         }
                 }
         }
@@ -538,9 +538,9 @@ compute_per_leaf_ambient_lighting()
         
         for ( int i = 0; i < numleafs; i++ )
         {
-                if ( g_leafambientindex[i].num_ambient_samples == 0 )
+                if ( g_bspdata->leafambientindex[i].num_ambient_samples == 0 )
                 {
-                        if ( g_dleafs[i].contents == CONTENTS_SOLID )
+                        if ( g_bspdata->dleafs[i].contents == CONTENTS_SOLID )
                         {
                                 Warning( "Bad leaf ambient for leaf %d\n", i );
                         }

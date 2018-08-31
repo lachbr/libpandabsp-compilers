@@ -10,8 +10,8 @@ dleaf_t*		PointInLeaf_Worst_r( int nodenum, const vec3_t point )
 
         while ( nodenum >= 0 )
         {
-                node = &g_dnodes[nodenum];
-                plane = &g_dplanes[node->planenum];
+                node = &g_bspdata->dnodes[nodenum];
+                plane = &g_bspdata->dplanes[node->planenum];
                 dist = DotProduct( point, plane->normal ) - plane->dist;
                 if ( dist > HUNT_WALL_EPSILON )
                 {
@@ -26,9 +26,9 @@ dleaf_t*		PointInLeaf_Worst_r( int nodenum, const vec3_t point )
                         dleaf_t* result[2];
                         result[0] = PointInLeaf_Worst_r( node->children[0], point );
                         result[1] = PointInLeaf_Worst_r( node->children[1], point );
-                        if ( result[0] == g_dleafs || result[0]->contents == CONTENTS_SOLID )
+                        if ( result[0] == g_bspdata->dleafs || result[0]->contents == CONTENTS_SOLID )
                                 return result[0];
-                        if ( result[1] == g_dleafs || result[1]->contents == CONTENTS_SOLID )
+                        if ( result[1] == g_bspdata->dleafs || result[1]->contents == CONTENTS_SOLID )
                                 return result[1];
                         if ( result[0]->contents == CONTENTS_SKY )
                                 return result[0];
@@ -36,11 +36,11 @@ dleaf_t*		PointInLeaf_Worst_r( int nodenum, const vec3_t point )
                                 return result[1];
                         if ( result[0]->contents == result[1]->contents )
                                 return result[0];
-                        return g_dleafs;
+                        return g_bspdata->dleafs;
                 }
         }
 
-        return &g_dleafs[-nodenum - 1];
+        return &g_bspdata->dleafs[-nodenum - 1];
 }
 dleaf_t*		PointInLeaf_Worst( const vec3_t point )
 {
@@ -56,8 +56,8 @@ dleaf_t*        PointInLeaf( const vec3_t point )
         nodenum = 0;
         while ( nodenum >= 0 )
         {
-                node = &g_dnodes[nodenum];
-                plane = &g_dplanes[node->planenum];
+                node = &g_bspdata->dnodes[nodenum];
+                plane = &g_bspdata->dplanes[node->planenum];
                 dist = DotProduct( point, plane->normal ) - plane->dist;
                 if ( dist >= 0.0 )
                 {
@@ -69,7 +69,7 @@ dleaf_t*        PointInLeaf( const vec3_t point )
                 }
         }
 
-        return &g_dleafs[-nodenum - 1];
+        return &g_bspdata->dleafs[-nodenum - 1];
 }
 
 /*
@@ -89,10 +89,10 @@ void            MakeBackplanes()
 {
         int             i;
 
-        for ( i = 0; i < g_numplanes; i++ )
+        for ( i = 0; i < g_bspdata->numplanes; i++ )
         {
-                backplanes[i].dist = -g_dplanes[i].dist;
-                VectorSubtract( vec3_origin, g_dplanes[i].normal, backplanes[i].normal );
+                backplanes[i].dist = -g_bspdata->dplanes[i].dist;
+                VectorSubtract( vec3_origin, g_bspdata->dplanes[i].normal, backplanes[i].normal );
         }
 }
 
@@ -109,13 +109,13 @@ const dplane_t* getPlaneFromFace( const dface_t* const face )
         }
         else
         {
-                return &g_dplanes[face->planenum];
+                return &g_bspdata->dplanes[face->planenum];
         }
 }
 
 const dplane_t* getPlaneFromFaceNumber( const unsigned int faceNumber )
 {
-        dface_t*        face = &g_dfaces[faceNumber];
+        dface_t*        face = &g_bspdata->dfaces[faceNumber];
 
         if ( face->side )
         {
@@ -123,14 +123,14 @@ const dplane_t* getPlaneFromFaceNumber( const unsigned int faceNumber )
         }
         else
         {
-                return &g_dplanes[face->planenum];
+                return &g_bspdata->dplanes[face->planenum];
         }
 }
 
 // Returns plane adjusted for face offset (for origin brushes, primarily used in the opaque code)
 void getAdjustedPlaneFromFaceNumber( unsigned int faceNumber, dplane_t* plane )
 {
-        dface_t*        face = &g_dfaces[faceNumber];
+        dface_t*        face = &g_bspdata->dfaces[faceNumber];
         const vec_t*    face_offset = g_face_offset[faceNumber];
 
         plane->type = (planetypes)0;
@@ -147,9 +147,9 @@ void getAdjustedPlaneFromFaceNumber( unsigned int faceNumber, dplane_t* plane )
         {
                 vec_t dist;
 
-                VectorCopy( g_dplanes[face->planenum].normal, plane->normal );
+                VectorCopy( g_bspdata->dplanes[face->planenum].normal, plane->normal );
                 dist = DotProduct( plane->normal, face_offset );
-                plane->dist = g_dplanes[face->planenum].dist + dist;
+                plane->dist = g_bspdata->dplanes[face->planenum].dist + dist;
         }
 }
 
@@ -224,7 +224,7 @@ dleaf_t*        HuntForWorld( vec_t* point, const vec_t* plane_offset, const dpl
                                         }
                                         if ( dist < best_dist )
                                         {
-                                                if ( ( leaf = PointInLeaf_Worst( current_point ) ) != g_dleafs )
+                                                if ( ( leaf = PointInLeaf_Worst( current_point ) ) != g_bspdata->dleafs )
                                                 {
                                                         if ( ( leaf->contents != CONTENTS_SKY ) && ( leaf->contents != CONTENTS_SOLID ) )
                                                         {
@@ -349,8 +349,8 @@ void TranslateWorldToTex( int facenum, matrix_t &m )
         const dplane_t *fp;
         int i;
 
-        f = &g_dfaces[facenum];
-        ti = &g_texinfo[f->texinfo];
+        f = &g_bspdata->dfaces[facenum];
+        ti = &g_bspdata->texinfo[f->texinfo];
         fp = getPlaneFromFace( f );
         for ( i = 0; i < 3; i++ )
         {
@@ -625,7 +625,7 @@ void FindFacePositions( int facenum )
         int x;
         int k;
 
-        f = &g_dfaces[facenum];
+        f = &g_bspdata->dfaces[facenum];
         map = &g_face_positions[facenum];
         map->valid = true;
         map->facenum = facenum;
@@ -634,7 +634,7 @@ void FindFacePositions( int facenum )
         map->texwinding = NULL;
         map->grid = NULL;
 
-        ti = &g_texinfo[f->texinfo];
+        ti = &g_bspdata->texinfo[f->texinfo];
         if ( ti->flags & TEX_SPECIAL )
         {
                 map->valid = false;
@@ -650,7 +650,7 @@ void FindFacePositions( int facenum )
                 return;
         }
 
-        map->facewinding = new Winding( *f );
+        map->facewinding = new Winding( *f, g_bspdata );
         map->faceplane = *getPlaneFromFace( f );
         map->facewindingwithoffset = new Winding( map->facewinding->m_NumPoints );
         for ( x = 0; x < map->facewinding->m_NumPoints; x++ )
@@ -757,7 +757,7 @@ void FreePositionMaps()
                         const vec3_t pos[pos_count] = { { 0,0,0 },{ 1,0,0 },{ 0,1,0 },{ -1,0,0 },{ 0,-1,0 },{ 1,0,0 },{ 0,0,1 },{ -1,0,0 },{ 0,0,-1 },{ 0,-1,0 },{ 0,0,1 },{ 0,1,0 },{ 0,0,-1 },{ 1,0,0 },{ 0,0,0 } };
                         int i, j, k;
                         vec3_t v, dist;
-                        for ( i = 0; i < g_numfaces; ++i )
+                        for ( i = 0; i < g_bspdata->numfaces; ++i )
                         {
                                 positionmap_t *map = &g_face_positions[i];
                                 if ( !map->valid )
@@ -785,7 +785,7 @@ void FreePositionMaps()
                 else
                         Log( "Error.\n" );
         }
-        for ( int facenum = 0; facenum < g_numfaces; facenum++ )
+        for ( int facenum = 0; facenum < g_bspdata->numfaces; facenum++ )
         {
                 positionmap_t *map = &g_face_positions[facenum];
                 if ( map->valid )

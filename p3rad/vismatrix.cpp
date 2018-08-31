@@ -157,10 +157,10 @@ static void     BuildVisLeafs( int threadnum )
                 if ( i == -1 )
                         break;
                 i++;                                               // skip leaf 0
-                srcleaf = &g_dleafs[i];
-                if ( !g_visdatasize )
+                srcleaf = &g_bspdata->dleafs[i];
+                if ( !g_bspdata->visdatasize )
                 {
-                        memset( pvs, 255, ( g_dmodels[0].visleafs + 7 ) / 8 );
+                        memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
                 }
                 else
                 {
@@ -169,7 +169,7 @@ static void     BuildVisLeafs( int threadnum )
                                 Developer( DEVELOPER_LEVEL_ERROR, "Error: No visdata for leaf %d\n", i );
                                 continue;
                         }
-                        DecompressVis( &g_dvisdata[srcleaf->visofs], pvs, sizeof( pvs ) );
+                        DecompressVis( g_bspdata, &g_bspdata->dvisdata[srcleaf->visofs], pvs, sizeof( pvs ) );
                 }
                 head = 0;
 
@@ -178,7 +178,7 @@ static void     BuildVisLeafs( int threadnum )
                 // leaf, and process the patches that
                 // actually have origins inside
                 //
-                for ( facenum = 0; facenum < g_numfaces; facenum++ )
+                for ( facenum = 0; facenum < g_bspdata->numfaces; facenum++ )
                 {
                         for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
                         {
@@ -190,7 +190,7 @@ static void     BuildVisLeafs( int threadnum )
 #else
                                 bitpos = patchnum * g_num_patches;
 #endif
-                                for ( facenum2 = facenum + 1; facenum2 < g_numfaces; facenum2++ )
+                                for ( facenum2 = facenum + 1; facenum2 < g_bspdata->numfaces; facenum2++ )
                                         TestPatchToFace( patchnum, facenum2, head, bitpos, pvs );
                         }
                 }
@@ -226,7 +226,7 @@ static void     BuildVisMatrix()
                 hlassume( s_vismatrix != NULL, assume_NoMemory );
         }
 
-        NamedRunThreadsOn( g_dmodels[0].visleafs, g_estimate, BuildVisLeafs );
+        NamedRunThreadsOn( g_bspdata->dmodels[0].visleafs, g_estimate, BuildVisLeafs );
 }
 
 static void     FreeVisMatrix()

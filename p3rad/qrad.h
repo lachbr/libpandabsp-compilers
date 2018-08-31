@@ -133,7 +133,7 @@
 #define DEFAULT_NOTEXTURES false
 #define DEFAULT_TEXREFLECTGAMMA 1.76f // 2.0(texgamma cvar) / 2.5 (gamma cvar) * 2.2 (screen gamma) = 1.76
 #define DEFAULT_TEXREFLECTSCALE 0.7f // arbitrary (This is lower than 1.0, because textures are usually brightened in order to look better in Goldsrc. Textures are made brightened because Goldsrc is only able to darken the texture when combining the texture with the lightmap.)
-#define DEFAULT_BLUR 1.5 // classic lighting is equivalent to "-blur 1.0"
+#define DEFAULT_BLUR 1.0 // classic lighting is equivalent to "-blur 1.0"
 #define DEFAULT_NOEMITTERRANGE false
 #define DEFAULT_BLEEDFIX true
 #define DEFAULT_TEXLIGHTGAP 0.0

@@ -44,9 +44,9 @@ void LoadStaticProps()
 
         Loader *loader = Loader::get_global_ptr();
 
-        for ( size_t i = 0; i < g_dstaticprops.size(); i++ )
+        for ( size_t i = 0; i < g_bspdata->dstaticprops.size(); i++ )
         {
-                dstaticprop_t *prop = &g_dstaticprops[i];
+                dstaticprop_t *prop = &g_bspdata->dstaticprops[i];
                 string mdl_path = prop->name;
 
                 NodePath propnp( loader->load_sync( Filename( mdl_path ) ) );
@@ -63,7 +63,7 @@ void LoadStaticProps()
 
                         RADStaticProp *sprop = new RADStaticProp;
                         sprop->shadows = shadow_caster;
-                        sprop->leafnum = leaf - g_dleafs;
+                        sprop->leafnum = leaf - g_bspdata->dleafs;
                         sprop->mdl = propnp;
                         sprop->propnum = (int)i;
 
@@ -200,7 +200,7 @@ void ComputeStaticPropLighting( int thread )
                 Warning( "ThreadComputeStaticPropLighting: prop is nullptr on thread %i\n", thread );
                 return;
         }
-        if ( !g_dstaticprops[prop->propnum].flags & STATICPROPFLAGS_STATICLIGHTING )
+        if ( !g_bspdata->dstaticprops[prop->propnum].flags & STATICPROPFLAGS_STATICLIGHTING )
         {
                 return;
         }
@@ -228,10 +228,10 @@ void ComputeStaticPropLighting( int thread )
                 }
         }
 
-        dstaticprop_t *dprop = &g_dstaticprops[prop->propnum];
+        dstaticprop_t *dprop = &g_bspdata->dstaticprops[prop->propnum];
 
         //ThreadLock();
-        dprop->first_vertex_data = g_dstaticpropvertexdatas.size();
+        dprop->first_vertex_data = g_bspdata->dstaticpropvertexdatas.size();
 
         for ( size_t i = 0; i < vdatas.size(); i++ )
         {
@@ -240,7 +240,7 @@ void ComputeStaticPropLighting( int thread )
                 GeomVertexReader norm_reader( vdata, InternalName::get_normal() );
 
                 dstaticpropvertexdata_t dvdata;
-                dvdata.first_lighting_sample = g_staticproplighting.size();
+                dvdata.first_lighting_sample = g_bspdata->staticproplighting.size();
 
                 for ( int row = 0; row < vdata->get_num_rows(); row++ )
                 {
@@ -258,13 +258,13 @@ void ComputeStaticPropLighting( int thread )
 
                         colorrgbexp32_t sample;
                         VectorToColorRGBExp32( direct_col + indirect_col, sample );
-                        g_staticproplighting.push_back( sample );
+                        g_bspdata->staticproplighting.push_back( sample );
                 }
-                dvdata.num_lighting_samples = g_staticproplighting.size() - dvdata.first_lighting_sample;
+                dvdata.num_lighting_samples = g_bspdata->staticproplighting.size() - dvdata.first_lighting_sample;
 
-                g_dstaticpropvertexdatas.push_back( dvdata );
+                g_bspdata->dstaticpropvertexdatas.push_back( dvdata );
         }
-        dprop->num_vertex_datas = g_dstaticpropvertexdatas.size() - dprop->first_vertex_data;
+        dprop->num_vertex_datas = g_bspdata->dstaticpropvertexdatas.size() - dprop->first_vertex_data;
 
         //ThreadUnlock();
 }

@@ -5,7 +5,8 @@
 
 #define NEVER_UPDATED -9999
 
-LightSurface::LightSurface( int thread ) :
+LightSurface::LightSurface( int thread, bspdata_t *data ) :
+        BaseBSPEnumerator( data ),
         _thread( thread ), _surface( nullptr ),
         _hit_frac( 1.0 ), _has_luxel( false )
 {
@@ -19,11 +20,11 @@ bool LightSurface::enumerate_node( int node_id, const Ray &ray,
         LVector3 pt;
         VectorMA( ray.start, f, ray.delta, pt );
 
-        dnode_t *node = &g_dnodes[node_id];
+        dnode_t *node = &g_bspdata->dnodes[node_id];
 
         for ( int i = 0; i < node->numfaces; i++ )
         {
-                dface_t *face = &g_dfaces[node->firstface + i];
+                dface_t *face = &g_bspdata->dfaces[node->firstface + i];
                 // Don't take into account faces that are in a leaf
                 if ( face->on_node == 0 )
                 {
@@ -32,7 +33,7 @@ bool LightSurface::enumerate_node( int node_id, const Ray &ray,
 
                 // TODO: Don't test displacement faces
 
-                texinfo_t *tex = &g_texinfo[face->texinfo];
+                texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
                 if ( tex->flags & TEX_SPECIAL )
                 {
                         if ( test_point_against_sky_surface( pt, face ) )
@@ -61,18 +62,18 @@ bool LightSurface::enumerate_leaf( int leaf_id, const Ray &ray, float start,
                                    float end, int context )
 {
         bool hit = false;
-        dleaf_t *leaf = &g_dleafs[leaf_id];
+        dleaf_t *leaf = &g_bspdata->dleafs[leaf_id];
         for ( int i = 0; i < leaf->nummarksurfaces; i++ )
         {
-                dface_t *face = &g_dfaces[leaf->firstmarksurface + i];
+                dface_t *face = &g_bspdata->dfaces[leaf->firstmarksurface + i];
 
                 if ( face->on_node == 1 )
                 {
                         continue;
                 }
 
-                texinfo_t *tex = &g_texinfo[face->texinfo];
-                dplane_t *plane = &g_dplanes[face->planenum];
+                texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
+                dplane_t *plane = &g_bspdata->dplanes[face->planenum];
 
                 // Backface cull
                 if ( DotProduct( plane->normal, ray.delta ) > 0 )
@@ -153,7 +154,7 @@ bool LightSurface::test_point_against_surface( const LVector3 &point, dface_t *f
 
 bool LightSurface::test_point_against_sky_surface( const LVector3 &point, dface_t *face )
 {
-        Winding winding( *face );
+        Winding winding( *face, g_bspdata );
 
         dplane_t plane;
         winding.getPlane( plane );
@@ -190,8 +191,8 @@ void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
 
         for ( int i = 0; i < brush->numsides; i++ )
         {
-                side = &g_dbrushsides[brush->firstside + i];
-                plane = &g_dplanes[side->planenum];
+                side = &g_bspdata->dbrushsides[brush->firstside + i];
+                plane = &g_bspdata->dplanes[side->planenum];
 
                 if ( !trace->is_point )
                 {
@@ -281,7 +282,7 @@ void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
                         trace->plane.type = clip_plane->type;
                         if ( leadside->texinfo != -1 )
                         {
-                                trace->surface = &g_texinfo[leadside->texinfo];
+                                trace->surface = &g_bspdata->texinfo[leadside->texinfo];
                         }
                         else
                         {
@@ -294,7 +295,7 @@ void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
 
 float trace_leaf_brushes( int leaf_id, const LVector3 &start, const LVector3 &end, Trace &trace_out )
 {
-        dleaf_t *leaf = &g_dleafs[leaf_id];
+        dleaf_t *leaf = &g_bspdata->dleafs[leaf_id];
         Trace trace;
         memset( &trace, 0, sizeof( Trace ) );
         trace.is_point = true;
@@ -303,8 +304,8 @@ float trace_leaf_brushes( int leaf_id, const LVector3 &start, const LVector3 &en
 
         for ( int i = 0; i < leaf->numleafbrushes; i++ )
         {
-                int brushnum = g_dleafbrushes[leaf->firstleafbrush + i];
-                dbrush_t *b = &g_dbrushes[brushnum];
+                int brushnum = g_bspdata->dleafbrushes[leaf->firstleafbrush + i];
+                dbrush_t *b = &g_bspdata->dbrushes[brushnum];
                 if ( b->contents != CONTENTS_SOLID )
                 {
                         continue;
@@ -354,7 +355,7 @@ static directlight_t *find_ambient_sky_light()
 void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
                                    LRGBColor &color )
 {
-        texinfo_t *texinfo = &g_texinfo[face->texinfo];
+        texinfo_t *texinfo = &g_bspdata->texinfo[face->texinfo];
         if ( texinfo )
         {
                 if ( texinfo->flags & TEX_SPECIAL )
@@ -378,7 +379,7 @@ void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
 static void compute_lightmap_color_from_average( dface_t *face, directlight_t *skylight,
                                                  float scale, LVector3 *colors )
 {
-        texinfo_t *tex = &g_texinfo[face->texinfo];
+        texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
         if ( tex->flags & TEX_SPECIAL )
         {
                 if ( skylight )
@@ -393,7 +394,7 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
 
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
-                LRGBColor avg_color = dface_AvgLightColor( face, maps );
+                LRGBColor avg_color = dface_AvgLightColor( g_bspdata, face, maps );
                 LRGBColor color = avg_color;
 
                 compute_ambient_from_surface( face, skylight, color );
@@ -420,7 +421,7 @@ void compute_lightmap_color_point_sample( dface_t *face, directlight_t *skylight
         int offset = smax * tmax;
         // bumped lightmaps todo!
 
-        colorrgbexp32_t *lightmap = &g_dlightdata[face->lightofs];
+        colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[face->lightofs];
         lightmap += dt * smax + ds;
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
@@ -442,7 +443,7 @@ void calc_ray_ambient_lighting( int thread, const LVector3 &start,
 {
         directlight_t *skylight = find_ambient_sky_light();
 
-        LightSurface surf( thread );
+        LightSurface surf( thread, g_bspdata );
         Ray ray( start, end, LVector3::zero(), LVector3::zero() );
         if ( !surf.find_intersection( ray ) )
         {
@@ -479,7 +480,7 @@ void calc_ray_ambient_lighting( int thread, const LVector3 &start,
 
 void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnormal, LVector3 &color, bool ignore_normals )
 {
-        LightSurface surf( 0 );
+        LightSurface surf( 0, g_bspdata );
 
         int samples = NUMVERTEXNORMALS;
         if ( g_fastmode )
@@ -519,7 +520,7 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                 }
 
                 // get color from surface lightmap
-                texinfo_t *tex = &g_texinfo[surf._surface->texinfo];
+                texinfo_t *tex = &g_bspdata->texinfo[surf._surface->texinfo];
                 if ( !tex || tex->flags & TEX_SPECIAL )
                 {
                         // ignore contribution from sky or non lit textures
@@ -536,7 +537,7 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                 LVector3 lightmap_col;
                 if ( !surf._has_luxel )
                 {
-                        lightmap_col = dface_AvgLightColor( surf._surface, 0 );
+                        lightmap_col = dface_AvgLightColor( g_bspdata, surf._surface, 0 );
                 }
                 else
                 {
@@ -549,7 +550,7 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                         int ds = clamp( (int)surf._luxel_coord[0], 0, smax - 1 );
                         int dt = clamp( (int)surf._luxel_coord[1], 0, tmax - 1 );
 
-                        colorrgbexp32_t *lightmap = &g_dlightdata[surf._surface->lightofs];
+                        colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[surf._surface->lightofs];
                         lightmap += dt * smax + ds;
                         ColorRGBExp32ToVector( *lightmap, lightmap_col );
                 }
@@ -573,7 +574,7 @@ void ComputeDirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnormal
 
         dleaf_t *leaf = PointInLeaf( pos );
         byte pvs[( MAX_MAP_LEAFS + 7 ) / 8];
-        DecompressVis( &g_dvisdata[leaf->visofs], pvs, sizeof( pvs ) );
+        DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf->visofs], pvs, sizeof( pvs ) );
         byte styles[ALLSTYLES];
         memset( styles, 255, sizeof( styles ) );
         styles[0] = 0;
