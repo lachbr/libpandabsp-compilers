@@ -262,7 +262,7 @@ void            CalculateBrushUnions( const int brushnum )
         entity_t*       e;
 
         b1 = &g_mapbrushes[brushnum];
-        e = &g_entities[b1->entitynum];
+        e = &g_bspdata->entities[b1->entitynum];
 
         for ( hull = 0; hull < 1 /* NUM_HULLS */; hull++ )
         {

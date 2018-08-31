@@ -22,6 +22,8 @@ static const vec3_t   s_baseaxis[18] = {
 int				g_numparsedentities;
 int				g_numparsedbrushes;
 
+static pmap<std::string, int> propname_to_propnum;
+
 brush_t *CopyCurrentBrush( entity_t *entity, const brush_t *brush )
 {
         if ( entity->firstbrush + entity->numbrushes != g_nummapbrushes )
@@ -36,7 +38,7 @@ brush_t *CopyCurrentBrush( entity_t *entity, const brush_t *brush )
         g_numbrushsides += brush->numsides;
         hlassume( g_numbrushsides <= MAX_MAP_SIDES, assume_MAX_MAP_SIDES );
         memcpy( &g_brushsides[newb->firstside], &g_brushsides[brush->firstside], brush->numsides * sizeof( side_t ) );
-        newb->entitynum = entity - g_entities;
+        newb->entitynum = entity - g_bspdata->entities;
         newb->brushnum = entity->numbrushes;
         newb->original_sides = brush->original_sides;
         entity->numbrushes++;
@@ -55,7 +57,7 @@ brush_t *CopyCurrentBrush( entity_t *entity, const brush_t *brush )
 }
 void DeleteCurrentEntity( entity_t *entity )
 {
-        if ( entity != &g_entities[g_numentities - 1] )
+        if ( entity != &g_bspdata->entities[g_bspdata->numentities - 1] )
         {
                 Error( "DeleteCurrentEntity: internal error." );
         }
@@ -89,7 +91,7 @@ void DeleteCurrentEntity( entity_t *entity )
                 DeleteKey( entity, entity->epairs->key );
         }
         memset( entity, 0, sizeof( entity_t ) );
-        g_numentities--;
+        g_bspdata->numentities--;
 }
 // =====================================================================================
 //  TextureAxisFromPlane
@@ -167,7 +169,7 @@ static void ParseBrush( entity_t* mapent )
         b->firstside = g_numbrushsides;
         b->originalentitynum = g_numparsedentities;
         b->originalbrushnum = g_numparsedbrushes;
-        b->entitynum = g_numentities - 1;
+        b->entitynum = g_bspdata->numentities - 1;
         b->brushnum = g_nummapbrushes - mapent->firstbrush - 1;
 
         b->noclip = 0;
@@ -233,7 +235,7 @@ static void ParseBrush( entity_t* mapent )
         while ( ok )
         {
                 g_TXcommand = 0;
-                if ( !strcmp( g_token, "}" ) )
+                if ( !strcmp( g_token, "</solid>" ) )
                 {
                         break;
                 }
@@ -296,7 +298,11 @@ static void ParseBrush( entity_t* mapent )
                                 strcpy( g_token, "NULL" );
                                 side->bevel = true;
                         }
-                        if ( strtoken.find( "toolsclip" ) != string::npos )//!strncasecmp (g_token, "CLIP", 4))
+                        if ( GetTextureContents( g_token ) == CONTENTS_NULL )
+                        {
+                                strcpy( g_token, "NULL" );
+                        }
+                        if ( GetTextureContents( g_token ) == CONTENTS_CLIP )
                         {
                                 b->cliphull |= ( 1 << NUM_HULLS ); // arbitrary nonexistent hull
                                 int h;
@@ -536,10 +542,10 @@ static void ParseBrush( entity_t* mapent )
                         VectorScale( origin, 0.5, origin );
 
                         safe_snprintf( string, MAXTOKEN, "%i %i %i", (int)origin[0], (int)origin[1], (int)origin[2] );
-                        SetKeyValue( &g_entities[b->entitynum], "origin", string );
+                        SetKeyValue( &g_bspdata->entities[b->entitynum], "origin", string );
                 }
         }
-        if ( *ValueForKey( &g_entities[b->entitynum], "zhlt_usemodel" ) )
+        if ( *ValueForKey( &g_bspdata->entities[b->entitynum], "zhlt_usemodel" ) )
         {
                 memset( &g_brushsides[b->firstside], 0, b->numsides * sizeof( side_t ) );
                 g_numbrushsides -= b->numsides;
@@ -555,7 +561,7 @@ static void ParseBrush( entity_t* mapent )
                 mapent->numbrushes--;
                 return;
         }
-        if ( !strcmp( ValueForKey( &g_entities[b->entitynum], "classname" ), "info_hullshape" ) )
+        if ( !strcmp( ValueForKey( &g_bspdata->entities[b->entitynum], "classname" ), "info_hullshape" ) )
         {
                 // all brushes should be erased, but not now.
                 return;
@@ -592,7 +598,7 @@ static void ParseBrush( entity_t* mapent )
                         VectorCopy( b->hulls[0].bounds.m_Maxs, maxs );
 
                         safe_snprintf( string, MAXTOKEN, "%.0f %.0f %.0f %.0f %.0f %.0f", mins[0], mins[1], mins[2], maxs[0], maxs[1], maxs[2] );
-                        SetKeyValue( &g_entities[b->entitynum], "zhlt_minsmaxs", string );
+                        SetKeyValue( &g_bspdata->entities[b->entitynum], "zhlt_minsmaxs", string );
                 }
 
                 if ( origin )
@@ -659,19 +665,19 @@ bool            ParseMapEntity()
                 return false;
         }
 
-        this_entity = g_numentities;
+        this_entity = g_bspdata->numentities;
 
-        if ( strcmp( g_token, "{" ) )
+        if ( strcmp( g_token, "<entity>" ) )
         {
-                Error( "Parsing Entity %i, expected '{' got '%s'",
+                Error( "Parsing Entity %i, expected '<entity>' got '%s'",
                        g_numparsedentities,
                        g_token );
         }
 
-        hlassume( g_numentities < MAX_MAP_ENTITIES, assume_MAX_MAP_ENTITIES );
-        g_numentities++;
+        hlassume( g_bspdata->numentities < MAX_MAP_ENTITIES, assume_MAX_MAP_ENTITIES );
+        g_bspdata->numentities++;
 
-        mapent = &g_entities[this_entity];
+        mapent = &g_bspdata->entities[this_entity];
         mapent->firstbrush = g_nummapbrushes;
         mapent->numbrushes = 0;
 
@@ -680,14 +686,40 @@ bool            ParseMapEntity()
                 if ( !GetToken( true ) )
                         Error( "ParseEntity: EOF without closing brace" );
 
-                if ( !strcmp( g_token, "}" ) )  // end of our context
+                if ( !strcmp( g_token, "</entity>" ) )  // end of our context
                         break;
 
-                if ( !strcmp( g_token, "{" ) )  // must be a brush
+                if ( !strcmp( g_token, "<solid>" ) )  // must be a brush
                 {
                         ParseBrush( mapent );
                         g_numparsedbrushes++;
 
+                }
+                else if ( !strcmp( g_token, "<connections>" ) ) // input/output connections
+                {
+                        while ( 1 )
+                        {
+                                GetToken( true );
+                                if ( !strcmp( g_token, "</connections>" ) )
+                                {
+                                        break;
+                                }
+
+                                e = ParseEpair();
+                                e->next = nullptr;
+                                if ( !mapent->epairs )
+                                {
+                                        mapent->epairs = e;
+                                }
+                                else
+                                {
+                                        epair_t *ep;
+                                        for ( ep = mapent->epairs; ep->next != nullptr; ep = ep->next )
+                                        {
+                                        }
+                                        ep->next = e;
+                                }
+                        }
                 }
                 else                        // else assume an epair
                 {
@@ -965,7 +997,7 @@ bool            ParseMapEntity()
                 int             i;
 
                 newbrushes = mapent->numbrushes;
-                worldbrushes = g_entities[0].numbrushes;
+                worldbrushes = g_bspdata->entities[0].numbrushes;
 
                 temp = new brush_t[newbrushes];
                 memcpy( temp, g_mapbrushes + mapent->firstbrush, newbrushes * sizeof( brush_t ) );
@@ -984,11 +1016,11 @@ bool            ParseMapEntity()
                 memcpy( g_mapbrushes + worldbrushes, temp, sizeof( brush_t ) * newbrushes );
 
                 // fix up indexes
-                g_numentities--;
-                g_entities[0].numbrushes += newbrushes;
-                for ( i = 1; i < g_numentities; i++ )
+                g_bspdata->numentities--;
+                g_bspdata->entities[0].numbrushes += newbrushes;
+                for ( i = 1; i < g_bspdata->numentities; i++ )
                 {
-                        g_entities[i].firstbrush += newbrushes;
+                        g_bspdata->entities[i].firstbrush += newbrushes;
                 }
                 memset( mapent, 0, sizeof( *mapent ) );
                 delete[] temp;
@@ -1042,12 +1074,66 @@ bool            ParseMapEntity()
                 prop.first_vertex_data = -1; // will be filled in by p3rad
                 prop.num_vertex_datas = 0;
                 prop.flags = STATICPROPFLAGS_STATICLIGHTING;
-                g_dstaticprops.push_back( prop );
+                prop.lightsrc = -1;
+                g_bspdata->dstaticprops.push_back( prop );
+                propname_to_propnum[ValueForKey( mapent, "targetname" )] = g_bspdata->dstaticprops.size() - 1;
                 DeleteCurrentEntity( mapent );
                 return true;
         }
 
         return true;
+}
+
+pvector<std::string> GetLightPropSources( const entity_t *ent )
+{
+        pvector<std::string> result;
+
+        std::string propname = "";
+        std::string sources = ValueForKey( ent, "propsources" );
+        for ( size_t i = 0; i < sources.size(); i++ )
+        {
+                char c = sources[i];
+                if ( c == ';' )
+                {
+                        result.push_back( propname );
+                        propname = "";
+                }
+                else
+                {
+                        propname += c;
+                }
+        }
+
+        return result;
+}
+
+void AssignLightSourcesToProps()
+{
+        for ( int i = 0; i < g_bspdata->numentities; i++ )
+        {
+                entity_t *ent = g_bspdata->entities + i;
+                const char *classname = ValueForKey( ent, "classname" );
+                if ( !strncmp( classname, "light", 5 ) &&
+                     strncmp( classname, "light_environment", 18 ) )
+                {
+                        pvector<std::string> propsources = GetLightPropSources( ent );
+                        for ( size_t j = 0; j < propsources.size(); j++ )
+                        {
+                                std::string src = propsources[j];
+                                if ( !src.size() )
+                                {
+                                        continue;
+                                }
+
+                                if ( propname_to_propnum.find( src ) != propname_to_propnum.end() )
+                                {
+                                        int propnum = propname_to_propnum[src];
+                                        g_bspdata->dstaticprops[propnum].lightsrc = i;
+                                        Log( "Assigned light %i to prop %i with name %s", i, propnum, src.c_str() );
+                                }
+                        }
+                }
+        }
 }
 
 // =====================================================================================
@@ -1057,10 +1143,10 @@ unsigned int    CountEngineEntities()
 {
         unsigned int x;
         unsigned num_engine_entities = 0;
-        entity_t*       mapent = g_entities;
+        entity_t*       mapent = g_bspdata->entities;
 
         // for each entity in the map
-        for ( x = 0; x<g_numentities; x++, mapent++ )
+        for ( x = 0; x<g_bspdata->numentities; x++, mapent++ )
         {
                 const char* classname = ValueForKey( mapent, "classname" );
 
@@ -1102,13 +1188,15 @@ void            LoadMapFile( const char* const filename )
 
         LoadScriptFile( filename );
 
-        g_numentities = 0;
+        g_bspdata->numentities = 0;
 
         g_numparsedentities = 0;
         while ( ParseMapEntity() )
         {
                 g_numparsedentities++;
         }
+
+        AssignLightSourcesToProps();
 
         // AJM debug
         /*
@@ -1132,7 +1220,7 @@ void            LoadMapFile( const char* const filename )
 
         Verbose( "Load map:%s\n", filename );
         Verbose( "%5i brushes\n", g_nummapbrushes );
-        Verbose( "%5i map entities \n", g_numentities - num_engine_entities );
+        Verbose( "%5i map entities \n", g_bspdata->numentities - num_engine_entities );
         Verbose( "%5i engine entities\n", num_engine_entities );
 
         // AJM: added in 

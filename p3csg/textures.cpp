@@ -24,9 +24,9 @@ static int texmap_store( char *texname, bool shouldlock = true )
         hlassume( numtexmap < MAX_INTERNAL_MAP_TEXINFO, assume_MAX_MAP_TEXINFO ); // This error should never appear.
 
                                                                                   // Make sure we don't already have this textured stored.
-        for ( i = 0; i < g_numtexrefs; i++ )
+        for ( i = 0; i < g_bspdata->numtexrefs; i++ )
         {
-                texref_t *ref = &g_dtexrefs[i];
+                texref_t *ref = &g_bspdata->dtexrefs[i];
                 if ( strcmp( ref->name, texname ) == 0 )
                 {
                         // This texture has already been referred to.
@@ -35,8 +35,8 @@ static int texmap_store( char *texname, bool shouldlock = true )
                 }
         }
 
-        safe_strncpy( g_dtexrefs[g_numtexrefs].name, texname, MAX_TEXTURE_NAME );
-        g_numtexrefs++;
+        safe_strncpy( g_bspdata->dtexrefs[g_bspdata->numtexrefs].name, texname, MAX_TEXTURE_NAME );
+        g_bspdata->numtexrefs++;
 
         i = numtexmap;
         texmap[numtexmap] = texname;
@@ -263,8 +263,8 @@ int             TexinfoForBrushTexture( const plane_t* const plane, brush_textur
         // find the g_texinfo
         //
         ThreadLock();
-        tc = g_texinfo;
-        for ( i = 0; i < g_numtexinfo; i++, tc++ )
+        tc = g_bspdata->texinfo;
+        for ( i = 0; i < g_bspdata->numtexinfo; i++, tc++ )
         {
                 // Sleazy hack 104, Pt 3 - Use strcmp on names to avoid dups
                 if ( strcmp( texmap_retrieve( tc->texref ), bt->name ) != 0 )
@@ -290,11 +290,11 @@ int             TexinfoForBrushTexture( const plane_t* const plane, brush_textur
 skip:;
         }
 
-        hlassume( g_numtexinfo < MAX_INTERNAL_MAP_TEXINFO, assume_MAX_MAP_TEXINFO );
+        hlassume( g_bspdata->numtexinfo < MAX_INTERNAL_MAP_TEXINFO, assume_MAX_MAP_TEXINFO );
 
         *tc = tx;
         tc->texref = texmap_store( bt->name, false );
-        g_numtexinfo++;
+        g_bspdata->numtexinfo++;
         ThreadUnlock();
         return i;
 }
@@ -304,5 +304,5 @@ const char *GetTextureByNumber_CSG( int texturenumber )
 {
         if ( texturenumber == -1 )
                 return "";
-        return texmap_retrieve( g_texinfo[texturenumber].texref );
+        return texmap_retrieve( g_bspdata->texinfo[texturenumber].texref );
 }

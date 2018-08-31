@@ -450,7 +450,7 @@ static void     SaveOutside( const brush_t* const b, const int hull, bface_t* ou
                 {
                         int texinfo = f->texinfo;
                         const char *texname = GetTextureByNumber_CSG( texinfo );
-                        texinfo_t *tex = &g_texinfo[texinfo];
+                        texinfo_t *tex = &g_bspdata->texinfo[texinfo];
 
                         if ( texinfo != -1 // nullified textures (NULL, BEVEL, aaatrigger, etc.)
                              && !( tex->flags & TEX_SPECIAL ) // sky
@@ -637,7 +637,7 @@ static void     CSGBrush( int brushnum )
 
         // get entity and brush info from the given brushnum that we can work with
         b1 = &g_mapbrushes[brushnum];
-        e = &g_entities[b1->entitynum];
+        e = &g_bspdata->entities[b1->entitynum];
 
         // for each of the hulls
         for ( hull = 0; hull < NUM_HULLS; hull++ )
@@ -935,8 +935,8 @@ static void     CSGBrush( int brushnum )
 
 void EmitBrushes()
 {
-        g_dbrushsides.clear();
-        g_dbrushes.clear();
+        g_bspdata->dbrushsides.clear();
+        g_bspdata->dbrushes.clear();
 
         for ( int bnum = 0; bnum < g_nummapbrushes; bnum++ )
         {
@@ -945,16 +945,21 @@ void EmitBrushes()
                 dbrush_t db;
 
                 db.contents = b->contents;
-                db.firstside = (int)g_dbrushsides.size();
-                db.numsides = b->numsides;
+                db.firstside = (int)g_bspdata->dbrushsides.size();
+                db.numsides = (int)b->original_sides.size();
 
-                for ( int j = 0; j < b->numsides; j++ )
+                for ( int j = 0; j < b->original_sides.size(); j++ )
                 {
+                        if ( b->original_sides[j] == nullptr )
+                        {
+                                Warning( "Bad original side %i for brush %i", j, bnum );
+                                continue;
+                        }
                         dbrushside_t cp;
                         cp.planenum = b->original_sides[j]->planenum;
                         cp.texinfo = b->original_sides[j]->texinfo;
                         cp.bevel = b->original_sides[j]->bevel;
-                        g_dbrushsides.push_back( cp );
+                        g_bspdata->dbrushsides.push_back( cp );
                 }
 
                 // add any axis planes not contained in the brush to bevel off corners
@@ -975,7 +980,7 @@ void EmitBrushes()
                 }
                 */
 
-                g_dbrushes.push_back( db );
+                g_bspdata->dbrushes.push_back( db );
         }
 }
 
@@ -988,9 +993,9 @@ static void     EmitPlanes()
         dplane_t*       dp;
         plane_t*        mp;
 
-        g_numplanes = g_nummapplanes;
+        g_bspdata->numplanes = g_nummapplanes;
         mp = g_mapplanes;
-        dp = g_dplanes;
+        dp = g_bspdata->dplanes;
         {
                 char name[_MAX_PATH];
                 safe_snprintf( name, _MAX_PATH, "%s.pln", g_Mapname );
@@ -1027,13 +1032,13 @@ static void     SetModelNumbers()
         char            value[10];
 
         models = 1;
-        for ( i = 1; i < g_numentities; i++ )
+        for ( i = 1; i < g_bspdata->numentities; i++ )
         {
-                if ( g_entities[i].numbrushes )
+                if ( g_bspdata->entities[i].numbrushes )
                 {
                         safe_snprintf( value, sizeof( value ), "*%i", models );
                         models++;
-                        SetKeyValue( &g_entities[i], "model", value );
+                        SetKeyValue( &g_bspdata->entities[i], "model", value );
                 }
         }
 }
@@ -1041,43 +1046,43 @@ static void     SetModelNumbers()
 void     ReuseModel()
 {
         int i;
-        for ( i = g_numentities - 1; i >= 1; i-- ) // so it won't affect the remaining entities in the loop when we move this entity backward
+        for ( i = g_bspdata->numentities - 1; i >= 1; i-- ) // so it won't affect the remaining entities in the loop when we move this entity backward
         {
-                const char *name = ValueForKey( &g_entities[i], "zhlt_usemodel" );
+                const char *name = ValueForKey( &g_bspdata->entities[i], "zhlt_usemodel" );
                 if ( !*name )
                 {
                         continue;
                 }
                 int j;
-                for ( j = 1; j < g_numentities; j++ )
+                for ( j = 1; j < g_bspdata->numentities; j++ )
                 {
-                        if ( *ValueForKey( &g_entities[j], "zhlt_usemodel" ) )
+                        if ( *ValueForKey( &g_bspdata->entities[j], "zhlt_usemodel" ) )
                         {
                                 continue;
                         }
-                        if ( !strcmp( name, ValueForKey( &g_entities[j], "targetname" ) ) )
+                        if ( !strcmp( name, ValueForKey( &g_bspdata->entities[j], "targetname" ) ) )
                         {
                                 break;
                         }
                 }
-                if ( j == g_numentities )
+                if ( j == g_bspdata->numentities )
                 {
                         if ( !strcasecmp( name, "null" ) )
                         {
-                                SetKeyValue( &g_entities[i], "model", "" );
+                                SetKeyValue( &g_bspdata->entities[i], "model", "" );
                                 continue;
                         }
                         Error( "zhlt_usemodel: can not find target entity '%s', or that entity is also using 'zhlt_usemodel'.\n", name );
                 }
-                SetKeyValue( &g_entities[i], "model", ValueForKey( &g_entities[j], "model" ) );
+                SetKeyValue( &g_bspdata->entities[i], "model", ValueForKey( &g_bspdata->entities[j], "model" ) );
                 if ( j > i )
                 {
                         // move this entity backward
                         // to prevent precache error in case of .mdl/.spr and wrong result of EntityForModel in case of map model
                         entity_t tmp;
-                        tmp = g_entities[i];
-                        memmove( &g_entities[i], &g_entities[i + 1], ( ( j + 1 ) - ( i + 1 ) ) * sizeof( entity_t ) );
-                        g_entities[j] = tmp;
+                        tmp = g_bspdata->entities[i];
+                        memmove( &g_bspdata->entities[i], &g_bspdata->entities[i + 1], ( ( j + 1 ) - ( i + 1 ) ) * sizeof( entity_t ) );
+                        g_bspdata->entities[j] = tmp;
                 }
         }
 }
@@ -1103,9 +1108,9 @@ static void     SetLightStyles()
         // must have a unique style number generated for it
 
         stylenum = 0;
-        for ( i = 1; i < g_numentities; i++ )
+        for ( i = 1; i < g_bspdata->numentities; i++ )
         {
-                e = &g_entities[i];
+                e = &g_bspdata->entities[i];
 
                 t = ValueForKey( e, "classname" );
                 if ( strncasecmp( t, "light", 5 ) )
@@ -1191,7 +1196,7 @@ static void     ConvertHintToEmpty()
 void LoadWadValue()
 {
         char *wadvalue;
-        ParseFromMemory( g_dentdata, g_entdatasize );
+        ParseFromMemory( g_bspdata->dentdata, g_bspdata->entdatasize );
         epair_t *e;
         entity_t ent0;
         entity_t *mapent = &ent0;
@@ -1238,7 +1243,7 @@ void LoadWadValue()
         {
                 Log( "Wad files required to run the map: (None)\n" );
         }
-        SetKeyValue( &g_entities[0], "wad", wadvalue );
+        SetKeyValue( &g_bspdata->entities[0], "wad", wadvalue );
         free( wadvalue );
 }
 void WriteBSP( const char* const name )
@@ -1258,11 +1263,11 @@ void WriteBSP( const char* const name )
                 LoadWadValue();
         }
 
-        UnparseEntities();
+        UnparseEntities(g_bspdata);
         ConvertHintToEmpty(); // this is ridiculous. --vluzacn
         if /*(g_chart)*/ ( true )
-                PrintBSPFileSizes();
-        WriteBSPFile( path );
+                PrintBSPFileSizes(g_bspdata);
+        WriteBSPFile( g_bspdata, path );
 }
 
 //
@@ -1357,15 +1362,15 @@ static void     CheckForNoClip()
         if ( !g_bClipNazi )
                 return; // NO CLIP FOR YOU!!!
 
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < g_bspdata->numentities; i++ )
         {
-                if ( !g_entities[i].numbrushes )
+                if ( !g_bspdata->entities[i].numbrushes )
                         continue; // not a model
 
                 if ( !i )
                         continue; // dont waste our time with worldspawn
 
-                ent = &g_entities[i];
+                ent = &g_bspdata->entities[i];
 
                 strcpy_s( entclassname, ValueForKey( ent, "classname" ) );
                 spawnflags = atoi( ValueForKey( ent, "spawnflags" ) );
@@ -1424,25 +1429,25 @@ static void     ProcessModels()
         int             first, contents;
         brush_t         temp;
 
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < g_bspdata->numentities; i++ )
         {
-                if ( !g_entities[i].numbrushes ) // only models
+                if ( !g_bspdata->entities[i].numbrushes ) // only models
                         continue;
 
                 // sort the contents down so stone bites water, etc
-                first = g_entities[i].firstbrush;
-                brush_t *temps = new brush_t[g_entities[i].numbrushes];
+                first = g_bspdata->entities[i].firstbrush;
+                brush_t *temps = new brush_t[g_bspdata->entities[i].numbrushes];
                 hlassume( temps, assume_NoMemory );
-                for ( j = 0; j < g_entities[i].numbrushes; j++ )
+                for ( j = 0; j < g_bspdata->entities[i].numbrushes; j++ )
                 {
                         temps[j] = g_mapbrushes[first + j];
                 }
                 int placedcontents;
                 bool b_placedcontents = false;
-                for ( placed = 0; placed < g_entities[i].numbrushes; )
+                for ( placed = 0; placed < g_bspdata->entities[i].numbrushes; )
                 {
                         bool b_contents = false;
-                        for ( j = 0; j < g_entities[i].numbrushes; j++ )
+                        for ( j = 0; j < g_bspdata->entities[i].numbrushes; j++ )
                         {
                                 brush_t *brush = &temps[j];
                                 if ( b_placedcontents && brush->contents <= placedcontents )
@@ -1452,7 +1457,7 @@ static void     ProcessModels()
                                 b_contents = true;
                                 contents = brush->contents;
                         }
-                        for ( j = 0; j < g_entities[i].numbrushes; j++ )
+                        for ( j = 0; j < g_bspdata->entities[i].numbrushes; j++ )
                         {
                                 brush_t *brush = &temps[j];
                                 if ( brush->contents == contents )
@@ -1469,12 +1474,12 @@ static void     ProcessModels()
                 // csg them in order
                 if ( i == 0 ) // if its worldspawn....
                 {
-                        NamedRunThreadsOnIndividual( g_entities[i].numbrushes, g_estimate, CSGBrush );
+                        NamedRunThreadsOnIndividual( g_bspdata->entities[i].numbrushes, g_estimate, CSGBrush );
                         CheckFatal();
                 }
                 else
                 {
-                        for ( j = 0; j < g_entities[i].numbrushes; j++ )
+                        for ( j = 0; j < g_bspdata->entities[i].numbrushes; j++ )
                         {
                                 CSGBrush( first + j );
                         }
@@ -1497,7 +1502,7 @@ static void     SetModelCenters( int entitynum )
         int             i;
         int             last;
         char            string[MAXTOKEN];
-        entity_t*       e = &g_entities[entitynum];
+        entity_t*       e = &g_bspdata->entities[entitynum];
         BSPBoundingBox     bounds;
         vec3_t          center;
 
@@ -2240,6 +2245,8 @@ int             main( const int argc, char** argv )
                         FlipSlashes( name );
                         DefaultExtension( name, ".map" );                  // might be .reg
 
+                        g_bspdata = new bspdata_t;
+
                         LoadMapFile( name );
                         ThreadSetDefault();
                         ThreadSetPriority( g_threadpriority );
@@ -2251,9 +2258,9 @@ int             main( const int argc, char** argv )
                         {
                                 int count = 0;
 
-                                for ( i = 0; i < g_numentities; i++ )
+                                for ( i = 0; i < g_bspdata->numentities; i++ )
                                 {
-                                        entity_t *ent = &g_entities[i];
+                                        entity_t *ent = &g_bspdata->entities[i];
                                         const char *value;
                                         char *newvalue;
 
@@ -2379,7 +2386,7 @@ int             main( const int argc, char** argv )
                         Verbose( "%5i map planes\n", g_nummapplanes );
 
                         // Set model centers
-                        for ( i = 0; i < g_numentities; i++ ) SetModelCenters( i ); //NamedRunThreadsOnIndividual(g_numentities, g_estimate, SetModelCenters); //--vluzacn
+                        for ( i = 0; i < g_bspdata->numentities; i++ ) SetModelCenters( i ); //NamedRunThreadsOnIndividual(g_numentities, g_estimate, SetModelCenters); //--vluzacn
 
                                                                                     // Calc brush unions
                         if ( ( g_BrushUnionThreshold > 0.0 ) && ( g_BrushUnionThreshold <= 100.0 ) )

@@ -875,7 +875,7 @@ bool            MakeBrushPlanes( brush_t* b, int brushnum )
         //
         // if the origin key is set (by an origin brush), offset all of the values
         //
-        GetVectorForKey( &g_entities[b->entitynum], "origin", origin );
+        GetVectorForKey( &g_bspdata->entities[b->entitynum], "origin", origin );
 
         //
         // convert to mapplanes
@@ -1181,7 +1181,7 @@ contents_t      CheckBrushContents( const brush_t* const b )
                 contents = CONTENTS_SOLID;
 
         // check to make sure we dont have an origin brush as part of worldspawn
-        if ( ( b->entitynum == 0 ) || ( strcmp( "func_group", ValueForKey( &g_entities[b->entitynum], "classname" ) ) == 0 ) )
+        if ( ( b->entitynum == 0 ) || ( strcmp( "func_group", ValueForKey( &g_bspdata->entities[b->entitynum], "classname" ) ) == 0 ) )
         {
                 if ( contents == CONTENTS_ORIGIN
                      && b->entitynum == 0
@@ -1304,7 +1304,7 @@ hullbrush_t *CreateHullBrush( const brush_t *b )
         // planes
 
         numplanes = 0;
-        GetVectorForKey( &g_entities[b->entitynum], "origin", origin );
+        GetVectorForKey( &g_bspdata->entities[b->entitynum], "origin", origin );
 
         for ( i = 0; i < b->numsides; i++ )
         {
@@ -1596,7 +1596,7 @@ void CreateHullShape( int entitynum, bool disabled, const char *id, int defaulth
         entity_t *entity;
         hullshape_t *hs;
 
-        entity = &g_entities[entitynum];
+        entity = &g_bspdata->entities[entitynum];
         if ( !*ValueForKey( entity, "origin" ) )
         {
                 Warning( "info_hullshape with no ORIGIN brush." );
