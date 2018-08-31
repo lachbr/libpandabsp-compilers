@@ -623,7 +623,7 @@ static void     LeafFlow( const int leafnum )
 
         for ( j = 0; j < g_leafcounts[leafnum]; j++ )
         {
-                g_dleafs[g_leafstarts[leafnum] + j + 1].visofs = dest - vismap;
+                g_bspdata->dleafs[g_leafstarts[leafnum] + j + 1].visofs = dest - vismap;
         }
 
         memcpy( dest, compressed, i );
@@ -737,13 +737,13 @@ void		SaveVisData( const char *filename )
         if ( !fp )
                 return;
 
-        SafeWrite( fp, g_dvisdata, ( vismap_p - g_dvisdata ) );
+        SafeWrite( fp, g_bspdata->dvisdata, ( vismap_p - g_bspdata->dvisdata ) );
 
         // BUG BUG BUG!
         // Leaf offsets need to be saved too!!!!
-        for ( i = 0; i < g_numleafs; i++ )
+        for ( i = 0; i < g_bspdata->numleafs; i++ )
         {
-                SafeWrite( fp, &g_dleafs[i].visofs, sizeof( int ) );
+                SafeWrite( fp, &g_bspdata->dleafs[i].visofs, sizeof( int ) );
         }
 
         fclose( fp );
@@ -818,7 +818,7 @@ static void     CalcVis()
                 free( g_uncompressed );
                 g_uncompressed = (byte*)calloc( g_portalleafs, g_bitbytes );
 
-                vismap_p = g_dvisdata;
+                vismap_p = g_bspdata->dvisdata;
 
                 // We don't need to run BasePortalVis again			
                 NamedRunThreadsOn( g_portalleafs, g_estimate, MaxDistVis );
@@ -896,7 +896,7 @@ static void     LoadPortals( char* portal_image )
 
         originalvismapsize = g_portalleafs * ( ( g_portalleafs + 7 ) / 8 );
 
-        vismap = vismap_p = g_dvisdata;
+        vismap = vismap_p = g_bspdata->dvisdata;
         vismap_end = vismap + MAX_MAP_VISIBILITY;
 
         if ( g_portalleafs > MAX_MAP_LEAFS )
@@ -917,9 +917,9 @@ static void     LoadPortals( char* portal_image )
                 g_leafstarts[i] = g_leafcount_all;
                 g_leafcount_all += g_leafcounts[i];
         }
-        if ( g_leafcount_all != g_dmodels[0].visleafs )
+        if ( g_leafcount_all != g_bspdata->dmodels[0].visleafs )
         { // internal error (this should never happen)
-                Error( "Corrupted leaf mapping (g_leafcount_all(%d) != g_dmodels[0].visleafs(%d)).", g_leafcount_all, g_dmodels[0].visleafs );
+                Error( "Corrupted leaf mapping (g_leafcount_all(%d) != g_dmodels[0].visleafs(%d)).", g_leafcount_all, g_bspdata->dmodels[0].visleafs );
         }
         for ( i = 0; i < g_portalleafs; i++ )
         {
@@ -1225,8 +1225,8 @@ int        VisLeafnumForPoint( const vec3_t point )
         nodenum = 0;
         while ( nodenum >= 0 )
         {
-                node = &g_dnodes[nodenum];
-                plane = &g_dplanes[node->planenum];
+                node = &g_bspdata->dnodes[nodenum];
+                plane = &g_bspdata->dplanes[node->planenum];
                 dist = DotProduct( point, plane->normal ) - plane->dist;
                 if ( dist >= 0.0 )
                 {
@@ -1655,21 +1655,21 @@ int             main( const int argc, char** argv )
 
 #else // NOT ZHLT_NETVIS
 
-                        LoadBSPFile( source );
-                        ParseEntities();
+                        g_bspdata = LoadBSPFile( source );
+                        ParseEntities(g_bspdata);
                         {
                                 int i;
-                                for ( i = 0; i < g_numentities; i++ )
+                                for ( i = 0; i < g_bspdata->numentities; i++ )
                                 {
-                                        if ( !strcmp( ValueForKey( &g_entities[i], "classname" ), "info_overview_point" ) )
+                                        if ( !strcmp( ValueForKey( &g_bspdata->entities[i], "classname" ), "info_overview_point" ) )
                                         {
                                                 if ( g_overview_count < g_overview_max )
                                                 {
                                                         vec3_t p;
-                                                        GetVectorForKey( &g_entities[i], "origin", p );
+                                                        GetVectorForKey( &g_bspdata->entities[i], "origin", p );
                                                         VectorCopy( p, g_overview[g_overview_count].origin );
                                                         g_overview[g_overview_count].visleafnum = VisLeafnumForPoint( p );
-                                                        g_overview[g_overview_count].reverse = IntForKey( &g_entities[i], "reverse" );
+                                                        g_overview[g_overview_count].reverse = IntForKey( &g_bspdata->entities[i], "reverse" );
                                                         g_overview_count++;
                                                 }
                                         }
@@ -1733,15 +1733,15 @@ int             main( const int argc, char** argv )
 
 #else // NOT ZHLT_NETVIS
 
-                        g_visdatasize = vismap_p - g_dvisdata;
-                        Log( "g_visdatasize:%i  compressed from %i\n", g_visdatasize, originalvismapsize );
+                        g_bspdata->visdatasize = vismap_p - g_bspdata->dvisdata;
+                        Log( "g_visdatasize:%i  compressed from %i\n", g_bspdata->visdatasize, originalvismapsize );
 
                         if ( g_chart )
                         {
-                                PrintBSPFileSizes();
+                                PrintBSPFileSizes( g_bspdata );
                         }
 
-                        WriteBSPFile( source );
+                        WriteBSPFile( g_bspdata, source );
 
                         end = I_FloatTime();
                         LogTimeElapsed( end - start );

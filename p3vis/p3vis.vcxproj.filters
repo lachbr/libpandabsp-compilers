@@ -34,14 +34,14 @@
     <ClCompile Include="flow.cpp">
       <Filter>vis</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\messages.cpp">
-      <Filter>vis</Filter>
-    </ClCompile>
     <ClCompile Include="vis.cpp">
       <Filter>vis</Filter>
     </ClCompile>
     <ClCompile Include="zones.cpp">
       <Filter>vis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\messages.cpp">
+      <Filter>common</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -90,14 +90,14 @@
     <ClInclude Include="..\common\winding.h">
       <Filter>common</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\messages.h">
-      <Filter>vis</Filter>
-    </ClInclude>
     <ClInclude Include="vis.h">
       <Filter>vis</Filter>
     </ClInclude>
     <ClInclude Include="zones.h">
       <Filter>vis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\messages.h">
+      <Filter>common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

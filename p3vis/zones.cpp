@@ -51,17 +51,17 @@ static Winding*      WindingFromFace( const dface_t* f )
 
         for ( i = 0; i < f->numedges; i++ )
         {
-                se = g_dsurfedges[f->firstedge + i];
+                se = g_bspdata->dsurfedges[f->firstedge + i];
                 if ( se < 0 )
                 {
-                        v = g_dedges[-se].v[1];
+                        v = g_bspdata->dedges[-se].v[1];
                 }
                 else
                 {
-                        v = g_dedges[se].v[0];
+                        v = g_bspdata->dedges[se].v[0];
                 }
 
-                dv = &g_dvertexes[v];
+                dv = &g_bspdata->dvertexes[v];
                 VectorCopy( dv->point, w->m_Points[i] );
         }
 
@@ -73,14 +73,14 @@ Zones* MakeZones( void )
         UINT32 x;
         UINT32 func_vis_count = 0;
 
-        ParseEntities();
+        ParseEntities( g_bspdata );
 
         // Note: we arent looping through entities because we only care if it has a winding/bounding box
 
         // First count the number of func_vis's
-        for ( x = 0; x<g_nummodels; x++ )
+        for ( x = 0; x<g_bspdata->nummodels; x++ )
         {
-                entity_t*       ent = EntityForModel( x );
+                entity_t*       ent = EntityForModel( g_bspdata, x );
 
                 if ( !strcasecmp( ValueForKey( ent, "classname" ), "func_vis" ) )
                 {
@@ -103,10 +103,10 @@ Zones* MakeZones( void )
 
         Zones* zones = new Zones( func_vis_count );
 
-        for ( x = 0; x<g_nummodels; x++ )
+        for ( x = 0; x<g_bspdata->nummodels; x++ )
         {
-                dmodel_t*       mod = g_dmodels + x;
-                entity_t*       ent = EntityForModel( x );
+                dmodel_t*       mod = g_bspdata->dmodels + x;
+                entity_t*       ent = EntityForModel( g_bspdata, x );
 
                 if ( !strcasecmp( ValueForKey( ent, "classname" ), "func_vis" ) )
                 {
@@ -128,7 +128,7 @@ Zones* MakeZones( void )
                         {
                                 UINT32          j;
                                 BSPBoundingBox     bounds;
-                                dface_t*        f = g_dfaces + mod->firstface;
+                                dface_t*        f = g_bspdata->dfaces + mod->firstface;
 
                                 for ( j = 0; j < mod->numfaces; j++, f++ )
                                 {
