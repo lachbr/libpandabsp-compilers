@@ -94,6 +94,7 @@ public:
         Winding();										// Do nothing :)
         Winding( vec3_t *points, UINT32 numpoints );		// Create from raw points
         Winding( const dface_t& face
+                 , bspdata_t *data
                  , vec_t epsilon = ON_EPSILON
         );
         Winding( const dplane_t& face );

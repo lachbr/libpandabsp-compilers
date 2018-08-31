@@ -1,5 +1,10 @@
 #include "bsptools.h"
 
+BaseBSPEnumerator::BaseBSPEnumerator( bspdata_t *dat ) :
+        data( dat )
+{
+}
+
 bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                                   float end, BaseBSPEnumerator *surf, int context,
                                   float scale )
@@ -9,8 +14,8 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
 
         while ( node_id >= 0 )
         {
-                dnode_t *node = &g_dnodes[node_id];
-                dplane_t *plane = &g_dplanes[node->planenum];
+                dnode_t *node = &surf->data->dnodes[node_id];
+                dplane_t *plane = &surf->data->dplanes[node->planenum];
 
                 if ( plane->type == plane_z )
                 {

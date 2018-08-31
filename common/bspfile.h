@@ -361,6 +361,8 @@ struct dstaticprop_t
         short first_vertex_data; // index into LUMP_STATICPROPVERTEXDATA
         short num_vertex_datas;
 
+        short lightsrc; // index of light that this prop casts, -1 for none
+
         unsigned char shadows;
 };
 
@@ -370,106 +372,6 @@ struct dstaticpropvertexdata_t
         unsigned short first_lighting_sample; // index into LUMP_STATICPROPLIGHTING
         unsigned short num_lighting_samples;
 };
-
-//============================================================================
-
-#define ANGLE_UP    -1.0 //#define ANGLE_UP    -1 //--vluzacn
-#define ANGLE_DOWN  -2.0 //#define ANGLE_DOWN  -2 //--vluzacn
-
-//
-// BSP File Data
-//
-
-extern int      g_nummodels;
-extern dmodel_t g_dmodels[MAX_MAP_MODELS];
-extern int      g_dmodels_checksum;
-
-extern int      g_visdatasize;
-extern byte     g_dvisdata[MAX_MAP_VISIBILITY];
-extern int      g_dvisdata_checksum;
-
-extern pvector<colorrgbexp32_t>    g_dlightdata;
-extern int      g_dlightdata_checksum;
-
-extern int      g_numtexrefs;
-extern texref_t g_dtexrefs[MAX_MAP_TEXTURES];                                  // (dtexlump_t)
-extern int      g_dtexrefs_checksum;
-
-extern int      g_entdatasize;
-extern char     g_dentdata[MAX_MAP_ENTSTRING];
-extern int      g_dentdata_checksum;
-
-extern int      g_numleafs;
-extern dleaf_t  g_dleafs[MAX_MAP_LEAFS];
-extern int      g_dleafs_checksum;
-
-extern int      g_numplanes;
-extern dplane_t g_dplanes[MAX_INTERNAL_MAP_PLANES];
-extern int      g_dplanes_checksum;
-
-extern int      g_numvertexes;
-extern dvertex_t g_dvertexes[MAX_MAP_VERTS];
-extern int      g_dvertexes_checksum;
-
-extern int      g_numnodes;
-extern dnode_t  g_dnodes[MAX_MAP_NODES];
-extern int      g_dnodes_checksum;
-
-extern int      g_numtexinfo;
-extern texinfo_t g_texinfo[MAX_INTERNAL_MAP_TEXINFO];
-extern int      g_texinfo_checksum;
-
-extern int      g_numfaces;
-extern dface_t  g_dfaces[MAX_MAP_FACES];
-extern int      g_dfaces_checksum;
-
-extern int	g_numorigfaces;
-extern dface_t	g_dorigfaces[MAX_MAP_FACES];
-extern int	g_dorigfaces_checksum;
-
-extern int      g_numclipnodes;
-extern dclipnode_t g_dclipnodes[MAX_MAP_CLIPNODES];
-extern int      g_dclipnodes_checksum;
-
-extern int      g_numedges;
-extern dedge_t  g_dedges[MAX_MAP_EDGES];
-extern int      g_dedges_checksum;
-
-extern int      g_nummarksurfaces;
-extern unsigned short g_dmarksurfaces[MAX_MAP_MARKSURFACES];
-extern int      g_dmarksurfaces_checksum;
-
-extern int      g_numsurfedges;
-extern int      g_dsurfedges[MAX_MAP_SURFEDGES];
-extern int      g_dsurfedges_checksum;
-
-extern pvector<dleafambientlighting_t> g_leafambientlighting;
-extern pvector<dleafambientindex_t> g_leafambientindex;
-extern pvector<dbrush_t> g_dbrushes;
-extern pvector<dbrushside_t> g_dbrushsides;
-extern pvector<unsigned short> g_dleafbrushes;
-extern pvector<dstaticprop_t> g_dstaticprops;
-extern pvector<dstaticpropvertexdata_t> g_dstaticpropvertexdatas;
-extern pvector<colorrgbexp32_t> g_staticproplighting;
-
-extern void     DecompressVis( const byte* src, byte* const dest, const unsigned int dest_length );
-extern int      CompressVis( const byte* const src, const unsigned int src_length, byte* dest, unsigned int dest_length );
-
-extern void     LoadBSPImage( dheader_t* header );
-extern void     LoadBSPFile( const char* const filename );
-extern void     WriteBSPFile( const char* const filename );
-extern void     PrintBSPFileSizes();
-#ifdef PLATFORM_CAN_CALC_EXTENT
-extern void		WriteExtentFile( const char *const filename );
-extern bool		CalcFaceExtents_test();
-#else
-extern void		LoadExtentFile( const char *const filename );
-#endif
-extern void		GetFaceExtents( int facenum, int mins_out[2], int maxs_out[2] );
-
-//
-// Entity Related Stuff
-//
 
 typedef struct epair_s
 {
@@ -488,11 +390,117 @@ typedef struct
 }
 entity_t;
 
-extern int      g_numentities;
-extern entity_t g_entities[MAX_MAP_ENTITIES];
+//============================================================================
 
-extern void            ParseEntities();
-extern void            UnparseEntities();
+#define ANGLE_UP    -1.0 //#define ANGLE_UP    -1 //--vluzacn
+#define ANGLE_DOWN  -2.0 //#define ANGLE_DOWN  -2 //--vluzacn
+
+//
+// BSP File Data
+//
+
+struct bspdata_t
+{
+        int      nummodels;
+        dmodel_t dmodels[MAX_MAP_MODELS];
+        int      dmodels_checksum;
+
+        int      visdatasize;
+        byte     dvisdata[MAX_MAP_VISIBILITY];
+        int      dvisdata_checksum;
+
+        pvector<colorrgbexp32_t>    dlightdata;
+        int      dlightdata_checksum;
+
+        int      numtexrefs;
+        texref_t dtexrefs[MAX_MAP_TEXTURES];                                  // (dtexlump_t)
+        int      dtexrefs_checksum;
+
+        int      entdatasize;
+        char     dentdata[MAX_MAP_ENTSTRING];
+        int      dentdata_checksum;
+
+        int      numleafs;
+        dleaf_t  dleafs[MAX_MAP_LEAFS];
+        int      dleafs_checksum;
+
+        int      numplanes;
+        dplane_t dplanes[MAX_INTERNAL_MAP_PLANES];
+        int      dplanes_checksum;
+
+        int      numvertexes;
+        dvertex_t dvertexes[MAX_MAP_VERTS];
+        int      dvertexes_checksum;
+
+        int      numnodes;
+        dnode_t  dnodes[MAX_MAP_NODES];
+        int      dnodes_checksum;
+
+        int      numtexinfo;
+        texinfo_t texinfo[MAX_INTERNAL_MAP_TEXINFO];
+        int      texinfo_checksum;
+
+        int      numfaces;
+        dface_t  dfaces[MAX_MAP_FACES];
+        int      dfaces_checksum;
+
+        int	numorigfaces;
+        dface_t	dorigfaces[MAX_MAP_FACES];
+        int	dorigfaces_checksum;
+
+        int      numclipnodes;
+        dclipnode_t dclipnodes[MAX_MAP_CLIPNODES];
+        int      dclipnodes_checksum;
+
+        int      numedges;
+        dedge_t  dedges[MAX_MAP_EDGES];
+        int      dedges_checksum;
+
+        int      nummarksurfaces;
+        unsigned short dmarksurfaces[MAX_MAP_MARKSURFACES];
+        int      dmarksurfaces_checksum;
+
+        int      numsurfedges;
+        int      dsurfedges[MAX_MAP_SURFEDGES];
+        int      dsurfedges_checksum;
+
+        pvector<dleafambientlighting_t> leafambientlighting;
+        pvector<dleafambientindex_t> leafambientindex;
+        pvector<dbrush_t> dbrushes;
+        pvector<dbrushside_t> dbrushsides;
+        pvector<unsigned short> dleafbrushes;
+        pvector<dstaticprop_t> dstaticprops;
+        pvector<dstaticpropvertexdata_t> dstaticpropvertexdatas;
+        pvector<colorrgbexp32_t> staticproplighting;
+
+        int      numentities;
+        entity_t entities[MAX_MAP_ENTITIES];
+};
+
+extern bspdata_t *g_bspdata;
+
+extern void     DecompressVis( bspdata_t *data, const byte* src, byte* const dest, const unsigned int dest_length );
+extern int      CompressVis( const byte* const src, const unsigned int src_length,
+                             byte* dest, unsigned int dest_length );
+
+extern bspdata_t     *LoadBSPImage( dheader_t* header );
+extern bspdata_t     *LoadBSPFile( const char* const filename );
+extern void     WriteBSPFile( bspdata_t *data, const char* const filename );
+extern void     PrintBSPFileSizes( bspdata_t *data );
+#ifdef PLATFORM_CAN_CALC_EXTENT
+extern void		WriteExtentFile( bspdata_t *data, const char *const filename );
+extern bool		CalcFaceExtents_test();
+#else
+extern void		LoadExtentFile( const char *const filename );
+#endif
+extern void		GetFaceExtents( bspdata_t *data, int facenum, int mins_out[2], int maxs_out[2] );
+
+//
+// Entity Related Stuff
+//
+
+extern void            ParseEntities( bspdata_t *data );
+extern void            UnparseEntities( bspdata_t *data );
 
 extern void            DeleteKey( entity_t* ent, const char* const key );
 extern void            SetKeyValue( entity_t* ent, const char* const key, const char* const value );
@@ -501,9 +509,9 @@ extern int             IntForKey( const entity_t* const ent, const char* const k
 extern vec_t           FloatForKey( const entity_t* const ent, const char* const key );
 extern void            GetVectorForKey( const entity_t* const ent, const char* const key, vec3_t vec );
 
-extern entity_t* FindTargetEntity( const char* const target );
+extern entity_t* FindTargetEntity( bspdata_t *data, const char* const target );
 extern epair_t* ParseEpair();
-extern entity_t* EntityForModel( int modnum );
+extern entity_t* EntityForModel( bspdata_t *data, int modnum );
 
 extern int FastChecksum( const void* const buffer, int bytes );
 
@@ -516,7 +524,7 @@ extern int		g_max_map_lightdata;
 extern void     dtexdata_init();
 extern void CDECL dtexdata_free();
 
-extern char*    GetTextureByNumber( int texturenumber );
+extern char*    GetTextureByNumber( bspdata_t *data, int texturenumber );
 
 extern map<string, contents_t> g_tex_contents;
 extern std::string g_tex_contents_file;
@@ -524,6 +532,6 @@ extern void SetTextureContentsFile( const char *path );
 extern void LoadTextureContents();
 extern contents_t GetTextureContents( const char *texname );
 
-LRGBColor dface_AvgLightColor( dface_t *face, int style );
+LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
 
 #endif //BSPFILE_H__

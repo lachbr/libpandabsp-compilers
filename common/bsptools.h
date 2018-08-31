@@ -56,6 +56,7 @@ struct Trace
 class BaseBSPEnumerator
 {
 public:
+        BaseBSPEnumerator( bspdata_t *data );
         virtual bool enumerate_node( int node_id, const Ray &ray,
                                      float f, int context ) = 0;
 
@@ -63,6 +64,8 @@ public:
                                      float end, int context ) = 0;
 
         virtual bool find_intersection( const Ray &ray ) = 0;
+
+        bspdata_t *data;
 };
 
 extern bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,

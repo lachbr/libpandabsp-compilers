@@ -14,80 +14,7 @@
 int             g_max_map_texref = DEFAULT_MAX_MAP_TEXREF;
 int				g_max_map_lightdata = DEFAULT_MAX_MAP_LIGHTDATA;
 
-int             g_nummodels;
-dmodel_t        g_dmodels[MAX_MAP_MODELS];
-int             g_dmodels_checksum;
-
-int             g_visdatasize;
-byte            g_dvisdata[MAX_MAP_VISIBILITY];
-int             g_dvisdata_checksum;
-
-pvector<colorrgbexp32_t> g_dlightdata;
-int             g_dlightdata_checksum;
-
-int             g_numtexrefs;
-texref_t        g_dtexrefs[MAX_MAP_TEXTURES];                                  // (dtexlump_t)
-int             g_dtexrefs_checksum;
-
-int             g_entdatasize;
-char            g_dentdata[MAX_MAP_ENTSTRING];
-int             g_dentdata_checksum;
-
-int             g_numleafs;
-dleaf_t         g_dleafs[MAX_MAP_LEAFS];
-int             g_dleafs_checksum;
-
-int             g_numplanes;
-dplane_t        g_dplanes[MAX_INTERNAL_MAP_PLANES];
-int             g_dplanes_checksum;
-
-int             g_numvertexes;
-dvertex_t       g_dvertexes[MAX_MAP_VERTS];
-int             g_dvertexes_checksum;
-
-int             g_numnodes;
-dnode_t         g_dnodes[MAX_MAP_NODES];
-int             g_dnodes_checksum;
-
-int             g_numtexinfo;
-texinfo_t       g_texinfo[MAX_INTERNAL_MAP_TEXINFO];
-int             g_texinfo_checksum;
-
-int             g_numfaces;
-dface_t         g_dfaces[MAX_MAP_FACES];
-int             g_dfaces_checksum;
-
-int		g_numorigfaces;
-dface_t		g_dorigfaces[MAX_MAP_FACES];
-int		g_dorigfaces_checksum;
-
-int             g_numclipnodes;
-dclipnode_t     g_dclipnodes[MAX_MAP_CLIPNODES];
-int             g_dclipnodes_checksum;
-
-int             g_numedges;
-dedge_t         g_dedges[MAX_MAP_EDGES];
-int             g_dedges_checksum;
-
-int             g_nummarksurfaces;
-unsigned short  g_dmarksurfaces[MAX_MAP_MARKSURFACES];
-int             g_dmarksurfaces_checksum;
-
-int             g_numsurfedges;
-int             g_dsurfedges[MAX_MAP_SURFEDGES];
-int             g_dsurfedges_checksum;
-
-int             g_numentities;
-entity_t        g_entities[MAX_MAP_ENTITIES];
-
-pvector<dleafambientlighting_t> g_leafambientlighting;
-pvector<dleafambientindex_t> g_leafambientindex;
-pvector<dbrush_t> g_dbrushes;
-pvector<dbrushside_t> g_dbrushsides;
-pvector<unsigned short> g_dleafbrushes;
-pvector<dstaticprop_t> g_dstaticprops;
-pvector<dstaticpropvertexdata_t> g_dstaticpropvertexdatas;
-pvector<colorrgbexp32_t> g_staticproplighting;
+bspdata_t *g_bspdata = nullptr;
 
 std::string g_tex_contents_file = DEFAULT_TEXCONTENTS_FILE;
 map<string, contents_t> g_tex_contents;
@@ -164,20 +91,20 @@ int             CompressVis( const byte* const src, const unsigned int src_lengt
 //  DecompressVis
 //      
 // =====================================================================================
-void            DecompressVis( const byte* src, byte* const dest, const unsigned int dest_length )
+void            DecompressVis( bspdata_t *data, const byte* src, byte* const dest, const unsigned int dest_length )
 {
         unsigned int    current_length = 0;
         int             c;
         byte*           out;
         int             row;
 
-        row = ( g_dmodels[0].visleafs + 7 ) >> 3; // same as the length used by VIS program in CompressVis
+        row = ( data->dmodels[0].visleafs + 7 ) >> 3; // same as the length used by VIS program in CompressVis
                                                   // The wrong size will cause DecompressVis to spend extremely long time once the source pointer runs into the invalid area in g_dvisdata (for example, in BuildFaceLights, some faces could hang for a few seconds), and sometimes to crash.
         out = dest;
 
         do
         {
-                hlassume( src - g_dvisdata < g_visdatasize, assume_DECOMPRESSVIS_OVERFLOW );
+                hlassume( src - data->dvisdata < data->visdatasize, assume_DECOMPRESSVIS_OVERFLOW );
                 if ( *src )
                 {
                         current_length++;
@@ -189,7 +116,7 @@ void            DecompressVis( const byte* src, byte* const dest, const unsigned
                         continue;
                 }
 
-                hlassume( &src[1] - g_dvisdata < g_visdatasize, assume_DECOMPRESSVIS_OVERFLOW );
+                hlassume( &src[1] - data->dvisdata < data->visdatasize, assume_DECOMPRESSVIS_OVERFLOW );
                 c = src[1];
                 src += 2;
                 while ( c )
@@ -217,15 +144,15 @@ void            DecompressVis( const byte* src, byte* const dest, const unsigned
 //  SwapBSPFile
 //      byte swaps all data in a bsp file
 // =====================================================================================
-static void     SwapBSPFile( const bool todisk )
+static void     SwapBSPFile( bspdata_t *data, const bool todisk )
 {
         int             i, j;
         dmodel_t*       d;
 
         // models       
-        for ( i = 0; i < g_nummodels; i++ )
+        for ( i = 0; i < data->nummodels; i++ )
         {
-                d = &g_dmodels[i];
+                d = &data->dmodels[i];
 
                 for ( j = 0; j < MAX_MAP_HULLS; j++ )
                 {
@@ -247,51 +174,51 @@ static void     SwapBSPFile( const bool todisk )
         //
         // vertexes
         //
-        for ( i = 0; i < g_numvertexes; i++ )
+        for ( i = 0; i < data->numvertexes; i++ )
         {
                 for ( j = 0; j < 3; j++ )
                 {
-                        g_dvertexes[i].point[j] = LittleFloat( g_dvertexes[i].point[j] );
+                        data->dvertexes[i].point[j] = LittleFloat( data->dvertexes[i].point[j] );
                 }
         }
 
         //
         // planes
         //      
-        for ( i = 0; i < g_numplanes; i++ )
+        for ( i = 0; i < data->numplanes; i++ )
         {
                 for ( j = 0; j < 3; j++ )
                 {
-                        g_dplanes[i].normal[j] = LittleFloat( g_dplanes[i].normal[j] );
+                        data->dplanes[i].normal[j] = LittleFloat( data->dplanes[i].normal[j] );
                 }
-                g_dplanes[i].dist = LittleFloat( g_dplanes[i].dist );
-                g_dplanes[i].type = (planetypes)LittleLong( g_dplanes[i].type );
+                data->dplanes[i].dist = LittleFloat( data->dplanes[i].dist );
+                data->dplanes[i].type = (planetypes)LittleLong( data->dplanes[i].type );
         }
 
         //
         // texinfos
         //      
-        for ( i = 0; i < g_numtexinfo; i++ )
+        for ( i = 0; i < data->numtexinfo; i++ )
         {
                 for ( j = 0; j < 8; j++ )
                 {
-                        g_texinfo[i].vecs[0][j] = LittleFloat( g_texinfo[i].vecs[0][j] );
+                        data->texinfo[i].vecs[0][j] = LittleFloat( data->texinfo[i].vecs[0][j] );
                 }
-                g_texinfo[i].texref = LittleLong( g_texinfo[i].texref );
-                g_texinfo[i].flags = LittleLong( g_texinfo[i].flags );
+                data->texinfo[i].texref = LittleLong( data->texinfo[i].texref );
+                data->texinfo[i].flags = LittleLong( data->texinfo[i].flags );
         }
 
         //
         // faces
         //
-        for ( i = 0; i < g_numfaces; i++ )
+        for ( i = 0; i < data->numfaces; i++ )
         {
-                g_dfaces[i].texinfo = LittleShort( g_dfaces[i].texinfo );
-                g_dfaces[i].planenum = LittleShort( g_dfaces[i].planenum );
-                g_dfaces[i].side = LittleShort( g_dfaces[i].side );
-                g_dfaces[i].lightofs = LittleLong( g_dfaces[i].lightofs );
-                g_dfaces[i].firstedge = LittleLong( g_dfaces[i].firstedge );
-                g_dfaces[i].numedges = LittleShort( g_dfaces[i].numedges );
+                data->dfaces[i].texinfo = LittleShort( data->dfaces[i].texinfo );
+                data->dfaces[i].planenum = LittleShort( data->dfaces[i].planenum );
+                data->dfaces[i].side = LittleShort( data->dfaces[i].side );
+                data->dfaces[i].lightofs = LittleLong( data->dfaces[i].lightofs );
+                data->dfaces[i].firstedge = LittleLong( data->dfaces[i].firstedge );
+                data->dfaces[i].numedges = LittleShort( data->dfaces[i].numedges );
         }
 
         /*
@@ -312,112 +239,112 @@ static void     SwapBSPFile( const bool todisk )
         //
         // nodes
         //
-        for ( i = 0; i < g_numnodes; i++ )
+        for ( i = 0; i < data->numnodes; i++ )
         {
-                g_dnodes[i].planenum = LittleLong( g_dnodes[i].planenum );
+                data->dnodes[i].planenum = LittleLong( data->dnodes[i].planenum );
                 for ( j = 0; j < 3; j++ )
                 {
-                        g_dnodes[i].mins[j] = LittleShort( g_dnodes[i].mins[j] );
-                        g_dnodes[i].maxs[j] = LittleShort( g_dnodes[i].maxs[j] );
+                        data->dnodes[i].mins[j] = LittleShort( data->dnodes[i].mins[j] );
+                        data->dnodes[i].maxs[j] = LittleShort( data->dnodes[i].maxs[j] );
                 }
-                g_dnodes[i].children[0] = LittleShort( g_dnodes[i].children[0] );
-                g_dnodes[i].children[1] = LittleShort( g_dnodes[i].children[1] );
-                g_dnodes[i].firstface = LittleShort( g_dnodes[i].firstface );
-                g_dnodes[i].numfaces = LittleShort( g_dnodes[i].numfaces );
+                data->dnodes[i].children[0] = LittleShort( data->dnodes[i].children[0] );
+                data->dnodes[i].children[1] = LittleShort( data->dnodes[i].children[1] );
+                data->dnodes[i].firstface = LittleShort( data->dnodes[i].firstface );
+                data->dnodes[i].numfaces = LittleShort( data->dnodes[i].numfaces );
         }
 
         //
         // leafs
         //
-        for ( i = 0; i < g_numleafs; i++ )
+        for ( i = 0; i < data->numleafs; i++ )
         {
-                g_dleafs[i].contents = LittleLong( g_dleafs[i].contents );
+                data->dleafs[i].contents = LittleLong( data->dleafs[i].contents );
                 for ( j = 0; j < 3; j++ )
                 {
-                        g_dleafs[i].mins[j] = LittleShort( g_dleafs[i].mins[j] );
-                        g_dleafs[i].maxs[j] = LittleShort( g_dleafs[i].maxs[j] );
+                        data->dleafs[i].mins[j] = LittleShort( data->dleafs[i].mins[j] );
+                        data->dleafs[i].maxs[j] = LittleShort( data->dleafs[i].maxs[j] );
                 }
 
-                g_dleafs[i].firstmarksurface = LittleShort( g_dleafs[i].firstmarksurface );
-                g_dleafs[i].nummarksurfaces = LittleShort( g_dleafs[i].nummarksurfaces );
-                g_dleafs[i].visofs = LittleLong( g_dleafs[i].visofs );
+                data->dleafs[i].firstmarksurface = LittleShort( data->dleafs[i].firstmarksurface );
+                data->dleafs[i].nummarksurfaces = LittleShort( data->dleafs[i].nummarksurfaces );
+                data->dleafs[i].visofs = LittleLong( data->dleafs[i].visofs );
         }
 
         //
         // clipnodes
         //
-        for ( i = 0; i < g_numclipnodes; i++ )
+        for ( i = 0; i < data->numclipnodes; i++ )
         {
-                g_dclipnodes[i].planenum = LittleLong( g_dclipnodes[i].planenum );
-                g_dclipnodes[i].children[0] = LittleShort( g_dclipnodes[i].children[0] );
-                g_dclipnodes[i].children[1] = LittleShort( g_dclipnodes[i].children[1] );
+                data->dclipnodes[i].planenum = LittleLong( data->dclipnodes[i].planenum );
+                data->dclipnodes[i].children[0] = LittleShort( data->dclipnodes[i].children[0] );
+                data->dclipnodes[i].children[1] = LittleShort( data->dclipnodes[i].children[1] );
         }
 
         //
         // texrefs
         //
-        for ( i = 0; i < g_numtexrefs; i++ )
+        for ( i = 0; i < data->numtexrefs; i++ )
         {
                 for ( int j = 0; j < MAX_TEXTURE_NAME; j++ )
                 {
-                        g_dtexrefs[i].name[j] = LittleShort( g_dtexrefs[i].name[j] );
+                        data->dtexrefs[i].name[j] = LittleShort( data->dtexrefs[i].name[j] );
                 }
         }
 
         //
         // marksurfaces
         //
-        for ( i = 0; i < g_nummarksurfaces; i++ )
+        for ( i = 0; i < data->nummarksurfaces; i++ )
         {
-                g_dmarksurfaces[i] = LittleShort( g_dmarksurfaces[i] );
+                data->dmarksurfaces[i] = LittleShort( data->dmarksurfaces[i] );
         }
 
         //
         // surfedges
         //
-        for ( i = 0; i < g_numsurfedges; i++ )
+        for ( i = 0; i < data->numsurfedges; i++ )
         {
-                g_dsurfedges[i] = LittleLong( g_dsurfedges[i] );
+                data->dsurfedges[i] = LittleLong( data->dsurfedges[i] );
         }
 
         //
         // edges
         //
-        for ( i = 0; i < g_numedges; i++ )
+        for ( i = 0; i < data->numedges; i++ )
         {
-                g_dedges[i].v[0] = LittleShort( g_dedges[i].v[0] );
-                g_dedges[i].v[1] = LittleShort( g_dedges[i].v[1] );
+                data->dedges[i].v[0] = LittleShort( data->dedges[i].v[0] );
+                data->dedges[i].v[1] = LittleShort( data->dedges[i].v[1] );
         }
 
         // leaf ambient index
-        for ( i = 0; i < (int)g_leafambientindex.size(); i++ )
+        for ( i = 0; i < (int)data->leafambientindex.size(); i++ )
         {
-                dleafambientindex_t *idx = &g_leafambientindex[i];
+                dleafambientindex_t *idx = &data->leafambientindex[i];
                 idx->first_ambient_sample = LittleShort( idx->first_ambient_sample );
                 idx->num_ambient_samples = LittleShort( idx->num_ambient_samples );
         }
 
         // brush
-        for ( i = 0; i < (int)g_dbrushes.size(); i++ )
+        for ( i = 0; i < (int)data->dbrushes.size(); i++ )
         {
-                g_dbrushes[i].firstside = LittleLong( g_dbrushes[i].firstside );
-                g_dbrushes[i].numsides = LittleLong( g_dbrushes[i].numsides );
-                g_dbrushes[i].contents = LittleLong( g_dbrushes[i].contents );
+                data->dbrushes[i].firstside = LittleLong( data->dbrushes[i].firstside );
+                data->dbrushes[i].numsides = LittleLong( data->dbrushes[i].numsides );
+                data->dbrushes[i].contents = LittleLong( data->dbrushes[i].contents );
         }
 
         // brush sides
-        for ( i = 0; i < (int)g_dbrushsides.size(); i++ )
+        for ( i = 0; i < (int)data->dbrushsides.size(); i++ )
         {
-                dbrushside_t *side = &g_dbrushsides[i];
+                dbrushside_t *side = &data->dbrushsides[i];
                 side->bevel = LittleShort( side->bevel );
                 side->planenum = LittleShort( side->bevel );
                 side->texinfo = LittleShort( side->texinfo );
         }
 
         // leaf brushes
-        for ( i = 0; i < (int)g_dleafbrushes.size(); i++ )
+        for ( i = 0; i < (int)data->dleafbrushes.size(); i++ )
         {
-                g_dleafbrushes[i] = LittleShort( g_dleafbrushes[i] );
+                data->dleafbrushes[i] = LittleShort( data->dleafbrushes[i] );
         }
 }
 
@@ -438,10 +365,10 @@ static int      CopyLump( int lump, void* dest, int size, const dheader_t* const
         }
 
         //special handling for tex and lightdata to keep things from exploding - KGP
-        if ( lump == LUMP_TEXTURES && dest == (void*)g_dtexrefs )
-        {
-                hlassume( g_max_map_texref > length, assume_MAX_MAP_MIPTEX );
-        }
+        //if ( lump == LUMP_TEXTURES && dest == (void*)g_dtexrefs )
+        //{
+        //        hlassume( g_max_map_texref > length, assume_MAX_MAP_MIPTEX );
+        //}
 
         memcpy( dest, (byte*)header + ofs, length );
 
@@ -460,18 +387,18 @@ static int CopyLump( int lump, pvector<T> &dest, const dheader_t* const header )
 //  LoadBSPFile
 //      balh
 // =====================================================================================
-void            LoadBSPFile( const char* const filename )
+bspdata_t            *LoadBSPFile( const char* const filename )
 {
         dheader_t* header;
         LoadFile( filename, (char**)&header );
-        LoadBSPImage( header );
+        return LoadBSPImage( header );
 }
 
 // =====================================================================================
 //  LoadBSPImage
 //      balh
 // =====================================================================================
-void            LoadBSPImage( dheader_t* const header )
+bspdata_t            *LoadBSPImage( dheader_t* const header )
 {
         LoadTextureContents();
 
@@ -493,56 +420,60 @@ void            LoadBSPImage( dheader_t* const header )
                 Error( "BSP is version %i, not %i", header->version, BSPVERSION );
         }
 
-        g_nummodels = CopyLump( LUMP_MODELS, g_dmodels, sizeof( dmodel_t ), header );
-        g_numvertexes = CopyLump( LUMP_VERTEXES, g_dvertexes, sizeof( dvertex_t ), header );
-        g_numplanes = CopyLump( LUMP_PLANES, g_dplanes, sizeof( dplane_t ), header );
-        g_numleafs = CopyLump( LUMP_LEAFS, g_dleafs, sizeof( dleaf_t ), header );
-        g_numnodes = CopyLump( LUMP_NODES, g_dnodes, sizeof( dnode_t ), header );
-        g_numtexinfo = CopyLump( LUMP_TEXINFO, g_texinfo, sizeof( texinfo_t ), header );
-        g_numclipnodes = CopyLump( LUMP_CLIPNODES, g_dclipnodes, sizeof( dclipnode_t ), header );
-        g_numfaces = CopyLump( LUMP_FACES, g_dfaces, sizeof( dface_t ), header );
-        //g_numorigfaces = CopyLump( LUMP_ORIGFACES, g_dorigfaces, sizeof( dface_t ), header );
-        g_nummarksurfaces = CopyLump( LUMP_MARKSURFACES, g_dmarksurfaces, sizeof( g_dmarksurfaces[0] ), header );
-        g_numsurfedges = CopyLump( LUMP_SURFEDGES, g_dsurfedges, sizeof( g_dsurfedges[0] ), header );
-        g_numedges = CopyLump( LUMP_EDGES, g_dedges, sizeof( dedge_t ), header );
-        g_numtexrefs = CopyLump( LUMP_TEXTURES, g_dtexrefs, sizeof( texref_t ), header );
-        g_visdatasize = CopyLump( LUMP_VISIBILITY, g_dvisdata, 1, header );
-        g_entdatasize = CopyLump( LUMP_ENTITIES, g_dentdata, 1, header );
+        bspdata_t *data = new bspdata_t;
+
+        data->nummodels = CopyLump( LUMP_MODELS, data->dmodels, sizeof( dmodel_t ), header );
+        data->numvertexes = CopyLump( LUMP_VERTEXES, data->dvertexes, sizeof( dvertex_t ), header );
+        data->numplanes = CopyLump( LUMP_PLANES, data->dplanes, sizeof( dplane_t ), header );
+        data->numleafs = CopyLump( LUMP_LEAFS, data->dleafs, sizeof( dleaf_t ), header );
+        data->numnodes = CopyLump( LUMP_NODES, data->dnodes, sizeof( dnode_t ), header );
+        data->numtexinfo = CopyLump( LUMP_TEXINFO, data->texinfo, sizeof( texinfo_t ), header );
+        data->numclipnodes = CopyLump( LUMP_CLIPNODES, data->dclipnodes, sizeof( dclipnode_t ), header );
+        data->numfaces = CopyLump( LUMP_FACES, data->dfaces, sizeof( dface_t ), header );
+        //data->numorigfaces = CopyLump( LUMP_ORIGFACES, data->dorigfaces, sizeof( dface_t ), header );
+        data->nummarksurfaces = CopyLump( LUMP_MARKSURFACES, data->dmarksurfaces, sizeof( data->dmarksurfaces[0] ), header );
+        data->numsurfedges = CopyLump( LUMP_SURFEDGES, data->dsurfedges, sizeof( data->dsurfedges[0] ), header );
+        data->numedges = CopyLump( LUMP_EDGES, data->dedges, sizeof( dedge_t ), header );
+        data->numtexrefs = CopyLump( LUMP_TEXTURES, data->dtexrefs, sizeof( texref_t ), header );
+        data->visdatasize = CopyLump( LUMP_VISIBILITY, data->dvisdata, 1, header );
+        data->entdatasize = CopyLump( LUMP_ENTITIES, data->dentdata, 1, header );
 
         // new lumps uses STL vectors and templates!
-        CopyLump( LUMP_BRUSHES, g_dbrushes, header );
-        CopyLump( LUMP_BRUSHSIDES, g_dbrushsides, header );
-        CopyLump( LUMP_LEAFBRUSHES, g_dleafbrushes, header );
-        CopyLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header );
-        CopyLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header );
-        CopyLump( LUMP_LIGHTING, g_dlightdata, header );
-        CopyLump( LUMP_STATICPROPS, g_dstaticprops, header );
-        CopyLump( LUMP_STATICPROPVERTEXDATA, g_dstaticpropvertexdatas, header );
-        CopyLump( LUMP_STATICPROPLIGHTING, g_staticproplighting, header );
+        CopyLump( LUMP_BRUSHES, data->dbrushes, header );
+        CopyLump( LUMP_BRUSHSIDES, data->dbrushsides, header );
+        CopyLump( LUMP_LEAFBRUSHES, data->dleafbrushes, header );
+        CopyLump( LUMP_LEAFAMBIENTINDEX, data->leafambientindex, header );
+        CopyLump( LUMP_LEAFAMBIENTLIGHTING, data->leafambientlighting, header );
+        CopyLump( LUMP_LIGHTING, data->dlightdata, header );
+        CopyLump( LUMP_STATICPROPS, data->dstaticprops, header );
+        CopyLump( LUMP_STATICPROPVERTEXDATA, data->dstaticpropvertexdatas, header );
+        CopyLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header );
 
         Free( header );                                          // everything has been copied out
 
                                                                  //
                                                                  // swap everything
                                                                  //      
-        SwapBSPFile( false );
+        SwapBSPFile( data, false );
 
-        g_dmodels_checksum = FastChecksum( g_dmodels, g_nummodels * sizeof( g_dmodels[0] ) );
-        g_dvertexes_checksum = FastChecksum( g_dvertexes, g_numvertexes * sizeof( g_dvertexes[0] ) );
-        g_dplanes_checksum = FastChecksum( g_dplanes, g_numplanes * sizeof( g_dplanes[0] ) );
-        g_dleafs_checksum = FastChecksum( g_dleafs, g_numleafs * sizeof( g_dleafs[0] ) );
-        g_dnodes_checksum = FastChecksum( g_dnodes, g_numnodes * sizeof( g_dnodes[0] ) );
-        g_texinfo_checksum = FastChecksum( g_texinfo, g_numtexinfo * sizeof( g_texinfo[0] ) );
-        g_dclipnodes_checksum = FastChecksum( g_dclipnodes, g_numclipnodes * sizeof( g_dclipnodes[0] ) );
-        g_dfaces_checksum = FastChecksum( g_dfaces, g_numfaces * sizeof( g_dfaces[0] ) );
-        //g_dorigfaces_checksum = FastChecksum( g_dorigfaces, g_numorigfaces * sizeof( g_dorigfaces[0] ) );
-        g_dmarksurfaces_checksum = FastChecksum( g_dmarksurfaces, g_nummarksurfaces * sizeof( g_dmarksurfaces[0] ) );
-        g_dsurfedges_checksum = FastChecksum( g_dsurfedges, g_numsurfedges * sizeof( g_dsurfedges[0] ) );
-        g_dedges_checksum = FastChecksum( g_dedges, g_numedges * sizeof( g_dedges[0] ) );
-        g_dtexrefs_checksum = FastChecksum( g_dtexrefs, g_numedges * sizeof( g_dtexrefs[0] ) );
-        g_dvisdata_checksum = FastChecksum( g_dvisdata, g_visdatasize * sizeof( g_dvisdata[0] ) );
-        g_dlightdata_checksum = FastChecksum( g_dlightdata.data(), g_dlightdata.size() * sizeof( colorrgbexp32_t ) );
-        g_dentdata_checksum = FastChecksum( g_dentdata, g_entdatasize * sizeof( g_dentdata[0] ) );
+        data->dmodels_checksum = FastChecksum( data->dmodels, data->nummodels * sizeof( data->dmodels[0] ) );
+        data->dvertexes_checksum = FastChecksum( data->dvertexes, data->numvertexes * sizeof( data->dvertexes[0] ) );
+        data->dplanes_checksum = FastChecksum( data->dplanes, data->numplanes * sizeof( data->dplanes[0] ) );
+        data->dleafs_checksum = FastChecksum( data->dleafs, data->numleafs * sizeof( data->dleafs[0] ) );
+        data->dnodes_checksum = FastChecksum( data->dnodes, data->numnodes * sizeof( data->dnodes[0] ) );
+        data->texinfo_checksum = FastChecksum( data->texinfo, data->numtexinfo * sizeof( data->texinfo[0] ) );
+        data->dclipnodes_checksum = FastChecksum( data->dclipnodes, data->numclipnodes * sizeof( data->dclipnodes[0] ) );
+        data->dfaces_checksum = FastChecksum( data->dfaces, data->numfaces * sizeof( data->dfaces[0] ) );
+        //data->dorigfaces_checksum = FastChecksum( data->dorigfaces, data->numorigfaces * sizeof( data->dorigfaces[0] ) );
+        data->dmarksurfaces_checksum = FastChecksum( data->dmarksurfaces, data->nummarksurfaces * sizeof( data->dmarksurfaces[0] ) );
+        data->dsurfedges_checksum = FastChecksum( data->dsurfedges, data->numsurfedges * sizeof( data->dsurfedges[0] ) );
+        data->dedges_checksum = FastChecksum( data->dedges, data->numedges * sizeof( data->dedges[0] ) );
+        data->dtexrefs_checksum = FastChecksum( data->dtexrefs, data->numedges * sizeof( data->dtexrefs[0] ) );
+        data->dvisdata_checksum = FastChecksum( data->dvisdata, data->visdatasize * sizeof( data->dvisdata[0] ) );
+        data->dlightdata_checksum = FastChecksum( data->dlightdata.data(), data->dlightdata.size() * sizeof( colorrgbexp32_t ) );
+        data->dentdata_checksum = FastChecksum( data->dentdata, data->entdatasize * sizeof( data->dentdata[0] ) );
+
+        return data;
 }
 
 //
@@ -571,7 +502,7 @@ static void AddLump( int lumpnum, pvector<T> &data, dheader_t *header, FILE *bsp
 //  WriteBSPFile
 //      Swaps the bsp file in place, so it should not be referenced again
 // =====================================================================================
-void            WriteBSPFile( const char* const filename )
+void            WriteBSPFile( bspdata_t *data, const char* const filename )
 {
         dheader_t       outheader;
         dheader_t*      header;
@@ -580,7 +511,7 @@ void            WriteBSPFile( const char* const filename )
         header = &outheader;
         memset( header, 0, sizeof( dheader_t ) );
 
-        SwapBSPFile( true );
+        SwapBSPFile( data, true );
 
         header->ident = LittleLong( PBSP_MAGIC );
         header->version = LittleLong( BSPVERSION );
@@ -589,33 +520,33 @@ void            WriteBSPFile( const char* const filename )
         SafeWrite( bspfile, header, sizeof( dheader_t ) );         // overwritten later
 
                                                                    //      LUMP TYPE       DATA            LENGTH                              HEADER  BSPFILE   
-        AddLump( LUMP_PLANES, g_dplanes, g_numplanes * sizeof( dplane_t ), header, bspfile );
-        AddLump( LUMP_LEAFS, g_dleafs, g_numleafs * sizeof( dleaf_t ), header, bspfile );
-        AddLump( LUMP_VERTEXES, g_dvertexes, g_numvertexes * sizeof( dvertex_t ), header, bspfile );
-        AddLump( LUMP_NODES, g_dnodes, g_numnodes * sizeof( dnode_t ), header, bspfile );
-        AddLump( LUMP_TEXINFO, g_texinfo, g_numtexinfo * sizeof( texinfo_t ), header, bspfile );
-        AddLump( LUMP_FACES, g_dfaces, g_numfaces * sizeof( dface_t ), header, bspfile );
-        //AddLump( LUMP_ORIGFACES, g_dorigfaces, g_numorigfaces * sizeof( dface_t ), header, bspfile );
-        AddLump( LUMP_CLIPNODES, g_dclipnodes, g_numclipnodes * sizeof( dclipnode_t ), header, bspfile );
+        AddLump( LUMP_PLANES, data->dplanes, data->numplanes * sizeof( dplane_t ), header, bspfile );
+        AddLump( LUMP_LEAFS, data->dleafs, data->numleafs * sizeof( dleaf_t ), header, bspfile );
+        AddLump( LUMP_VERTEXES, data->dvertexes, data->numvertexes * sizeof( dvertex_t ), header, bspfile );
+        AddLump( LUMP_NODES, data->dnodes, data->numnodes * sizeof( dnode_t ), header, bspfile );
+        AddLump( LUMP_TEXINFO, data->texinfo, data->numtexinfo * sizeof( texinfo_t ), header, bspfile );
+        AddLump( LUMP_FACES, data->dfaces, data->numfaces * sizeof( dface_t ), header, bspfile );
+        //AddLump( LUMP_ORIGFACES, data->dorigfaces, data->numorigfaces * sizeof( dface_t ), header, bspfile );
+        AddLump( LUMP_CLIPNODES, data->dclipnodes, data->numclipnodes * sizeof( dclipnode_t ), header, bspfile );
 
-        AddLump( LUMP_MARKSURFACES, g_dmarksurfaces, g_nummarksurfaces * sizeof( g_dmarksurfaces[0] ), header, bspfile );
-        AddLump( LUMP_SURFEDGES, g_dsurfedges, g_numsurfedges * sizeof( g_dsurfedges[0] ), header, bspfile );
-        AddLump( LUMP_EDGES, g_dedges, g_numedges * sizeof( dedge_t ), header, bspfile );
-        AddLump( LUMP_MODELS, g_dmodels, g_nummodels * sizeof( dmodel_t ), header, bspfile );
-        AddLump( LUMP_TEXTURES, g_dtexrefs, g_numtexrefs * sizeof( texref_t ), header, bspfile );
-        AddLump( LUMP_VISIBILITY, g_dvisdata, g_visdatasize, header, bspfile );
-        AddLump( LUMP_ENTITIES, g_dentdata, g_entdatasize, header, bspfile );
+        AddLump( LUMP_MARKSURFACES, data->dmarksurfaces, data->nummarksurfaces * sizeof( data->dmarksurfaces[0] ), header, bspfile );
+        AddLump( LUMP_SURFEDGES, data->dsurfedges, data->numsurfedges * sizeof( data->dsurfedges[0] ), header, bspfile );
+        AddLump( LUMP_EDGES, data->dedges, data->numedges * sizeof( dedge_t ), header, bspfile );
+        AddLump( LUMP_MODELS, data->dmodels, data->nummodels * sizeof( dmodel_t ), header, bspfile );
+        AddLump( LUMP_TEXTURES, data->dtexrefs, data->numtexrefs * sizeof( texref_t ), header, bspfile );
+        AddLump( LUMP_VISIBILITY, data->dvisdata, data->visdatasize, header, bspfile );
+        AddLump( LUMP_ENTITIES, data->dentdata, data->entdatasize, header, bspfile );
 
         // new lumps uses STL vectors and templates!
-        AddLump( LUMP_BRUSHES, g_dbrushes, header, bspfile );
-        AddLump( LUMP_BRUSHSIDES, g_dbrushsides, header, bspfile );
-        AddLump( LUMP_LEAFBRUSHES, g_dleafbrushes, header, bspfile );
-        AddLump( LUMP_LEAFAMBIENTINDEX, g_leafambientindex, header, bspfile );
-        AddLump( LUMP_LEAFAMBIENTLIGHTING, g_leafambientlighting, header, bspfile );
-        AddLump( LUMP_LIGHTING, g_dlightdata, header, bspfile );
-        AddLump( LUMP_STATICPROPS, g_dstaticprops, header, bspfile );
-        AddLump( LUMP_STATICPROPVERTEXDATA, g_dstaticpropvertexdatas, header, bspfile );
-        AddLump( LUMP_STATICPROPLIGHTING, g_staticproplighting, header, bspfile );
+        AddLump( LUMP_BRUSHES, data->dbrushes, header, bspfile );
+        AddLump( LUMP_BRUSHSIDES, data->dbrushsides, header, bspfile );
+        AddLump( LUMP_LEAFBRUSHES, data->dleafbrushes, header, bspfile );
+        AddLump( LUMP_LEAFAMBIENTINDEX, data->leafambientindex, header, bspfile );
+        AddLump( LUMP_LEAFAMBIENTLIGHTING, data->leafambientlighting, header, bspfile );
+        AddLump( LUMP_LIGHTING, data->dlightdata, header, bspfile );
+        AddLump( LUMP_STATICPROPS, data->dstaticprops, header, bspfile );
+        AddLump( LUMP_STATICPROPVERTEXDATA, data->dstaticpropvertexdatas, header, bspfile );
+        AddLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header, bspfile );
 
         fseek( bspfile, 0, SEEK_SET );
         SafeWrite( bspfile, header, sizeof( dheader_t ) );
@@ -713,7 +644,7 @@ bool CalcFaceExtents_test()
         return ok;
 }
 
-void GetFaceExtents( int facenum, int mins_out[2], int maxs_out[2] )
+void GetFaceExtents( bspdata_t *data, int facenum, int mins_out[2], int maxs_out[2] )
 {
         CorrectFPUPrecision();
 
@@ -724,23 +655,23 @@ void GetFaceExtents( int facenum, int mins_out[2], int maxs_out[2] )
         texinfo_t *tex;
         int bmins[2], bmaxs[2];
 
-        f = &g_dfaces[facenum];
+        f = &data->dfaces[facenum];
 
         mins[0] = mins[1] = 999999;
         maxs[0] = maxs[1] = -99999;
 
-        tex = &g_texinfo[f->texinfo];
+        tex = &data->texinfo[f->texinfo];
 
         for ( i = 0; i < f->numedges; i++ )
         {
-                e = g_dsurfedges[f->firstedge + i];
+                e = data->dsurfedges[f->firstedge + i];
                 if ( e >= 0 )
                 {
-                        v = &g_dvertexes[g_dedges[e].v[0]];
+                        v = &data->dvertexes[data->dedges[e].v[0]];
                 }
                 else
                 {
-                        v = &g_dvertexes[g_dedges[-e].v[1]];
+                        v = &data->dvertexes[data->dedges[-e].v[1]];
                 }
                 for ( j = 0; j < 2; j++ )
                 {
@@ -780,7 +711,7 @@ void GetFaceExtents( int facenum, int mins_out[2], int maxs_out[2] )
 // =====================================================================================
 //  WriteExtentFile
 // =====================================================================================
-void WriteExtentFile( const char *const filename )
+void WriteExtentFile( bspdata_t *data, const char *const filename )
 {
         FILE *f;
         f = fopen( filename, "w" );
@@ -788,12 +719,12 @@ void WriteExtentFile( const char *const filename )
         {
                 Error( "Error opening %s: %s", filename, strerror( errno ) );
         }
-        fprintf( f, "%i\n", g_numfaces );
-        for ( int i = 0; i < g_numfaces; i++ )
+        fprintf( f, "%i\n", data->numfaces );
+        for ( int i = 0; i < data->numfaces; i++ )
         {
                 int mins[2];
                 int maxs[2];
-                GetFaceExtents( i, mins, maxs );
+                GetFaceExtents( data, i, mins, maxs );
                 fprintf( f, "%i %i %i %i\n", mins[0], mins[1], maxs[0], maxs[1] );
         }
         fclose( f );
@@ -934,7 +865,7 @@ void DoAllocBlock( lightmapblock_t *blocks, int w, int h )
                 }
         }
 }
-int CountBlocks()
+int CountBlocks(bspdata_t *data)
 {
 #if !defined (PLATFORM_CAN_CALC_EXTENT) && !defined (HLRAD)
         return -1; // otherwise GetFaceExtents will error
@@ -944,15 +875,15 @@ int CountBlocks()
         hlassume( blocks != NULL, assume_NoMemory );
         memset( blocks, 0, sizeof( lightmapblock_t ) );
         int k;
-        for ( k = 0; k < g_numfaces; k++ )
+        for ( k = 0; k < data->numfaces; k++ )
         {
-                dface_t *f = &g_dfaces[k];
-                const texinfo_t *tex = &g_texinfo[f->texinfo];
-                const char *texname = GetTextureByNumber( f->texinfo );
+                dface_t *f = &data->dfaces[k];
+                const texinfo_t *tex = &data->texinfo[f->texinfo];
+                const char *texname = GetTextureByNumber( data, f->texinfo );
                 contents_t contents = GetTextureContents( texname );
                 if ( contents == CONTENTS_SKY //sky, no lightmap allocation.
                      || contents == CONTENTS_WATER //water, no lightmap allocation.
-                     || ( g_texinfo[f->texinfo].flags & TEX_SPECIAL ) //aaatrigger, I don't know.
+                     || ( data->texinfo[f->texinfo].flags & TEX_SPECIAL ) //aaatrigger, I don't know.
                      )
                 {
                         continue;
@@ -963,7 +894,7 @@ int CountBlocks()
                         int bmins[2];
                         int bmaxs[2];
                         int i;
-                        GetFaceExtents( k, bmins, bmaxs );
+                        GetFaceExtents( data, k, bmins, bmaxs );
                         for ( i = 0; i < 2; i++ )
                         {
                                 extents[i] = ( bmaxs[i] - bmins[i] ) * tex->lightmap_scale;
@@ -972,8 +903,8 @@ int CountBlocks()
                         VectorClear( point );
                         if ( f->numedges > 0 )
                         {
-                                int e = g_dsurfedges[f->firstedge];
-                                dvertex_t *v = &g_dvertexes[g_dedges[abs( e )].v[e >= 0 ? 0 : 1]];
+                                int e = data->dsurfedges[f->firstedge];
+                                dvertex_t *v = &data->dvertexes[data->dedges[abs( e )].v[e >= 0 ? 0 : 1]];
                                 VectorCopy( v->point, point );
                         }
                 }
@@ -1122,36 +1053,36 @@ static int      GlobUsage( const char* const szItem, const int itemstorage, cons
 //  PrintBSPFileSizes
 //      Dumps info about current file
 // =====================================================================================
-void            PrintBSPFileSizes()
+void            PrintBSPFileSizes(bspdata_t *data)
 {
-        int             numtextures = g_numtexrefs;
+        int             numtextures = data->numtexrefs;
         int             totalmemory = 0;
-        int numallocblocks = CountBlocks();
+        int numallocblocks = CountBlocks( data );
         int maxallocblocks = 64;
 
         Log( "\n" );
         Log( "Object names  Objects/Maxobjs  Memory / Maxmem  Fullness\n" );
         Log( "------------  ---------------  ---------------  --------\n" );
 
-        totalmemory += ArrayUsage( "models", g_nummodels, ENTRIES( g_dmodels ), ENTRYSIZE( g_dmodels ) );
-        totalmemory += ArrayUsage( "planes", g_numplanes, MAX_MAP_PLANES, ENTRYSIZE( g_dplanes ) );
-        totalmemory += ArrayUsage( "vertexes", g_numvertexes, ENTRIES( g_dvertexes ), ENTRYSIZE( g_dvertexes ) );
-        totalmemory += ArrayUsage( "nodes", g_numnodes, ENTRIES( g_dnodes ), ENTRYSIZE( g_dnodes ) );
-        totalmemory += ArrayUsage( "texinfos", g_numtexinfo, MAX_MAP_TEXINFO, ENTRYSIZE( g_texinfo ) );
-        totalmemory += ArrayUsage( "faces", g_numfaces, ENTRIES( g_dfaces ), ENTRYSIZE( g_dfaces ) );
-        //totalmemory += ArrayUsage( "origfaces", g_numorigfaces, ENTRIES( g_dorigfaces ), ENTRYSIZE( g_dorigfaces ) );
-        totalmemory += ArrayUsage( "* worldfaces", ( g_nummodels > 0 ? g_dmodels[0].numfaces : 0 ), MAX_MAP_WORLDFACES, 0 );
-        totalmemory += ArrayUsage( "clipnodes", g_numclipnodes, ENTRIES( g_dclipnodes ), ENTRYSIZE( g_dclipnodes ) );
-        totalmemory += ArrayUsage( "leaves", g_numleafs, MAX_MAP_LEAFS, ENTRYSIZE( g_dleafs ) );
-        totalmemory += ArrayUsage( "* worldleaves", ( g_nummodels > 0 ? g_dmodels[0].visleafs : 0 ), MAX_MAP_LEAFS_ENGINE, 0 );
-        totalmemory += ArrayUsage( "marksurfaces", g_nummarksurfaces, ENTRIES( g_dmarksurfaces ), ENTRYSIZE( g_dmarksurfaces ) );
-        totalmemory += ArrayUsage( "surfedges", g_numsurfedges, ENTRIES( g_dsurfedges ), ENTRYSIZE( g_dsurfedges ) );
-        totalmemory += ArrayUsage( "edges", g_numedges, ENTRIES( g_dedges ), ENTRYSIZE( g_dedges ) );
-        totalmemory += ArrayUsage( "texrefs", g_numtexrefs, ENTRIES( g_dtexrefs ), ENTRYSIZE( g_dtexrefs ) );
+        totalmemory += ArrayUsage( "models", data->nummodels, ENTRIES( data->dmodels ), ENTRYSIZE( data->dmodels ) );
+        totalmemory += ArrayUsage( "planes", data->numplanes, MAX_MAP_PLANES, ENTRYSIZE( data->dplanes ) );
+        totalmemory += ArrayUsage( "vertexes", data->numvertexes, ENTRIES( data->dvertexes ), ENTRYSIZE( data->dvertexes ) );
+        totalmemory += ArrayUsage( "nodes", data->numnodes, ENTRIES( data->dnodes ), ENTRYSIZE( data->dnodes ) );
+        totalmemory += ArrayUsage( "texinfos", data->numtexinfo, MAX_MAP_TEXINFO, ENTRYSIZE( data->texinfo ) );
+        totalmemory += ArrayUsage( "faces", data->numfaces, ENTRIES( data->dfaces ), ENTRYSIZE( data->dfaces ) );
+        //totalmemory += ArrayUsage( "origfaces", data->numorigfaces, ENTRIES( data->dorigfaces ), ENTRYSIZE( data->dorigfaces ) );
+        totalmemory += ArrayUsage( "* worldfaces", ( data->nummodels > 0 ? data->dmodels[0].numfaces : 0 ), MAX_MAP_WORLDFACES, 0 );
+        totalmemory += ArrayUsage( "clipnodes", data->numclipnodes, ENTRIES( data->dclipnodes ), ENTRYSIZE( data->dclipnodes ) );
+        totalmemory += ArrayUsage( "leaves", data->numleafs, MAX_MAP_LEAFS, ENTRYSIZE( data->dleafs ) );
+        totalmemory += ArrayUsage( "* worldleaves", ( data->nummodels > 0 ? data->dmodels[0].visleafs : 0 ), MAX_MAP_LEAFS_ENGINE, 0 );
+        totalmemory += ArrayUsage( "marksurfaces", data->nummarksurfaces, ENTRIES( data->dmarksurfaces ), ENTRYSIZE( data->dmarksurfaces ) );
+        totalmemory += ArrayUsage( "surfedges", data->numsurfedges, ENTRIES( data->dsurfedges ), ENTRYSIZE( data->dsurfedges ) );
+        totalmemory += ArrayUsage( "edges", data->numedges, ENTRIES( data->dedges ), ENTRYSIZE( data->dedges ) );
+        totalmemory += ArrayUsage( "texrefs", data->numtexrefs, ENTRIES( data->dtexrefs ), ENTRYSIZE( data->dtexrefs ) );
 
-        totalmemory += GlobUsage( "lightdata", g_dlightdata.size(), g_max_map_lightdata );
-        totalmemory += GlobUsage( "visdata", g_visdatasize, sizeof( g_dvisdata ) );
-        totalmemory += GlobUsage( "entdata", g_entdatasize, sizeof( g_dentdata ) );
+        totalmemory += GlobUsage( "lightdata", data->dlightdata.size(), g_max_map_lightdata );
+        totalmemory += GlobUsage( "visdata", data->visdatasize, sizeof( data->dvisdata ) );
+        totalmemory += GlobUsage( "entdata", data->entdatasize, sizeof( data->dentdata ) );
         if ( numallocblocks == -1 )
         {
                 Log( "* AllocBlock    [ not available to the " PLATFORM_VERSIONSTRING " version ]\n" );
@@ -1164,7 +1095,7 @@ void            PrintBSPFileSizes()
         Log( "%i textures referenced:\n", numtextures );
         for ( int i = 0; i < numtextures; i++ )
         {
-                Log( "\t%s\n", g_dtexrefs[i].name );
+                Log( "\t%s\n", data->dtexrefs[i].name );
         }
 
         Log( "=== Total BSP file data space used: %d bytes ===\n", totalmemory );
@@ -1204,7 +1135,7 @@ epair_t*        ParseEpair()
 // AJM: each tool should have its own version of GetParamsFromEnt which parseentity calls
 extern void     GetParamsFromEnt( entity_t* mapent );
 
-bool            ParseEntity()
+bool            ParseEntity(bspdata_t *data)
 {
         epair_t*        e;
         entity_t*       mapent;
@@ -1219,13 +1150,13 @@ bool            ParseEntity()
                 Error( "ParseEntity: { not found" );
         }
 
-        if ( g_numentities == MAX_MAP_ENTITIES )
+        if ( data->numentities == MAX_MAP_ENTITIES )
         {
-                Error( "g_numentities == MAX_MAP_ENTITIES" );
+                Error( "data->numentities == MAX_MAP_ENTITIES" );
         }
 
-        mapent = &g_entities[g_numentities];
-        g_numentities++;
+        mapent = &data->entities[data->numentities];
+        data->numentities++;
 
         while ( 1 )
         {
@@ -1269,7 +1200,7 @@ bool            ParseEntity()
                         DeleteKey( mapent, mapent->epairs->key );
                 }
                 memset( mapent, 0, sizeof( entity_t ) );
-                g_numentities--;
+                data->numentities--;
                 return true;
         }
         if ( !strcmp( ValueForKey( mapent, "classname" ), "light_environment" ) &&
@@ -1285,12 +1216,12 @@ bool            ParseEntity()
 //  ParseEntities
 //      Parses the dentdata string into entities
 // =====================================================================================
-void            ParseEntities()
+void            ParseEntities(bspdata_t *data)
 {
-        g_numentities = 0;
-        ParseFromMemory( g_dentdata, g_entdatasize );
+        data->numentities = 0;
+        ParseFromMemory( data->dentdata, data->entdatasize );
 
-        while ( ParseEntity() )
+        while ( ParseEntity(data) )
         {
         }
 }
@@ -1348,7 +1279,7 @@ int anglesforvector( float angles[3], const float vector[3] )
         angles[2] = 0;
         return 0;
 }
-void            UnparseEntities()
+void            UnparseEntities(bspdata_t *data)
 {
         char*           buf;
         char*           end;
@@ -1356,13 +1287,13 @@ void            UnparseEntities()
         char            line[MAXTOKEN];
         int             i;
 
-        buf = g_dentdata;
+        buf = data->dentdata;
         end = buf;
         *end = 0;
 
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < data->numentities; i++ )
         {
-                entity_t *mapent = &g_entities[i];
+                entity_t *mapent = &data->entities[i];
                 if ( !strcmp( ValueForKey( mapent, "classname" ), "info_sunlight" ) ||
                      !strcmp( ValueForKey( mapent, "classname" ), "light_environment" ) )
                 {
@@ -1376,7 +1307,7 @@ void            UnparseEntities()
                                 const char *target = ValueForKey( mapent, "target" );
                                 if ( target[0] )
                                 {
-                                        entity_t *targetent = FindTargetEntity( target );
+                                        entity_t *targetent = FindTargetEntity( data, target );
                                         if ( targetent )
                                         {
                                                 float origin1[3] = { 0,0,0 }, origin2[3] = { 0,0,0 }, normal[3];
@@ -1394,11 +1325,11 @@ void            UnparseEntities()
 
                         if ( !strcmp( ValueForKey( mapent, "classname" ), "info_sunlight" ) )
                         {
-                                if ( g_numentities == MAX_MAP_ENTITIES )
+                                if ( data->numentities == MAX_MAP_ENTITIES )
                                 {
-                                        Error( "g_numentities == MAX_MAP_ENTITIES" );
+                                        Error( "data->numentities == MAX_MAP_ENTITIES" );
                                 }
-                                entity_t *newent = &g_entities[g_numentities++];
+                                entity_t *newent = &data->entities[data->numentities++];
                                 newent->epairs = mapent->epairs;
                                 SetKeyValue( newent, "classname", "light_environment" );
                                 SetKeyValue( newent, "_fake", "1" );
@@ -1406,9 +1337,9 @@ void            UnparseEntities()
                         }
                 }
         }
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < data->numentities; i++ )
         {
-                entity_t *mapent = &g_entities[i];
+                entity_t *mapent = &data->entities[i];
                 if ( !strcmp( ValueForKey( mapent, "classname" ), "light_shadow" )
                      || !strcmp( ValueForKey( mapent, "classname" ), "light_bounce" )
                      )
@@ -1419,9 +1350,9 @@ void            UnparseEntities()
                 }
         }
         // ugly code
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < data->numentities; i++ )
         {
-                entity_t *mapent = &g_entities[i];
+                entity_t *mapent = &data->entities[i];
                 if ( !strcmp( ValueForKey( mapent, "classname" ), "light_surface" ) )
                 {
                         if ( !*ValueForKey( mapent, "_tex" ) )
@@ -1450,28 +1381,28 @@ void            UnparseEntities()
         {
                 int i, j;
                 int count = 0;
-                bool *lightneedcompare = (bool *)malloc( g_numentities * sizeof( bool ) );
+                bool *lightneedcompare = (bool *)malloc( data->numentities * sizeof( bool ) );
                 hlassume( lightneedcompare != NULL, assume_NoMemory );
-                memset( lightneedcompare, 0, g_numentities * sizeof( bool ) );
-                for ( i = g_numentities - 1; i > -1; i-- )
+                memset( lightneedcompare, 0, data->numentities * sizeof( bool ) );
+                for ( i = data->numentities - 1; i > -1; i-- )
                 {
-                        entity_t *ent = &g_entities[i];
+                        entity_t *ent = &data->entities[i];
                         const char *classname = ValueForKey( ent, "classname" );
                         const char *targetname = ValueForKey( ent, "targetname" );
                         int style = IntForKey( ent, "style" );
                         if ( !targetname[0] || strcmp( classname, "light" ) && strcmp( classname, "light_spot" ) && strcmp( classname, "light_environment" ) )
                                 continue;
-                        for ( j = i + 1; j < g_numentities; j++ )
+                        for ( j = i + 1; j < data->numentities; j++ )
                         {
                                 if ( !lightneedcompare[j] )
                                         continue;
-                                entity_t *ent2 = &g_entities[j];
+                                entity_t *ent2 = &data->entities[j];
                                 const char *targetname2 = ValueForKey( ent2, "targetname" );
                                 int style2 = IntForKey( ent2, "style" );
                                 if ( style == style2 && !strcmp( targetname, targetname2 ) )
                                         break;
                         }
-                        if ( j < g_numentities )
+                        if ( j < data->numentities )
                         {
                                 DeleteKey( ent, "targetname" );
                                 count++;
@@ -1488,9 +1419,9 @@ void            UnparseEntities()
                 free( lightneedcompare );
         }
 #endif
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < data->numentities; i++ )
         {
-                ep = g_entities[i].epairs;
+                ep = data->entities[i].epairs;
                 if ( !ep )
                 {
                         continue;                                      // ent got removed
@@ -1499,7 +1430,7 @@ void            UnparseEntities()
                 strcat( end, "{\n" );
                 end += 2;
 
-                for ( ep = g_entities[i].epairs; ep; ep = ep->next )
+                for ( ep = data->entities[i].epairs; ep; ep = ep->next )
                 {
                         sprintf( line, "\"%s\" \"%s\"\n", ep->key, ep->value );
                         strcat( end, line );
@@ -1513,7 +1444,7 @@ void            UnparseEntities()
                         Error( "Entity text too long" );
                 }
         }
-        g_entdatasize = end - buf + 1;
+        data->entdatasize = end - buf + 1;
 }
 
 // =====================================================================================
@@ -1618,17 +1549,17 @@ void            GetVectorForKey( const entity_t* const ent, const char* const ke
 //  FindTargetEntity
 //      
 // =====================================================================================
-entity_t *FindTargetEntity( const char* const target )
+entity_t *FindTargetEntity( bspdata_t *data, const char* const target )
 {
         int             i;
         const char*     n;
 
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < data->numentities; i++ )
         {
-                n = ValueForKey( &g_entities[i], "targetname" );
+                n = ValueForKey( &data->entities[i], "targetname" );
                 if ( !strcmp( n, target ) )
                 {
-                        return &g_entities[i];
+                        return &data->entities[i];
                 }
         }
 
@@ -1654,15 +1585,15 @@ void CDECL      dtexdata_free()
 //      (i.e. map was compiled with missing textures)
 // =====================================================================================
 static char emptystring[1] = { '\0' };
-char*           GetTextureByNumber( int texturenumber )
+char*           GetTextureByNumber( bspdata_t *data, int texturenumber )
 {
-        if ( texturenumber == -1 || texturenumber > g_numtexrefs - 1 )
+        if ( texturenumber == -1 || texturenumber > data->numtexrefs - 1 )
                 return emptystring;
         texinfo_t*      info;
         texref_t*		texref;
 
-        info = &g_texinfo[texturenumber];
-        texref = &g_dtexrefs[info->texref];
+        info = &data->texinfo[texturenumber];
+        texref = &data->dtexrefs[info->texref];
 
         return texref->name;
 }
@@ -1671,7 +1602,7 @@ char*           GetTextureByNumber( int texturenumber )
 //  EntityForModel
 //      returns entity addy for given modelnum
 // =====================================================================================
-entity_t*       EntityForModel( const int modnum )
+entity_t*       EntityForModel( bspdata_t *data, const int modnum )
 {
         int             i;
         const char*     s;
@@ -1679,16 +1610,16 @@ entity_t*       EntityForModel( const int modnum )
 
         sprintf( name, "*%i", modnum );
         // search the entities for one using modnum
-        for ( i = 0; i < g_numentities; i++ )
+        for ( i = 0; i < data->numentities; i++ )
         {
-                s = ValueForKey( &g_entities[i], "model" );
+                s = ValueForKey( &data->entities[i], "model" );
                 if ( !strcmp( s, name ) )
                 {
-                        return &g_entities[i];
+                        return &data->entities[i];
                 }
         }
 
-        return &g_entities[0];
+        return &data->entities[0];
 }
 
 void SetTextureContentsFile( const char *path )
@@ -1699,6 +1630,9 @@ void SetTextureContentsFile( const char *path )
 void LoadTextureContents()
 {
         g_tex_contents.clear();
+
+        g_tex_contents["NULL"] = CONTENTS_NULL;
+        g_tex_contents["SKIP"] = CONTENTS_NULL;
 
         char *buffer;
         LoadFile( g_tex_contents_file.c_str(), &buffer );
@@ -1733,6 +1667,8 @@ void LoadTextureContents()
                         g_tex_contents[tex] = CONTENTS_BOUNDINGBOX;
                 else if ( !strncmp( contents.c_str(), "origin", 6 ) )
                         g_tex_contents[tex] = CONTENTS_ORIGIN;
+                else if ( !strncmp( contents.c_str(), "clip", 4 ) )
+                        g_tex_contents[tex] = CONTENTS_CLIP;
                 else
                         g_tex_contents[tex] = CONTENTS_SOLID;
 
@@ -1752,13 +1688,13 @@ contents_t GetTextureContents( const char *texname )
         return CONTENTS_SOLID;
 }
 
-LRGBColor dface_AvgLightColor( dface_t *face, int style )
+LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
 {
         int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
         LRGBColor avg(0);
         for ( int i = 0; i < luxels; i++ )
         {
-                colorrgbexp32_t col = g_dlightdata[face->lightofs + style * luxels + i];
+                colorrgbexp32_t col = data->dlightdata[face->lightofs + style * luxels + i];
                 LVector3 vcol( 0 );
                 ColorRGBExp32ToVector( col, vcol );
                 VectorAdd( avg, vcol, avg );

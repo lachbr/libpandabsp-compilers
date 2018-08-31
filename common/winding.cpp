@@ -371,8 +371,10 @@ Winding::Winding( const vec3_t normal, const vec_t dist )
         initFromPlane( normal, dist );
 }
 
-Winding::Winding( const dface_t& face
+Winding::Winding( const dface_t& face,
+                  bspdata_t *data
                   , vec_t epsilon
+                  
 )
 {
         int             se;
@@ -385,17 +387,17 @@ Winding::Winding( const dface_t& face
         unsigned i;
         for ( i = 0; i < face.numedges; i++ )
         {
-                se = g_dsurfedges[face.firstedge + i];
+                se = data->dsurfedges[face.firstedge + i];
                 if ( se < 0 )
                 {
-                        v = g_dedges[-se].v[1];
+                        v = data->dedges[-se].v[1];
                 }
                 else
                 {
-                        v = g_dedges[se].v[0];
+                        v = data->dedges[se].v[0];
                 }
 
-                dv = &g_dvertexes[v];
+                dv = &data->dvertexes[v];
                 VectorCopy( dv->point, m_Points[i] );
         }
 
