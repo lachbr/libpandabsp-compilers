@@ -76,7 +76,7 @@ void LoadTextures()
                                         }
                                         else
                                         {
-                                                VectorScale( img->get_xel( col, row ) * 0xFF, 1.0 / 255.0, reflectivity );
+                                                VectorCopy( img->get_xel( col, row ), reflectivity );
                                                 for ( int k = 0; k < 3; k++ )
                                                 {
                                                         reflectivity[k] = pow( reflectivity[k], g_texreflectgamma );
