@@ -6,6 +6,8 @@ edgeshare_t     g_edgeshare[MAX_MAP_EDGES];
 vec3_t          g_face_centroids[MAX_MAP_EDGES]; // BUG: should this be [MAX_MAP_FACES]?
 bool            g_sky_lighting_fix = DEFAULT_SKY_LIGHTING_FIX;
 
+#define VectorOut(vec) vec[0] << ", " << vec[1] << ", " << vec[2]
+
 //#define TEXTURE_STEP   16.0
 
 // =====================================================================================
@@ -525,6 +527,8 @@ typedef struct
         vec_t*          light;
         vec_t           facedist;
         vec3_t          facenormal;
+        int normal_count;
+        vec3_t          normals[NUM_BUMP_VECTS + 1];
         bool			translucent_b;
         vec3_t			translucent_v;
         int				texref;
@@ -549,11 +553,14 @@ typedef struct
         int				lmcache_density; // shared by both s and t direction
         int				lmcache_offset; // shared by both s and t direction
         int				lmcache_side;
-        vec3_t( *lmcache )[ALLSTYLES]; // lm: short for lightmap // don't forget to free!
-        vec3_t			*lmcache_normal; // record the phong normals
+        bumpsample_t( *lmcache )[ALLSTYLES]; // lm: short for lightmap // don't forget to free!
+        bumpnormal_t			*lmcache_normal; // record the phong normals
         int				*lmcache_wallflags; // wallflag_t
         int				lmcachewidth;
         int				lmcacheheight;
+
+        bool bumped;
+        bool isflat;
 }
 lightinfo_t;
 
@@ -687,9 +694,9 @@ static void     CalcFaceExtents( lightinfo_t* l )
                 l->lmcache_offset = l->lmcache_side;
                 l->lmcachewidth = l->texsize[0] * l->lmcache_density + 1 + 2 * l->lmcache_side;
                 l->lmcacheheight = l->texsize[1] * l->lmcache_density + 1 + 2 * l->lmcache_side;
-                l->lmcache = ( vec3_t( *)[ALLSTYLES] )malloc( l->lmcachewidth * l->lmcacheheight * sizeof( vec3_t[ALLSTYLES] ) );
-                hlassume( l->lmcache != NULL, assume_NoMemory );
-                l->lmcache_normal = (vec3_t *)malloc( l->lmcachewidth * l->lmcacheheight * sizeof( vec3_t ) );
+
+                l->lmcache = ( bumpsample_t (*)[ALLSTYLES] )malloc( l->lmcachewidth * l->lmcacheheight * sizeof( bumpsample_t[ALLSTYLES] ) );
+                l->lmcache_normal = (bumpnormal_t *)malloc( l->lmcachewidth * l->lmcacheheight * sizeof( bumpnormal_t ) );
                 hlassume( l->lmcache_normal != NULL, assume_NoMemory );
                 l->lmcache_wallflags = (int *)malloc( l->lmcachewidth * l->lmcacheheight * sizeof( int ) );
                 hlassume( l->lmcache_wallflags != NULL, assume_NoMemory );
@@ -1568,14 +1575,18 @@ static void		CalcPoints( lightinfo_t* l )
 
 typedef struct
 {
+        vec3_t normal;
         vec3_t          pos;
-        vec3_t          light;
+        vec3_t          light[NUM_BUMP_VECTS + 1];
         int				surface; // this sample can grow into another face
 }
 sample_t;
 
 typedef struct
 {
+        int normal_count;
+        int bumped;
+        vec3_t normals[NUM_BUMP_VECTS + 1];
         int             numsamples;
         sample_t*       samples[MAXLIGHTMAPS];
 }
@@ -2662,8 +2673,10 @@ void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_
                                                 }
                                                 dist = VectorNormalize( delta );
                                                 dot = DotProduct( delta, normal );
-                                                //                        if (dot <= 0.0)
-                                                //                            continue;
+                                                //if ( dot <= NORMAL_EPSILON )
+                                                //{
+                                                //        continue;
+                                                //}
 
                                                 if ( dist < 1.0 )
                                                 {
@@ -2925,7 +2938,7 @@ void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_
 //  AddSampleToPatch
 //      Take the sample's collected light and add it back into the apropriate patch for the radiosity pass.
 // =====================================================================================
-static void AddSamplesToPatches( const sample_t **samples, const unsigned char *styles, int facenum, const lightinfo_t *l )
+static void AddSamplesToPatches( sample_t *(samples)[ALLSTYLES], const unsigned char *styles, int facenum, const lightinfo_t *l )
 {
         patch_t *patch;
         int i, j, m, k;
@@ -2994,6 +3007,7 @@ static void AddSamplesToPatches( const sample_t **samples, const unsigned char *
                                 // add sample to patch
                                 vec_t area = w->getArea() / ( tex->lightmap_scale * tex->lightmap_scale );
                                 patch->samples += area;
+                                
                                 for ( m = 0; m < ALLSTYLES && styles[m] != 255; m++ )
                                 {
                                         int style = styles[m];
@@ -3020,9 +3034,14 @@ static void AddSamplesToPatches( const sample_t **samples, const unsigned char *
                                                 {
                                                         patch->totalstyle_all[k] = style;
                                                 }
-                                                VectorMA( patch->samplelight_all[k], area, s->light, patch->samplelight_all[k] );
+                                                for ( int n = 0; n < l->normal_count; n++ )
+                                                {
+                                                        //cout << "AddSamplesToPatches: patchnum " << j << ", normal " << n << ", light (" << VectorOut( s->light[n] ) << ")" << endl;
+                                                        VectorMA( patch->samplelight_all[k].light[n], area, s->light[n], patch->samplelight_all[k].light[n] );
+                                                }
                                         }
                                 }
+                                
                         }
                         delete w;
                 }
@@ -3038,8 +3057,9 @@ static void AddSamplesToPatches( const sample_t **samples, const unsigned char *
 // =====================================================================================
 //  GetPhongNormal
 // =====================================================================================
-void            GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal )
+void            GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal, const void *vl, int n )
 {
+        const lightinfo_t *l = (lightinfo_t *)vl;
         int             j;
         int				s; // split every edge into two parts
         const dface_t*  f = g_bspdata->dfaces + facenum;
@@ -3199,6 +3219,14 @@ void            GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnorm
         }
 }
 
+void GetBumpNormals( const texinfo_t *texinfo, const LVector3 &face_normal,
+                     const LVector3 &phong_normal, LVector3 *bump_vecs )
+{
+        LVector3 stmp( texinfo->lightmap_vecs[0][0], texinfo->lightmap_vecs[0][1], texinfo->lightmap_vecs[0][2] );
+        LVector3 ttmp( texinfo->lightmap_vecs[1][0], texinfo->lightmap_vecs[1][1], texinfo->lightmap_vecs[1][2] );
+        GetBumpNormals( stmp, ttmp, face_normal, phong_normal, bump_vecs );
+}
+
 const vec3_t    s_circuscolors[] = {
         { 100000.0,  100000.0,   100000.0 },                              // white
 { 100000.0,  0.0,        0.0 },                              // red
@@ -3235,12 +3263,14 @@ void CalcLightmap( lightinfo_t *l, byte *styles )
                 vec_t square[2][2];  // the max possible range in which this sample point affects the lighting on a face
                 vec3_t surfpt; // the point on the surface (with no HUNT_OFFSET applied), used for getting phong normal and doing patch interpolation
                 int surface;
-                vec3_t pointnormal;
+                vec3_t pointnormal[NUM_BUMP_VECTS + 1];
+                memset( pointnormal, 0, sizeof( vec3_t ) * 4 );
                 bool blocked;
                 vec3_t spot2;
-                vec3_t pointnormal2;
-                vec3_t *sampled;
-                vec3_t *normal_out;
+                vec3_t pointnormal2[NUM_BUMP_VECTS + 1];
+                memset( pointnormal2, 0, sizeof( vec3_t ) * 4 );
+                bumpsample_t *sampled;
+                bumpnormal_t *normal_out;
                 bool nudged;
                 int *wallflags_out;
 
@@ -3351,13 +3381,50 @@ void CalcLightmap( lightinfo_t *l, byte *styles )
                         }
                 }
                 // calculate normal for the sample
+
+                LVector3 bumpnormals[NUM_BUMP_VECTS];
+                vec3_t phongnorm;
+                if ( l->bumped )
                 {
-                        GetPhongNormal( surface, surfpt, pointnormal );
-                        if ( l->translucent_b )
+                        GetPhongNormal( surface, surfpt, phongnorm );
+                        LVector3 vfacenorm( l->normals[0][0], l->normals[0][1], l->normals[0][2] );
+                        LVector3 vphongnorm( phongnorm[0], phongnorm[1], phongnorm[2] );
+#if 0
+                        if ( vfacenorm != vphongnorm )
                         {
-                                VectorSubtract( vec3_origin, pointnormal, pointnormal2 );
+                                std::stringstream ss;
+                                ss << "Face normal: " << vfacenorm << ", Phong normal: " << vphongnorm << "\n";
+                                Log( ss.str().c_str() );
                         }
-                        VectorCopy( pointnormal, *normal_out );
+#endif
+                        GetBumpNormals( g_bspdata->texinfo + l->face->texinfo,
+                                        vfacenorm,
+                                        vphongnorm, bumpnormals );
+                }
+
+                for (int n = 0; n < l->normal_count; n++ )
+                {
+                        if ( n == 0 )
+                        {
+                                // flat bump map use face phong normal
+                                GetPhongNormal( surface, surfpt, pointnormal[n], l, n );
+                                if ( l->translucent_b )
+                                {
+                                        VectorSubtract( vec3_origin, pointnormal[n], pointnormal2[n] );
+                                }
+                                VectorCopy( pointnormal[n], normal_out->norm[n] );
+                        }
+                        else
+                        {
+                                // this is a bumped sample, use the bump normals
+                                VectorCopy( bumpnormals[n - 1], pointnormal[n] );
+                                VectorCopy( pointnormal[n], normal_out->norm[n] );
+                                if ( l->translucent_b )
+                                {
+                                        VectorSubtract( vec3_origin, pointnormal[n], pointnormal2[n] );
+                                }
+                        }
+                                
                 }
                 // calculate visibility for the sample
                 {
@@ -3414,15 +3481,23 @@ void CalcLightmap( lightinfo_t *l, byte *styles )
                         }
                 }
                 // gather light
+                for (int n = 0; n < l->normal_count; n++ )
                 {
                         if ( !blocked )
                         {
-                                GatherSampleLight( spot, pvs, pointnormal, sampled
-                                                   , styles
-                                                   , 0
-                                                   , l->texref
-                                                   , surface
+                                vec3_t vsamples[ALLSTYLES];
+                                memset( vsamples, 0, ALLSTYLES * sizeof( vec3_t ) );
+                                GatherSampleLight( spot, pvs, pointnormal[n], vsamples
+                                                        , styles
+                                                        , 0
+                                                        , l->texref
+                                                        , surface
                                 );
+                                for ( j = 0; j < ALLSTYLES && styles[j] != 255; j++ )
+                                {
+                                        //cout << "CalcLightmap GatherSampleLight: (" << vsamples[j][0] << ", " << vsamples[j][1] << ", " << vsamples[j][2] << ")" << endl;
+                                        VectorCopy( vsamples[j], sampled[j].light[n] );
+                                }
                         }
                         if ( l->translucent_b )
                         {
@@ -3430,18 +3505,18 @@ void CalcLightmap( lightinfo_t *l, byte *styles )
                                 memset( sampled2, 0, ALLSTYLES * sizeof( vec3_t ) );
                                 if ( !blocked )
                                 {
-                                        GatherSampleLight( spot2, pvs2, pointnormal2, sampled2
-                                                           , styles
-                                                           , 0
-                                                           , l->texref
-                                                           , surface
+                                        GatherSampleLight( spot2, pvs2, pointnormal2[n], sampled2
+                                                                , styles
+                                                                , 0
+                                                                , l->texref
+                                                                , surface
                                         );
                                 }
                                 for ( j = 0; j < ALLSTYLES && styles[j] != 255; j++ )
                                 {
                                         for ( int x = 0; x < 3; x++ )
                                         {
-                                                sampled[j][x] = ( 1.0 - l->translucent_v[x] ) * sampled[j][x] + l->translucent_v[x] * sampled2[j][x];
+                                                sampled[j].light[n][x] = ( 1.0 - l->translucent_v[x] ) * sampled[j].light[n][x] + l->translucent_v[x] * sampled2[j][x];
                                         }
                                 }
                         }
@@ -3451,23 +3526,24 @@ void CalcLightmap( lightinfo_t *l, byte *styles )
                                 {
                                         if ( blocked && styles[j] == 0 )
                                         {
-                                                sampled[j][0] = 200;
-                                                sampled[j][1] = 0;
-                                                sampled[j][2] = 0;
+                                                sampled[j].light[n][0] = 200;
+                                                sampled[j].light[n][1] = 0;
+                                                sampled[j].light[n][2] = 0;
                                         }
                                         else if ( nudged && styles[j] == 0 ) // we assume style 0 is always present
                                         {
-                                                VectorFill( sampled[j], 100 );
+                                                VectorFill( sampled[j].light[n], 100 );
                                         }
                                         else
                                         {
-                                                VectorClear( sampled[j] );
+                                                VectorClear( sampled[j].light[n] );
                                         }
                                 }
                         }
                 }
         }
 }
+
 void            BuildFacelights( const int facenum )
 {
         dface_t*        f;
@@ -3521,6 +3597,49 @@ void            BuildFacelights( const int facenum )
 
         memset( &l, 0, sizeof( l ) );
 
+        plane = getPlaneFromFace( f );
+
+        facelight_t *fl = &facelight[facenum];
+
+        l.isflat = true;
+
+#if 0
+        if ( g_smoothing_threshold != -1 )
+        {
+                for ( int edgenum = f->firstedge; edgenum < f->firstedge + f->numedges; edgenum++ )
+                {
+                        k = g_bspdata->dsurfedges[f->firstedge + j];
+                        edgeshare_t *e;
+                        if ( k < 0 )
+                        {
+                                e = &g_edgeshare[-k];
+                        }
+                        else
+                        {
+                                e = &g_edgeshare[k];
+                        }
+
+                        if ( e->faces[0] && e->faces[1] )
+                        {
+                                float dot = DotProduct( plane->normal, e->vertex_normal );
+                                if (  < 1.0 - EQUAL_EPSILON )
+                                {
+
+                                }
+                        }
+                }
+        }
+#endif
+
+        if ( g_face_patches[facenum] )
+        {
+                l.bumped = g_face_patches[facenum]->needs_bumpmap;
+        }
+        else
+        {
+                l.bumped = false;
+        }
+        fl->bumped = l.bumped;
         l.surfnum = facenum;
         l.face = f;
 
@@ -3528,11 +3647,40 @@ void            BuildFacelights( const int facenum )
         l.translucent_b = !VectorCompare( l.translucent_v, vec3_origin );
         l.texref = g_bspdata->texinfo[f->texinfo].texref;
 
+        VectorCopy( plane->normal, l.facenormal );
+
         //
         // rotate plane
         //
-        plane = getPlaneFromFace( f );
-        VectorCopy( plane->normal, l.facenormal );
+        if ( l.isflat )
+        {
+                VectorCopy( l.facenormal, l.normals[0] );
+                VectorCopy( l.facenormal, fl->normals[0] );
+                l.normal_count = 1;
+                fl->normal_count = 1;
+                if ( l.bumped )
+                {
+                        f->bumped_lightmap = 1;
+                        // also make the 3 bump map normals
+                        l.normal_count += NUM_BUMP_VECTS;
+                        fl->normal_count = l.normal_count;
+                        LVector3 bump_vecs[NUM_BUMP_VECTS];
+                        LVector3 fnorm( l.normals[0][0], l.normals[0][1], l.normals[0][2] );
+                        GetBumpNormals( &g_bspdata->texinfo[f->texinfo], fnorm, fnorm, bump_vecs );
+
+                        for ( int b = 0; b < NUM_BUMP_VECTS; b++ )
+                        {
+                                VectorCopy( bump_vecs[b], l.normals[b + 1] );
+                                VectorCopy( l.normals[b + 1], fl->normals[b + 1] );
+                        }
+                }
+                
+
+        }
+        if ( g_face_patches[facenum] )
+        {
+                g_face_patches[facenum]->normal_count = l.normal_count;
+        }
         l.facedist = plane->dist;
         
         CalcFaceVectors( &l );
@@ -3553,19 +3701,24 @@ void            BuildFacelights( const int facenum )
                 fl_samples[k] = (sample_t *)calloc( l.numsurfpt, sizeof( sample_t ) );
                 hlassume( fl_samples[k] != NULL, assume_NoMemory );
         }
+        
         for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
         {
                 hlassume( patch->totalstyle_all = (unsigned char *)malloc( ALLSTYLES * sizeof( unsigned char ) ), assume_NoMemory );
-                hlassume( patch->samplelight_all = (vec3_t *)malloc( ALLSTYLES * sizeof( vec3_t ) ), assume_NoMemory );
-                hlassume( patch->totallight_all = (vec3_t *)malloc( ALLSTYLES * sizeof( vec3_t ) ), assume_NoMemory );
-                hlassume( patch->directlight_all = (vec3_t *)malloc( ALLSTYLES * sizeof( vec3_t ) ), assume_NoMemory );
+                memset( patch->totalstyle_all, 255, ALLSTYLES * sizeof( unsigned char ) );
+                hlassume( patch->samplelight_all = (bumpsample_t *)malloc( ALLSTYLES * sizeof( bumpsample_t ) ), assume_NoMemory );
+                hlassume( patch->totallight_all = (bumpsample_t *)malloc( ALLSTYLES * sizeof( bumpsample_t ) ), assume_NoMemory );
+                hlassume( patch->directlight_all = (bumpsample_t *)malloc( ALLSTYLES * sizeof( bumpsample_t ) ), assume_NoMemory );
                 for ( j = 0; j < ALLSTYLES; j++ )
                 {
-                        patch->totalstyle_all[j] = 255;
-                        VectorClear( patch->samplelight_all[j] );
-                        VectorClear( patch->totallight_all[j] );
-                        VectorClear( patch->directlight_all[j] );
+                        for ( int n = 0; n < l.normal_count; n++ )
+                        {
+                                VectorClear( patch->samplelight_all[j].light[n] );
+                                VectorClear( patch->totallight_all[j].light[n] );
+                                VectorClear( patch->directlight_all[j].light[n] );
+                        }
                 }
+                
                 patch->totalstyle_all[0] = 0;
         }
 
@@ -3579,6 +3732,7 @@ void            BuildFacelights( const int facenum )
                         VectorCopy( spot, fl_samples[k][i].pos );
                         fl_samples[k][i].surface = l.surfpt_surface[i];
                 }
+                
 
                 int s, t, pos;
                 int s_center, t_center;
@@ -3591,7 +3745,7 @@ void            BuildFacelights( const int facenum )
                 t_center = ( i / lightmapwidth ) * l.lmcache_density + l.lmcache_offset;
                 sizehalf = 0.5 * g_blur * l.lmcache_density;
                 subsamples = 0.0;
-                VectorCopy( l.lmcache_normal[s_center + l.lmcachewidth * t_center], centernormal );
+                VectorCopy( l.lmcache_normal[s_center + l.lmcachewidth * t_center].norm[0], centernormal );
                 if ( g_bleedfix && !g_drawnudge )
                 {
                         int s_origin = s_center;
@@ -3676,13 +3830,18 @@ void            BuildFacelights( const int facenum )
                                         // as a result, when exposed to a directional light, the light on the cylinder may "leak" into the opposite dark side
                                         // this correction limits the effect of blur distance when the normal changes very fast
                                         // this correction will not break the smoothness that HLRAD_GROWSAMPLE ensures
-                                        weighting_correction = DotProduct( l.lmcache_normal[pos], centernormal );
+                                        weighting_correction = DotProduct( l.lmcache_normal[pos].norm[0], centernormal );
                                         weighting_correction = ( weighting_correction > 0 ) ? weighting_correction * weighting_correction : 0;
                                         weighting = weighting * weighting_correction;
-                                        for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
+                                        for ( int n = 0; n < l.normal_count; n++ )
                                         {
-                                                VectorMA( fl_samples[j][i].light, weighting, l.lmcache[pos][j], fl_samples[j][i].light );
+                                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
+                                                {
+
+                                                        VectorMA( fl_samples[j][i].light[n], weighting, l.lmcache[pos][j].light[n], fl_samples[j][i].light[n] );
+                                                }
                                         }
+                                        
                                         subsamples += weighting;
                                 }
                         }
@@ -3693,24 +3852,32 @@ void            BuildFacelights( const int facenum )
                         else
                         {
                                 subsamples = 0.0;
-                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
+                                for ( int n = 0; n < l.normal_count; n++ )
                                 {
-                                        VectorClear( fl_samples[j][i].light );
+                                        for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
+                                        {
+                                                VectorClear( fl_samples[j][i].light[n] );
+                                        }
                                 }
+                                
                         }
                 }
                 if ( subsamples > 0 )
                 {
-                        for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
+                        for ( int n = 0; n < l.normal_count; n++ )
                         {
-                                VectorScale( fl_samples[j][i].light, 1.0 / subsamples, fl_samples[j][i].light );
+                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
+                                {
+                                        VectorScale( fl_samples[j][i].light[n], 1.0 / subsamples, fl_samples[j][i].light[n] );
+                                }
                         }
+                        
                 }
         } // end of i loop
         free( sample_wallflags );
 
         // average up the direct light on each patch for radiosity
-        AddSamplesToPatches( (const sample_t **)fl_samples, f_styles, facenum, &l );
+        AddSamplesToPatches( fl_samples, f_styles, facenum, &l );
         {
                 for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
                 {
@@ -3720,12 +3887,16 @@ void            BuildFacelights( const int facenum )
                                 patch->samples = 0.0;
                         if ( patch->samples )
                         {
-                                for ( istyle = 0; istyle < ALLSTYLES && patch->totalstyle_all[istyle] != 255; istyle++ )
+                                for ( int n = 0; n < l.normal_count; n++ )
                                 {
-                                        vec3_t v;
-                                        VectorScale( patch->samplelight_all[istyle], 1.0f / patch->samples, v );
-                                        VectorAdd( patch->directlight_all[istyle], v, patch->directlight_all[istyle] );
+                                        for ( istyle = 0; istyle < ALLSTYLES && patch->totalstyle_all[istyle] != 255; istyle++ )
+                                        {
+                                                vec3_t v;
+                                                VectorScale( patch->samplelight_all[istyle].light[n], 1.0f / patch->samples, v );
+                                                VectorAdd( patch->directlight_all[istyle].light[n], v, patch->directlight_all[istyle].light[n] );
+                                        }
                                 }
+                                
                         }
                         //LRC (ends)
                 }
@@ -3782,48 +3953,72 @@ void            BuildFacelights( const int facenum )
                                 }
                                 lastoffset2 = thisoffset2;
                         }
-                        vec3_t frontsampled[ALLSTYLES], backsampled[ALLSTYLES];
-                        for ( j = 0; j < ALLSTYLES; j++ )
+
+                        for ( int n = 0; n < l.normal_count; n++ )
                         {
-                                VectorClear( frontsampled[j] );
-                                VectorClear( backsampled[j] );
-                        }
-                        VectorSubtract( vec3_origin, l.facenormal, normal2 );
-                        GatherSampleLight( patch->origin, pvs, l.facenormal, frontsampled,
-                                           patch->totalstyle_all
-                                           , 1
-                                           , l.texref
-                                           , facenum
-                        );
-                        GatherSampleLight( spot2, pvs2, normal2, backsampled,
-                                           patch->totalstyle_all
-                                           , 1
-                                           , l.texref
-                                           , facenum
-                        );
-                        for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                        {
-                                for ( int x = 0; x < 3; x++ )
+                                vec3_t frontsampled[ALLSTYLES], backsampled[ALLSTYLES];
+                                for ( j = 0; j < ALLSTYLES; j++ )
                                 {
-                                        patch->totallight_all[j][x] += ( 1.0 - l.translucent_v[x] ) * frontsampled[j][x] + l.translucent_v[x] * backsampled[j][x];
+                                        VectorClear( frontsampled[j] );
+                                        VectorClear( backsampled[j] );
+                                }
+                                VectorSubtract( vec3_origin, l.normals[n], normal2 );
+                                GatherSampleLight( patch->origin, pvs, l.normals[n], frontsampled,
+                                                   patch->totalstyle_all
+                                                   , 1
+                                                   , l.texref
+                                                   , facenum
+                                );
+                                GatherSampleLight( spot2, pvs2, normal2, backsampled,
+                                                   patch->totalstyle_all
+                                                   , 1
+                                                   , l.texref
+                                                   , facenum
+                                );
+                                for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
+                                {
+                                        for ( int x = 0; x < 3; x++ )
+                                        {
+                                                patch->totallight_all[j].light[n][x] += ( 1.0 - l.translucent_v[x] ) * frontsampled[j][x] + l.translucent_v[x] * backsampled[j][x];
+                                        }
                                 }
                         }
+                        
                 }
                 else
                 {
-                        GatherSampleLight( patch->origin, pvs, l.facenormal,
-                                           patch->totallight_all,
-                                           patch->totalstyle_all
-                                           , 1
-                                           , l.texref
-                                           , facenum
-                        );
+                        for ( int n = 0; n < l.normal_count; n++ )
+                        {
+                                vec3_t sampled[ALLSTYLES];
+                                for ( j = 0; j < ALLSTYLES; j++ )
+                                {
+                                        VectorClear( sampled[j] );
+                                }
+
+
+                                GatherSampleLight( patch->origin, pvs, l.normals[n],
+                                                   sampled,
+                                                   patch->totalstyle_all
+                                                   , 1
+                                                   , l.texref
+                                                   , facenum
+                                );
+
+                                for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
+                                {
+                                        //cout << "GatherSampleLight (" << sampled[j][0] << ", " << sampled[j][1] << ", " << sampled[j][2] << ")" << endl;
+                                       // Log( "GatherSampleLight (%4.3f, %4.3f, %4.3f)\n", sampled[j][0], sampled[j][1], sampled[j][2] );
+                                        VectorCopy( sampled[j], patch->totallight_all[j].light[n] );
+                                }
+                        }
+                        
                 }
         }
 
         // add an ambient term if desired
         if ( g_ambient[0] || g_ambient[1] || g_ambient[2] )
         {
+                
                 for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
                 {
                         if ( f_styles[j] == 0 )
@@ -3831,17 +4026,20 @@ void            BuildFacelights( const int facenum )
                                 s = fl_samples[j];
                                 for ( i = 0; i < l.numsurfpt; i++, s++ )
                                 {
-                                        VectorAdd( s->light, g_ambient, s->light );
+                                        for ( int n = 0; n < l.normal_count; n++ )
+                                        {
+                                                VectorAdd( s->light[n], g_ambient, s->light[n] );
+                                        }
                                 }
                                 break;
                         }
                 }
-
         }
 
         // add circus lighting for finding black lightmaps
         if ( g_circus )
         {
+                
                 for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
                 {
                         if ( f_styles[j] == 0 )
@@ -3861,14 +4059,18 @@ void            BuildFacelights( const int facenum )
 
                                 for ( i = 0; i < l.numsurfpt; i++, s++ )
                                 {
-                                        if ( ( s->light[0] == 0 ) && ( s->light[1] == 0 ) && ( s->light[2] == 0 ) )
+                                        for ( int n = 0; n < l.normal_count; n++ )
                                         {
-                                                VectorAdd( s->light, s_circuscolors[i % amt], s->light );
+                                                if ( ( s->light[n][0] == 0 ) && ( s->light[n][1] == 0 ) && ( s->light[n][2] == 0 ) )
+                                                {
+                                                        VectorAdd( s->light[n], s_circuscolors[i % amt], s->light[n] );
+                                                }
                                         }
                                 }
                                 break;
                         }
                 }
+                
         }
 
         // light from dlight_threshold and above is sent out, but the
@@ -3880,35 +4082,39 @@ void            BuildFacelights( const int facenum )
                 
                 if ( VectorAvg( g_face_patches[facenum]->baselight ) >= g_dlight_threshold )
                 {
-                        for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                        {
-                                if ( f_styles[j] == g_face_patches[facenum]->emitstyle )
+                        
+                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
                                 {
-                                        break;
+                                        if ( f_styles[j] == g_face_patches[facenum]->emitstyle )
+                                        {
+                                                break;
+                                        }
                                 }
-                        }
-                        if ( j == ALLSTYLES )
-                        {
-                                if ( ++stylewarningcount >= stylewarningnext )
+                                if ( j == ALLSTYLES )
                                 {
-                                        stylewarningnext = stylewarningcount * 2;
-                                        Warning( "Too many direct light styles on a face(?,?,?)" );
-                                        Warning( " total %d warnings for too many styles", stylewarningcount );
+                                        if ( ++stylewarningcount >= stylewarningnext )
+                                        {
+                                                stylewarningnext = stylewarningcount * 2;
+                                                Warning( "Too many direct light styles on a face(?,?,?)" );
+                                                Warning( " total %d warnings for too many styles", stylewarningcount );
+                                        }
                                 }
-                        }
-                        else
-                        {
-                                if ( f_styles[j] == 255 )
+                                else
                                 {
-                                        f_styles[j] = g_face_patches[facenum]->emitstyle;
-                                }
+                                        if ( f_styles[j] == 255 )
+                                        {
+                                                f_styles[j] = g_face_patches[facenum]->emitstyle;
+                                        }
 
-                                s = fl_samples[j];
-                                for ( i = 0; i < l.numsurfpt; i++, s++ )
-                                {
-                                        VectorAdd( s->light, g_face_patches[facenum]->baselight, s->light );
+                                        s = fl_samples[j];
+                                        for ( i = 0; i < l.numsurfpt; i++, s++ )
+                                        {
+                                                for ( int n = 0; n < l.normal_count; n++ )
+                                                {
+                                                        VectorAdd( s->light[n], g_face_patches[facenum]->baselight, s->light[n] );
+                                                }
+                                        }
                                 }
-                        }
                 }
                 //LRC (ends)
         }
@@ -3921,7 +4127,7 @@ void            BuildFacelights( const int facenum )
                         maxlights[j] = 0;
                         for ( i = 0; i < fl->numsamples; i++ )
                         {
-                                vec_t b = VectorMaximum( fl_samples[j][i].light );
+                                vec_t b = VectorMaximum( fl_samples[j][i].light[0] );
                                 maxlights[j] = qmax( maxlights[j], b );
                         }
                         if ( maxlights[j] <= g_corings[f_styles[j]] * 0.1 ) // light is too dim, discard this style to reduce RAM usage
@@ -3939,6 +4145,7 @@ void            BuildFacelights( const int facenum )
                                 maxlights[j] = 0;
                         }
                 }
+                
                 for ( k = 0; k < MAXLIGHTMAPS; k++ )
                 {
                         int bestindex = -1;
@@ -3972,6 +4179,7 @@ void            BuildFacelights( const int facenum )
                                 fl->samples[k] = NULL;
                         }
                 }
+                
                 for ( j = 1; j < ALLSTYLES && f_styles[j] != 255; j++ )
                 {
                         if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
@@ -3996,7 +4204,7 @@ void            BuildFacelights( const int facenum )
                 vec_t maxlights[ALLSTYLES];
                 for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
                 {
-                        maxlights[j] = VectorMaximum( patch->totallight_all[j] );
+                        maxlights[j] = VectorMaximum( patch->totallight_all[j].light[0] );
                 }
                 for ( k = 0; k < MAXLIGHTMAPS; k++ )
                 {
@@ -4021,7 +4229,11 @@ void            BuildFacelights( const int facenum )
                         {
                                 maxlights[bestindex] = 0;
                                 patch->totalstyle[k] = patch->totalstyle_all[bestindex];
-                                VectorCopy( patch->totallight_all[bestindex], patch->totallight[k] );
+                                for ( int n = 0; n < l.normal_count; n++ )
+                                {
+                                        VectorCopy( patch->totallight_all[bestindex].light[n], patch->totallight[k].light[n] );
+                                }
+                                
                         }
                         else
                         {
@@ -4043,7 +4255,7 @@ void            BuildFacelights( const int facenum )
                 }
                 for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
                 {
-                        maxlights[j] = VectorMaximum( patch->directlight_all[j] );
+                        maxlights[j] = VectorMaximum( patch->directlight_all[j].light[0] );
                 }
                 for ( k = 0; k < MAXLIGHTMAPS; k++ )
                 {
@@ -4068,7 +4280,10 @@ void            BuildFacelights( const int facenum )
                         {
                                 maxlights[bestindex] = 0;
                                 patch->directstyle[k] = patch->totalstyle_all[bestindex];
-                                VectorCopy( patch->directlight_all[bestindex], patch->directlight[k] );
+                                for ( int n = 0; n < l.normal_count; n++ )
+                                {
+                                        VectorCopy( patch->directlight_all[bestindex].light[n], patch->directlight[k].light[n] );
+                                }
                         }
                         else
                         {
@@ -4088,14 +4303,16 @@ void            BuildFacelights( const int facenum )
                                 ThreadUnlock();
                         }
                 }
-                free( patch->totalstyle_all );
-                patch->totalstyle_all = NULL;
+
                 free( patch->samplelight_all );
                 patch->samplelight_all = NULL;
                 free( patch->totallight_all );
                 patch->totallight_all = NULL;
                 free( patch->directlight_all );
                 patch->directlight_all = NULL;
+                free( patch->totalstyle_all );
+                patch->totalstyle_all = NULL;
+                
         }
         free( l.lmcache );
         free( l.lmcache_normal );
@@ -4130,6 +4347,7 @@ void PrecompLightmapOffsets()
                 }
 
 
+                for (int n = 0; n < fl->normal_count; n++ )
                 {
                         int i, j, k;
                         vec_t maxlights[ALLSTYLES];
@@ -4145,7 +4363,7 @@ void PrecompLightmapOffsets()
                                 {
                                         for ( i = 0; i < fl->numsamples; i++ )
                                         {
-                                                VectorCompareMaximum( maxlights1[f->styles[k]], fl->samples[k][i].light, maxlights1[f->styles[k]] );
+                                                VectorCompareMaximum( maxlights1[f->styles[k]], fl->samples[k][i].light[n], maxlights1[f->styles[k]] );
                                         }
                                 }
                                 int numpatches;
@@ -4157,7 +4375,7 @@ void PrecompLightmapOffsets()
                                         patch = &g_patches[patches[i]];
                                         for ( k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++ )
                                         {
-                                                VectorCompareMaximum( maxlights2[patch->totalstyle[k]], patch->totallight[k], maxlights2[patch->totalstyle[k]] );
+                                                VectorCompareMaximum( maxlights2[patch->totalstyle[k]], patch->totallight[k].light[n], maxlights2[patch->totalstyle[k]] );
                                         }
                                 }
                                 for ( j = 0; j < ALLSTYLES; j++ )
@@ -4224,7 +4442,7 @@ void PrecompLightmapOffsets()
                                                 memcpy( fl->samples[k], oldsamples[0], fl->numsamples * sizeof( sample_t ) ); // copy 'sample.pos' from style 0 to the new style - because 'sample.pos' is actually the same for all styles! (why did we decide to store it in many places?)
                                                 for ( j = 0; j < fl->numsamples; j++ )
                                                 {
-                                                        VectorClear( fl->samples[k][j].light );
+                                                        VectorClear( fl->samples[k][j].light[n] );
                                                 }
                                         }
                                 }
@@ -4262,7 +4480,7 @@ void PrecompLightmapOffsets()
                 }
 
                 f->lightofs = g_bspdata->dlightdata.size();
-                for ( int i = 0; i < fl->numsamples * lightstyles; i++ )
+                for ( int i = 0; i < fl->numsamples * lightstyles * fl->normal_count; i++ )
                 {
                         // Initialize all samples for this face.
                         colorrgbexp32_t sample;
@@ -4447,14 +4665,18 @@ void ScaleDirectLights()
 
                 fl = &facelight[facenum];
 
-                for ( k = 0; k < MAXLIGHTMAPS && f->styles[k] != 255; k++ )
+                for ( int n = 0; n < fl->normal_count; n++ )
                 {
-                        for ( i = 0; i < fl->numsamples; i++ )
+                        for ( k = 0; k < MAXLIGHTMAPS && f->styles[k] != 255; k++ )
                         {
-                                samp = &fl->samples[k][i];
-                                VectorScale( samp->light, g_direct_scale, samp->light );
+                                for ( i = 0; i < fl->numsamples; i++ )
+                                {
+                                        samp = &fl->samples[k][i];
+                                        VectorScale( samp->light[n], g_direct_scale, samp->light[n] );
+                                }
                         }
                 }
+                
         }
 }
 
@@ -4484,44 +4706,48 @@ void AddPatchLights( int facenum )
         {
                 f_other = &g_bspdata->dfaces[item->facenum];
                 fl_other = &facelight[item->facenum];
-                for ( k = 0; k < MAXLIGHTMAPS && f_other->styles[k] != 255; k++ )
+                for ( int n = 0; n < fl_other->normal_count; n++ )
                 {
-                        for ( i = 0; i < fl_other->numsamples; i++ )
+                        for ( k = 0; k < MAXLIGHTMAPS && f_other->styles[k] != 255; k++ )
                         {
-                                samp = &fl_other->samples[k][i];
-                                if ( samp->surface != facenum )
-                                { // the sample is not in this surface
-                                        continue;
-                                }
-
+                                for ( i = 0; i < fl_other->numsamples; i++ )
                                 {
-                                        vec3_t v;
-
-                                        int style = f_other->styles[k];
-                                        InterpolateSampleLight( samp->pos, samp->surface, 1, &style, &v
-                                        );
-
-                                        VectorAdd( samp->light, v, v );
-                                        if ( VectorMaximum( v ) >= g_corings[f_other->styles[k]] )
-                                        {
-                                                VectorCopy( v, samp->light );
+                                        samp = &fl_other->samples[k][i];
+                                        if ( samp->surface != facenum )
+                                        { // the sample is not in this surface
+                                                continue;
                                         }
-                                        else
+
                                         {
-                                                if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
+                                                vec3_t v;
+
+                                                int style = f_other->styles[k];
+                                                InterpolateSampleLight( samp->pos, samp->surface, 1, &style, &v
+                                                );
+
+                                                VectorAdd( samp->light[n], v, v );
+                                                if ( VectorMaximum( v ) >= g_corings[f_other->styles[k]] )
                                                 {
-                                                        ThreadLock();
+                                                        VectorCopy( v, samp->light[n] );
+                                                }
+                                                else
+                                                {
                                                         if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
                                                         {
-                                                                g_maxdiscardedlight = VectorMaximum( v );
-                                                                VectorCopy( samp->pos, g_maxdiscardedpos );
+                                                                ThreadLock();
+                                                                if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
+                                                                {
+                                                                        g_maxdiscardedlight = VectorMaximum( v );
+                                                                        VectorCopy( samp->pos, g_maxdiscardedpos );
+                                                                }
+                                                                ThreadUnlock();
                                                         }
-                                                        ThreadUnlock();
                                                 }
                                         }
-                                }
-                        } // loop samples
+                                } // loop samples
+                        }
                 }
+                
         }
 
 }
@@ -4572,8 +4798,8 @@ void            FinalLightFace( const int facenum )
         float           minlight;
         int             lightstyles;
         dface_t*        f;
-        vec3_t			*original_basiclight;
-        vec3_t                  *final_basiclight;
+        bumpsample_t			*original_basiclight;
+        bumpsample_t                  *final_basiclight;
 
         // ------------------------------------------------------------------------
         // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -4610,113 +4836,119 @@ void            FinalLightFace( const int facenum )
         //
         minlight = FloatForKey( g_face_entity[facenum], "_minlight" ) * 128;
 
-        original_basiclight = (vec3_t *)calloc( fl->numsamples, sizeof( vec3_t ) );
-        final_basiclight = ( vec3_t *)calloc( fl->numsamples, sizeof( vec3_t ) );
+        original_basiclight = (bumpsample_t *)calloc( fl->numsamples, sizeof( bumpsample_t ) );
+        final_basiclight = (bumpsample_t *)calloc( fl->numsamples, sizeof( bumpsample_t ) );
         hlassume( original_basiclight != NULL, assume_NoMemory );
         hlassume( final_basiclight != NULL, assume_NoMemory );
+
+        
         for ( k = 0; k < lightstyles; k++ )
         {
                 samp = fl->samples[k];
                 for ( j = 0; j < fl->numsamples; j++, samp++ )
                 {
-                        VectorCopy( samp->light, lb );
-                        if ( f->styles[0] != 0 )
+                        for ( int n = 0; n < fl->normal_count; n++ )
                         {
-                                Warning( "wrong f->styles[0]" );
-                        }
-                        VectorCompareMaximum( lb, vec3_origin, lb );
-                        if ( k == 0 )
-                        {
-                                VectorCopy( lb, original_basiclight[j] );
-                        }
-                        else
-                        {
-                                VectorAdd( lb, original_basiclight[j], lb );
-                        }
-
-                        // ------------------------------------------------------------------------
-                        // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                        // colour lightscale:
-                        //lb[0] *= g_colour_lightscale[0];
-                        //lb[1] *= g_colour_lightscale[1];
-                        //lb[2] *= g_colour_lightscale[2];
-                        // ------------------------------------------------------------------------
-
-                        // clip from the bottom first
-                        for ( i = 0; i < 3; i++ )
-                        {
-                                if ( lb[i] < minlight )
+                                VectorCopy( samp->light[n], lb );
+                                if ( f->styles[0] != 0 )
                                 {
-                                        lb[i] = minlight;
+                                        Warning( "wrong f->styles[0]" );
                                 }
-                        }
+                                VectorCompareMaximum( lb, vec3_origin, lb );
+                                if ( k == 0 )
+                                {
+                                        VectorCopy( lb, original_basiclight[j].light[n] );
+                                }
+                                else
+                                {
+                                        VectorAdd( lb, original_basiclight[j].light[n], lb );
+                                }
+
+                                // ------------------------------------------------------------------------
+                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
+                                // colour lightscale:
+                                //lb[0] *= g_colour_lightscale[0];
+                                //lb[1] *= g_colour_lightscale[1];
+                                //lb[2] *= g_colour_lightscale[2];
+                                // ------------------------------------------------------------------------
+
+                                // clip from the bottom first
+                                for ( i = 0; i < 3; i++ )
+                                {
+                                        if ( lb[i] < minlight )
+                                        {
+                                                lb[i] = minlight;
+                                        }
+                                }
 
 
-                        // ------------------------------------------------------------------------
-                        // Changes by Adam Foster - afoster@compsoc.man.ac.uk
+                                // ------------------------------------------------------------------------
+                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
 
-                        // AJM: your code is formatted really wierd, and i cant understand a damn thing. 
-                        //      so i reformatted it into a somewhat readable "normal" fashion. :P
+                                // AJM: your code is formatted really wierd, and i cant understand a damn thing. 
+                                //      so i reformatted it into a somewhat readable "normal" fashion. :P
 
-                        //if ( g_colour_qgamma[0] != 1.0 )
-                        //        lb[0] = (float)pow( lb[0] / 255.0f, g_colour_qgamma[0] ) * 255.0f;
+                                //if ( g_colour_qgamma[0] != 1.0 )
+                                //        lb[0] = (float)pow( lb[0] / 255.0f, g_colour_qgamma[0] ) * 255.0f;
 
-                        //if ( g_colour_qgamma[1] != 1.0 )
-                        //        lb[1] = (float)pow( lb[1] / 255.0f, g_colour_qgamma[1] ) * 255.0f;
+                                //if ( g_colour_qgamma[1] != 1.0 )
+                                //        lb[1] = (float)pow( lb[1] / 255.0f, g_colour_qgamma[1] ) * 255.0f;
 
-                        //if ( g_colour_qgamma[2] != 1.0 )
-                        //        lb[2] = (float)pow( lb[2] / 255.0f, g_colour_qgamma[2] ) * 255.0f;
+                                //if ( g_colour_qgamma[2] != 1.0 )
+                                //        lb[2] = (float)pow( lb[2] / 255.0f, g_colour_qgamma[2] ) * 255.0f;
 
-                        // Two different ways of adding noise to the lightmap - colour jitter
-                        // (red, green and blue channels are independent), and mono jitter
-                        // (monochromatic noise). For simulating dithering, on the cheap. :)
+                                // Two different ways of adding noise to the lightmap - colour jitter
+                                // (red, green and blue channels are independent), and mono jitter
+                                // (monochromatic noise). For simulating dithering, on the cheap. :)
 
-                        // Tends to create seams between adjacent polygons, so not ideal.
+                                // Tends to create seams between adjacent polygons, so not ideal.
 
-                        // Got really weird results when it was set to limit values to 256.0f - it
-                        // was as if r, g or b could wrap, going close to zero.
+                                // Got really weird results when it was set to limit values to 256.0f - it
+                                // was as if r, g or b could wrap, going close to zero.
 
-                        //for ( i = 0; i < 3; ++i )
-                        //        if ( lb[i] < g_minlight )
-                        //                lb[i] = g_minlight;
-                        // ------------------------------------------------------------------------
+                                //for ( i = 0; i < 3; ++i )
+                                //        if ( lb[i] < g_minlight )
+                                //                lb[i] = g_minlight;
+                                // ------------------------------------------------------------------------
 
-                        if ( k == 0 )
-                        {
-                                VectorCopy( lb, final_basiclight[j] );
-                        }
-                        else
-                        {
-                                VectorSubtract( lb, final_basiclight[j], lb );
-                        }
+                                if ( k == 0 )
+                                {
+                                        VectorCopy( lb, final_basiclight[j].light[n] );
+                                }
+                                else
+                                {
+                                        VectorSubtract( lb, final_basiclight[j].light[n], lb );
+                                }
 
-                        //if ( k == 0 )
-                        //{
-                        //        if ( g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2] )
-                        //                for ( i = 0; i < 3; i++ )
-                        //                        lb[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
-                        //        if ( g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2] )
-                        //        {
-                        //                temp_rand = (float)rand() / RAND_MAX - 0.5;
-                        //                for ( i = 0; i < 3; i++ )
-                        //                        lb[i] += g_jitter_hack[i] * temp_rand;
-                        //        }
-                        //}
+                                //if ( k == 0 )
+                                //{
+                                //        if ( g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2] )
+                                //                for ( i = 0; i < 3; i++ )
+                                //                        lb[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
+                                //        if ( g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2] )
+                                //        {
+                                //                temp_rand = (float)rand() / RAND_MAX - 0.5;
+                                //                for ( i = 0; i < 3; i++ )
+                                //                        lb[i] += g_jitter_hack[i] * temp_rand;
+                                //        }
+                                //}
 
-                        //for ( i = 0; i < 3; ++i )
-                        //{
-                        //        if ( lbi[i] < 0 ) lbi[i] = 0;
-                        //        if ( lbi[i] > 255 ) lbi[i] = 255;
-                        //}
+                                //for ( i = 0; i < 3; ++i )
+                                //{
+                                //        if ( lbi[i] < 0 ) lbi[i] = 0;
+                                //        if ( lbi[i] > 255 ) lbi[i] = 255;
+                                //}
 
-                        {
-                                colorrgbexp32_t *col = &g_bspdata->dlightdata[f->lightofs + k * fl->numsamples + j];
-                                LVector3 vcol;
-                                VectorCopy( lb, vcol );
-                                VectorToColorRGBExp32( vcol, *col );
+                                {
+                                        colorrgbexp32_t *col = SampleLightmap( g_bspdata, g_bspdata->dfaces + facenum, j, k, n );
+                                        LVector3 vcol;
+                                        VectorCopy( lb, vcol );
+                                        VectorToColorRGBExp32( vcol, *col );
+                                }
                         }
                 }
         }
+        
         free( original_basiclight );
         free( final_basiclight );
 
@@ -4735,7 +4967,7 @@ vec3_t* GetTotalLight( patch_t* patch, int style
         {
                 if ( patch->totalstyle[i] == style )
                 {
-                        return &( patch->totallight[i] );
+                        return &( patch->totallight[i].light[0] );
                 }
         }
         return &totallight_default;
