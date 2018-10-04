@@ -278,4 +278,29 @@ FORCEINLINE PN_stdfloat inv_r_squared( const LVector3 &v )
         return 1.f / std::max( 1.f, v[0] * v[0] + v[1] * v[1] + v[2] * v[2] );
 }
 
+#define OO_SQRT_2 0.70710676908493042f
+#define OO_SQRT_3 0.57735025882720947f
+#define OO_SQRT_6 0.40824821591377258f
+// sqrt( 2 / 3 )
+#define OO_SQRT_2_OVER_3 0.81649661064147949f
+
+#define NUM_BUMP_VECTS 3
+
+const LVector3 g_localbumpbasis[NUM_BUMP_VECTS] =
+{
+        LVector3( OO_SQRT_2_OVER_3, 0.0f, OO_SQRT_3 ),
+        LVector3( -OO_SQRT_6, OO_SQRT_2, OO_SQRT_3 ),
+        LVector3( -OO_SQRT_6, -OO_SQRT_2, OO_SQRT_3 )
+};
+
+inline void VectorIRotate( const LVector3& in1, const LMatrix3 &in2, LVector3 &out )
+{
+        out[0] = in1[0] * in2[0][0] + in1[1] * in2[1][0] + in1[2] * in2[2][0];
+        out[1] = in1[0] * in2[0][1] + in1[1] * in2[1][1] + in1[2] * in2[2][1];
+        out[2] = in1[0] * in2[0][2] + in1[1] * in2[1][2] + in1[2] * in2[2][2];
+}
+
+void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 &face_normal,
+                     const LVector3 &phong_normal, LVector3 *bump_vecs );
+
 #endif //MATHLIB_H__

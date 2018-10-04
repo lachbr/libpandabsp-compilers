@@ -114,3 +114,37 @@ void VectorToColorRGBExp32( const LVector3 &vin, colorrgbexp32_t &c )
 
         c.exponent = (signed char)exponent;
 }
+
+void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 &face_normal,
+                     const LVector3 &phong_normal, LVector3 *bump_vecs )
+{
+        LVector3 tmp_normal;
+        bool left_handed = false;
+        int i;
+
+        hlassert( NUM_BUMP_VECTS == 3 );
+
+        // left handed or right handed?
+        tmp_normal = svec.cross( tvec );
+        if ( face_normal.dot( tmp_normal ) < 0.0 )
+        {
+                left_handed = true;
+        }
+
+        // build a basis for the face around the phong normal
+        LMatrix3 smooth_basis;
+        smooth_basis.set_row( 1, phong_normal.cross( svec ).normalized() );
+        smooth_basis.set_row( 0, smooth_basis.get_row( 1 ).cross( phong_normal ).normalized() );
+        smooth_basis.set_row( 2, phong_normal );
+
+        if ( left_handed )
+        {
+                VectorInverse( smooth_basis[1] );
+        }
+
+        // move the g_localbumpbasis into world space to create bump_vecs
+        for ( i = 0; i < 3; i++ )
+        {
+                VectorIRotate( g_localbumpbasis[i], smooth_basis, bump_vecs[i] );
+        }
+}

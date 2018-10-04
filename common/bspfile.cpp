@@ -1694,11 +1694,18 @@ LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
         LRGBColor avg(0);
         for ( int i = 0; i < luxels; i++ )
         {
-                colorrgbexp32_t col = data->dlightdata[face->lightofs + style * luxels + i];
+                colorrgbexp32_t col = *SampleLightmap( data, face, i, style, 0 );
                 LVector3 vcol( 0 );
                 ColorRGBExp32ToVector( col, vcol );
                 VectorAdd( avg, vcol, avg );
         }
         avg /= luxels;
         return avg;
+}
+
+INLINE colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump )
+{
+        int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
+        int bump_count = face->bumped_lightmap ? NUM_BUMP_VECTS + 1 : 1;
+        return &data->dlightdata[face->lightofs + ( ( style * bump_count + bump ) * luxels ) + luxel];
 }

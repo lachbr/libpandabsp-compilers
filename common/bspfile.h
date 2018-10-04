@@ -244,6 +244,7 @@ typedef struct texinfo_s
 } texinfo_t;
 
 #define TEX_SPECIAL     1                                  // sky or slime or null, no lightmap or 256 subdivision
+#define TEX_BUMPLIGHT   2
 
 // note that edge 0 is never used, because negative edge nums are used for
 // counterclockwise use of the edge in a face
@@ -258,6 +259,7 @@ typedef struct dface_s
         unsigned short	planenum;
         byte   side;
         byte   on_node;
+        unsigned int bumped_lightmap;                          // it's an int for padding
 
         int             firstedge;                             // we must support > 64k edges
         short           numedges;
@@ -532,6 +534,7 @@ extern void SetTextureContentsFile( const char *path );
 extern void LoadTextureContents();
 extern contents_t GetTextureContents( const char *texname );
 
-LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
+extern LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
+INLINE extern colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
 
 #endif //BSPFILE_H__
