@@ -419,7 +419,10 @@ void compute_lightmap_color_point_sample( dface_t *face, directlight_t *skylight
         int dt = clamp( (int)coord[1], 0, tmax - 1 );
 
         int offset = smax * tmax;
-        // bumped lightmaps todo!
+        if ( face->bumped_lightmap )
+        {
+                offset *= ( NUM_BUMP_VECTS + 1 );
+        }
 
         colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[face->lightofs];
         lightmap += dt * smax + ds;

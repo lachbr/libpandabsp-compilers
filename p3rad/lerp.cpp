@@ -109,7 +109,7 @@ static bool CalcAdaptedSpot( const localtriangulation_t *lt, const vec3_t positi
         VectorMA( surfacespot, -dot, lt->normal, spot );
 
         // use phong normal instead of face normal, because phong normal is a continuous function
-        GetPhongNormal( surface, position, phongnormal );
+        GetPhongNormal( surface, position, phongnormal, nullptr, 0 );
         dot = DotProduct( spot, phongnormal );
         if ( fabs( dot ) > ON_EPSILON )
         {

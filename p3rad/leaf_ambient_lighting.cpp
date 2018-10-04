@@ -9,6 +9,9 @@
 #include <randomizer.h>
 #include <plane.h>
 
+using std::min;
+using std::max;
+
 static LVector3i box_directions[6] = {
         LVector3i( 1,  0,  0 ),
         LVector3i( -1,  0,  0 ),
@@ -142,8 +145,8 @@ bool is_leaf_ambient_surface_light( directlight_t *dl )
                 return false;
         }
 
-        PN_stdfloat intensity = std::max( dl->intensity[0], dl->intensity[1] );
-        intensity = std::max( intensity, dl->intensity[2] );
+        PN_stdfloat intensity = max( dl->intensity[0], dl->intensity[1] );
+        intensity = max( intensity, dl->intensity[2] );
 
         return ( intensity * directlight_min_emit_surface_distance_ratio ) < directlight_min_emit_surface;
 }
@@ -359,7 +362,7 @@ void add_sample_to_list( vector_ambientsample &list, const LVector3 &sample_pos,
                                 for ( int s = 0; s < 3; s++ )
                                 {
                                         float dc = std::fabs( list[i].cube[k][s] - list[j].cube[k][s] );
-                                        max_dc = std::max( max_dc, dc );
+                                        max_dc = max( max_dc, dc );
                                 }
                                 total_dc += max_dc;
                         }
@@ -416,9 +419,9 @@ void compute_ambient_for_leaf( int thread, int leaf_id,
         int xsize = ( g_bspdata->dleafs[leaf_id].maxs[0] - g_bspdata->dleafs[leaf_id].mins[0] ) / 32;
         int ysize = ( g_bspdata->dleafs[leaf_id].maxs[1] - g_bspdata->dleafs[leaf_id].mins[1] ) / 32;
         int zsize = ( g_bspdata->dleafs[leaf_id].maxs[2] - g_bspdata->dleafs[leaf_id].mins[2] ) / 64;
-        xsize = std::max( xsize, 1 );
-        ysize = std::max( ysize, 1 );
-        zsize = std::max( zsize, 1 );
+        xsize = max( xsize, 1 );
+        ysize = max( ysize, 1 );
+        zsize = max( zsize, 1 );
 
         int volume_count = xsize * ysize * zsize;
         // Don't do any more than 128 samples

@@ -14,8 +14,8 @@
     <SccProjectName />
     <SccLocalPath />
     <ProjectGuid>{3B5F6C9B-1238-1ECF-14D8-01E4C3AB0EE1}</ProjectGuid>
-    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
     <ProjectName>p3rad</ProjectName>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
@@ -60,7 +60,7 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\rpbmStudios\panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NOMINMAX;HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
       <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>

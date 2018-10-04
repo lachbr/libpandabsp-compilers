@@ -3036,7 +3036,6 @@ static void AddSamplesToPatches( sample_t *(samples)[ALLSTYLES], const unsigned 
                                                 }
                                                 for ( int n = 0; n < l->normal_count; n++ )
                                                 {
-                                                        //cout << "AddSamplesToPatches: patchnum " << j << ", normal " << n << ", light (" << VectorOut( s->light[n] ) << ")" << endl;
                                                         VectorMA( patch->samplelight_all[k].light[n], area, s->light[n], patch->samplelight_all[k].light[n] );
                                                 }
                                         }
@@ -3495,7 +3494,6 @@ void CalcLightmap( lightinfo_t *l, byte *styles )
                                 );
                                 for ( j = 0; j < ALLSTYLES && styles[j] != 255; j++ )
                                 {
-                                        //cout << "CalcLightmap GatherSampleLight: (" << vsamples[j][0] << ", " << vsamples[j][1] << ", " << vsamples[j][2] << ")" << endl;
                                         VectorCopy( vsamples[j], sampled[j].light[n] );
                                 }
                         }
@@ -3631,14 +3629,7 @@ void            BuildFacelights( const int facenum )
         }
 #endif
 
-        if ( g_face_patches[facenum] )
-        {
-                l.bumped = g_face_patches[facenum]->needs_bumpmap;
-        }
-        else
-        {
-                l.bumped = false;
-        }
+        l.bumped = g_face_patches[facenum]->needs_bumpmap;
         fl->bumped = l.bumped;
         l.surfnum = facenum;
         l.face = f;
@@ -3677,9 +3668,9 @@ void            BuildFacelights( const int facenum )
                 
 
         }
-        if ( g_face_patches[facenum] )
+        for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
         {
-                g_face_patches[facenum]->normal_count = l.normal_count;
+                patch->normal_count = l.normal_count;
         }
         l.facedist = plane->dist;
         
@@ -4006,8 +3997,6 @@ void            BuildFacelights( const int facenum )
 
                                 for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
                                 {
-                                        //cout << "GatherSampleLight (" << sampled[j][0] << ", " << sampled[j][1] << ", " << sampled[j][2] << ")" << endl;
-                                       // Log( "GatherSampleLight (%4.3f, %4.3f, %4.3f)\n", sampled[j][0], sampled[j][1], sampled[j][2] );
                                         VectorCopy( sampled[j], patch->totallight_all[j].light[n] );
                                 }
                         }
@@ -4706,46 +4695,54 @@ void AddPatchLights( int facenum )
         {
                 f_other = &g_bspdata->dfaces[item->facenum];
                 fl_other = &facelight[item->facenum];
-                for ( int n = 0; n < fl_other->normal_count; n++ )
+                for ( k = 0; k < MAXLIGHTMAPS && f_other->styles[k] != 255; k++ )
                 {
-                        for ( k = 0; k < MAXLIGHTMAPS && f_other->styles[k] != 255; k++ )
+                        for ( i = 0; i < fl_other->numsamples; i++ )
                         {
-                                for ( i = 0; i < fl_other->numsamples; i++ )
+                                samp = &fl_other->samples[k][i];
+                                if ( samp->surface != facenum )
+                                { // the sample is not in this surface
+                                        continue;
+                                }
+
                                 {
-                                        samp = &fl_other->samples[k][i];
-                                        if ( samp->surface != facenum )
-                                        { // the sample is not in this surface
-                                                continue;
-                                        }
+                                        vec3_t v;
 
+                                        int style = f_other->styles[k];
+                                        // Figure out the indirect lighting for this sample.
+                                        InterpolateSampleLight( samp->pos, samp->surface, 1, &style, &v
+                                        );
+
+                                        for ( int n = 0; n < fl_other->normal_count; n++ )
                                         {
-                                                vec3_t v;
-
-                                                int style = f_other->styles[k];
-                                                InterpolateSampleLight( samp->pos, samp->surface, 1, &style, &v
-                                                );
-
-                                                VectorAdd( samp->light[n], v, v );
-                                                if ( VectorMaximum( v ) >= g_corings[f_other->styles[k]] )
+                                                // Now add the indirect lighting onto the direct lighting to make
+                                                // the final lightmap sample.
+                                                VectorAdd( samp->light[n], v, samp->light[n] );
+                                        }
+#if 0
+                                        if ( VectorMaximum( v ) >= g_corings[f_other->styles[k]] )
+                                        {
+                                                for ( int n = 0; n < fl_other->normal_count; n++ )
                                                 {
                                                         VectorCopy( v, samp->light[n] );
                                                 }
-                                                else
+                                        }
+                                        else
+                                        {
+                                                if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
                                                 {
+                                                        ThreadLock();
                                                         if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
                                                         {
-                                                                ThreadLock();
-                                                                if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
-                                                                {
-                                                                        g_maxdiscardedlight = VectorMaximum( v );
-                                                                        VectorCopy( samp->pos, g_maxdiscardedpos );
-                                                                }
-                                                                ThreadUnlock();
+                                                                g_maxdiscardedlight = VectorMaximum( v );
+                                                                VectorCopy( samp->pos, g_maxdiscardedpos );
                                                         }
+                                                        ThreadUnlock();
                                                 }
                                         }
-                                } // loop samples
-                        }
+#endif
+                                }
+                        } // loop samples
                 }
                 
         }
@@ -4808,6 +4805,7 @@ void            FinalLightFace( const int facenum )
 
         f = &g_bspdata->dfaces[facenum];
         fl = &facelight[facenum];
+        patch_t *patch = g_face_patches[facenum];
 
         if ( g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL )
         {
@@ -4850,6 +4848,7 @@ void            FinalLightFace( const int facenum )
                         for ( int n = 0; n < fl->normal_count; n++ )
                         {
                                 VectorCopy( samp->light[n], lb );
+                                //VectorAdd( lb, patch->totallight[k].light[n], lb );
                                 if ( f->styles[0] != 0 )
                                 {
                                         Warning( "wrong f->styles[0]" );

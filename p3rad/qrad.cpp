@@ -51,7 +51,7 @@ entity_t*		g_face_texlights[MAX_MAP_FACES];
 unsigned        g_num_patches;
 
 static vec3_t( *emitlight )[MAXLIGHTMAPS]; //LRC
-static vec3_t( *addlight )[MAXLIGHTMAPS]; //LRC
+static bumpsample_t( *addlight )[MAXLIGHTMAPS]; //LRC
 static unsigned char( *newstyles )[MAXLIGHTMAPS];
 
 vector_string	g_multifiles;
@@ -998,6 +998,7 @@ static void     SubdividePatch( patch_t* patch )
                         new_patch->winding = *winding;
                         new_patch->area = new_patch->winding->getArea();
                         new_patch->winding->getCenter( new_patch->origin );
+                        new_patch->needs_bumpmap = patch->needs_bumpmap;
                         PlacePatchInside( new_patch );
                         UpdateEmitterInfo( new_patch );
 
@@ -1311,9 +1312,9 @@ static void     MakePatchForFace( const int fn, Winding* w, int style
                 patch->area = patch->winding->getArea();
                 patch->winding->getCenter( patch->origin );
                 patch->faceNumber = fn;
+                patch->needs_bumpmap = g_textures[g_bspdata->texinfo[f->texinfo].texref].bump != nullptr;
 
                 totalarea += patch->area;
-
 
                 BaseLightForFace( f, light );
                 //LRC        VectorCopy(light, patch->totallight);
@@ -1965,7 +1966,7 @@ static void     WriteWorld( const char* const name )
                         Log( "%5.2f %5.2f %5.2f %5.3f %5.3f %5.3f\n",
                              w->m_Points[i][0],
                              w->m_Points[i][1],
-                             w->m_Points[i][2], patch->totallight[0][0] / 256, patch->totallight[0][1] / 256, patch->totallight[0][2] / 256 ); //LRC
+                             w->m_Points[i][2], patch->totallight[0].light[0][0] / 256, patch->totallight[0].light[0][1] / 256, patch->totallight[0].light[0][2] / 256 ); //LRC
                 }
                 Log( "\n" );
         }
@@ -1975,6 +1976,10 @@ static void     WriteWorld( const char* const name )
 
 // =====================================================================================
 //  CollectLight
+// patch's totallight += new light received to each patch
+// patch's emitlight = addlight (newly received light from GatherLight)
+// patch's addlight = 0
+// pull received light from children.
 // =====================================================================================
 static void     CollectLight()
 {
@@ -1984,16 +1989,19 @@ static void     CollectLight()
 
         for ( i = 0, patch = g_patches; i < g_num_patches; i++, patch++ )
         {
-                vec3_t newtotallight[MAXLIGHTMAPS];
+                bumpsample_t newtotallight[MAXLIGHTMAPS];
+                memset( newtotallight, 0, sizeof( bumpsample_t ) * MAXLIGHTMAPS );
                 for ( j = 0; j < MAXLIGHTMAPS && newstyles[i][j] != 255; j++ )
                 {
-                        VectorClear( newtotallight[j] );
                         int k;
                         for ( k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++ )
                         {
                                 if ( patch->totalstyle[k] == newstyles[i][j] )
                                 {
-                                        VectorCopy( patch->totallight[k], newtotallight[j] );
+                                        for ( int n = 0; n < patch->normal_count; n++ )
+                                        {
+                                                VectorCopy( patch->totallight[k].light[n], newtotallight[j].light[n] );
+                                        }
                                         break;
                                 }
                         }
@@ -2003,14 +2011,18 @@ static void     CollectLight()
                         if ( newstyles[i][j] != 255 )
                         {
                                 patch->totalstyle[j] = newstyles[i][j];
-                                VectorCopy( newtotallight[j], patch->totallight[j] );
-                                VectorCopy( addlight[i][j], emitlight[i][j] );
+                                for ( int n = 0; n < patch->normal_count; n++ )
+                                {
+                                        VectorCopy( newtotallight[j].light[n], patch->totallight[j].light[n] );
+                                }
+                                VectorCopy( addlight[i][j].light[0], emitlight[i][j] );
                         }
                         else
                         {
                                 patch->totalstyle[j] = 255;
                         }
                 }
+                
         }
 }
 
@@ -2035,7 +2047,7 @@ static void     GatherLight( int threadnum )
         transfer_data_t* tData;
         transfer_index_t* tIndex;
         float f;
-        vec3_t			adds[ALLSTYLES];
+        bumpsample_t			adds[ALLSTYLES];
         int				style;
         unsigned int	fastfind_index = 0;
 
@@ -2046,18 +2058,23 @@ static void     GatherLight( int threadnum )
                 {
                         break;
                 }
-                memset( adds, 0, ALLSTYLES * sizeof( vec3_t ) );
+                
 
                 patch = &g_patches[j];
+                memset( adds, 0, ALLSTYLES * sizeof( bumpsample_t ) );
 
                 tData = patch->tData;
                 tIndex = patch->tIndex;
                 iIndex = patch->iIndex;
 
-                for ( m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++ )
+                for ( int n = 0; n < patch->normal_count; n++ )
                 {
-                        VectorAdd( adds[patch->totalstyle[m]], patch->totallight[m], adds[patch->totalstyle[m]] );
+                        for ( m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++ )
+                        {
+                                VectorAdd( adds[patch->totalstyle[m]].light[n], patch->totallight[m].light[n], adds[patch->totalstyle[m]].light[n] );
+                        }
                 }
+                
 
                 for ( k = 0; k < iIndex; k++, tIndex++ )
                 {
@@ -2078,30 +2095,37 @@ static void     GatherLight( int threadnum )
                                 // for each style on the emitting patch
                                 for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->directstyle[emitstyle] != 255; emitstyle++ )
                                 {
-                                        VectorScale( emitpatch->directlight[emitstyle], f, v );
-                                        VectorMultiply( v, emitpatch->bouncereflectivity, v );
-                                        if ( isPointFinite( v ) )
+                                        for ( int n = 0; n < emitpatch->normal_count; n++ )
                                         {
-                                                int addstyle = emitpatch->directstyle[emitstyle];
-                                                if ( emitpatch->bouncestyle != -1 )
+                                                VectorScale( emitpatch->directlight[emitstyle].light[n], f, v );
+                                                VectorMultiply( v, emitpatch->bouncereflectivity, v );
+                                                if ( isPointFinite( v ) )
                                                 {
-                                                        if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
-                                                                addstyle = emitpatch->bouncestyle;
-                                                        else
-                                                                continue;
+                                                        int addstyle = emitpatch->directstyle[emitstyle];
+                                                        if ( emitpatch->bouncestyle != -1 )
+                                                        {
+                                                                if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
+                                                                        addstyle = emitpatch->bouncestyle;
+                                                                else
+                                                                        continue;
+                                                        }
+                                                        if ( opaquestyle != -1 )
+                                                        {
+                                                                if ( addstyle == 0 || addstyle == opaquestyle )
+                                                                        addstyle = opaquestyle;
+                                                                else
+                                                                        continue;
+                                                        }
+                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
                                                 }
-                                                if ( opaquestyle != -1 )
-                                                {
-                                                        if ( addstyle == 0 || addstyle == opaquestyle )
-                                                                addstyle = opaquestyle;
-                                                        else
-                                                                continue;
-                                                }
-                                                VectorAdd( adds[addstyle], v, adds[addstyle] );
                                         }
+                                        
                                 }
                                 for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->totalstyle[emitstyle] != 255; emitstyle++ )
                                 {
+                                        //Log( "Patchnum %u, emitstyle %u, emitlight (%4.3f %4.3f %4.3f)", patchnum, emitstyle,
+                                        //     emitlight[patchnum][emitstyle][0], emitlight[patchnum][emitstyle][1],
+                                        //     emitlight[patchnum][emitstyle][2] );
                                         VectorScale( emitlight[patchnum][emitstyle], f, v );
                                         VectorMultiply( v, emitpatch->bouncereflectivity, v );
                                         if ( isPointFinite( v ) )
@@ -2121,22 +2145,29 @@ static void     GatherLight( int threadnum )
                                                         else
                                                                 continue;
                                                 }
-                                                VectorAdd( adds[addstyle], v, adds[addstyle] );
+                                                for ( int n = 0; n < patch->normal_count; n++ )
+                                                {
+                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
+                                                }
+                                                
                                         }
                                         else
                                         {
-                                                Verbose( "GatherLight, v (%4.3f %4.3f %4.3f)@(%4.3f %4.3f %4.3f)\n",
-                                                         v[0], v[1], v[2], patch->origin[0], patch->origin[1], patch->origin[2] );
+                                                Log( "GatherLight, v (%4.3f %4.3f %4.3f)@(%4.3f %4.3f %4.3f)\n",
+                                                                v[0], v[1], v[2], patch->origin[0], patch->origin[1], patch->origin[2] );
                                         }
                                 }
                                 //LRC (ends)
+
+                                //Log( "GatherLight, v (%4.3f %4.3f %4.3f)\n",
+                                //     v[0], v[1], v[2] );
                         }
                 }
 
                 vec_t maxlights[ALLSTYLES];
                 for ( style = 0; style < ALLSTYLES; style++ )
                 {
-                        maxlights[style] = VectorMaximum( adds[style] );
+                        maxlights[style] = VectorMaximum( adds[style].light[0] );
                 }
                 for ( m = 0; m < MAXLIGHTMAPS; m++ )
                 {
@@ -2161,7 +2192,10 @@ static void     GatherLight( int threadnum )
                         {
                                 maxlights[beststyle] = 0;
                                 newstyles[j][m] = beststyle;
-                                VectorCopy( adds[beststyle], addlight[j][m] );
+                                for ( int n = 0; n < patch->normal_count; n++ )
+                                {
+                                        VectorCopy( adds[beststyle].light[n], addlight[j][m].light[n] );
+                                }
                         }
                         else
                         {
@@ -2181,6 +2215,7 @@ static void     GatherLight( int threadnum )
                                 ThreadUnlock();
                         }
                 }
+                
         }
 }
 
@@ -2197,7 +2232,7 @@ static void     GatherRGBLight( int threadnum )
         rgb_transfer_data_t* tRGBData;
         transfer_index_t* tIndex;
         float f[3];
-        vec3_t			adds[ALLSTYLES];
+        bumpsample_t			adds[ALLSTYLES];
         int				style;
         unsigned int	fastfind_index = 0;
 
@@ -2208,7 +2243,7 @@ static void     GatherRGBLight( int threadnum )
                 {
                         break;
                 }
-                memset( adds, 0, ALLSTYLES * sizeof( vec3_t ) );
+                
 
                 patch = &g_patches[j];
 
@@ -2216,10 +2251,15 @@ static void     GatherRGBLight( int threadnum )
                 tIndex = patch->tIndex;
                 iIndex = patch->iIndex;
 
-                for ( m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++ )
+                memset( adds, 0, ALLSTYLES * sizeof( bumpsample_t ) );
+                for ( int n = 0; n < patch->normal_count; n++ )
                 {
-                        VectorAdd( adds[patch->totalstyle[m]], patch->totallight[m], adds[patch->totalstyle[m]] );
+                        for ( m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++ )
+                        {
+                                VectorAdd( adds[patch->totalstyle[m]].light[n], patch->totallight[m].light[n], adds[patch->totalstyle[m]].light[n] );
+                        }
                 }
+                
 
                 for ( k = 0; k < iIndex; k++, tIndex++ )
                 {
@@ -2239,26 +2279,29 @@ static void     GatherRGBLight( int threadnum )
                                 // for each style on the emitting patch
                                 for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->directstyle[emitstyle] != 255; emitstyle++ )
                                 {
-                                        VectorMultiply( emitpatch->directlight[emitstyle], f, v );
-                                        VectorMultiply( v, emitpatch->bouncereflectivity, v );
-                                        if ( isPointFinite( v ) )
+                                        for ( int n = 0; n < emitpatch->normal_count; n++ )
                                         {
-                                                int addstyle = emitpatch->directstyle[emitstyle];
-                                                if ( emitpatch->bouncestyle != -1 )
+                                                VectorMultiply( emitpatch->directlight[emitstyle].light[n], f, v );
+                                                VectorMultiply( v, emitpatch->bouncereflectivity, v );
+                                                if ( isPointFinite( v ) )
                                                 {
-                                                        if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
-                                                                addstyle = emitpatch->bouncestyle;
-                                                        else
-                                                                continue;
+                                                        int addstyle = emitpatch->directstyle[emitstyle];
+                                                        if ( emitpatch->bouncestyle != -1 )
+                                                        {
+                                                                if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
+                                                                        addstyle = emitpatch->bouncestyle;
+                                                                else
+                                                                        continue;
+                                                        }
+                                                        if ( opaquestyle != -1 )
+                                                        {
+                                                                if ( addstyle == 0 || addstyle == opaquestyle )
+                                                                        addstyle = opaquestyle;
+                                                                else
+                                                                        continue;
+                                                        }
+                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
                                                 }
-                                                if ( opaquestyle != -1 )
-                                                {
-                                                        if ( addstyle == 0 || addstyle == opaquestyle )
-                                                                addstyle = opaquestyle;
-                                                        else
-                                                                continue;
-                                                }
-                                                VectorAdd( adds[addstyle], v, adds[addstyle] );
                                         }
                                 }
                                 for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->totalstyle[emitstyle] != 255; emitstyle++ )
@@ -2282,12 +2325,16 @@ static void     GatherRGBLight( int threadnum )
                                                         else
                                                                 continue;
                                                 }
-                                                VectorAdd( adds[addstyle], v, adds[addstyle] );
+                                                for ( int n = 0; n < patch->normal_count; n++ )
+                                                {
+                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
+                                                }
+                                                
                                         }
                                         else
                                         {
                                                 Verbose( "GatherLight, v (%4.3f %4.3f %4.3f)@(%4.3f %4.3f %4.3f)\n",
-                                                         v[0], v[1], v[2], patch->origin[0], patch->origin[1], patch->origin[2] );
+                                                                v[0], v[1], v[2], patch->origin[0], patch->origin[1], patch->origin[2] );
                                         }
                                 }
                                 //LRC (ends)
@@ -2297,7 +2344,7 @@ static void     GatherRGBLight( int threadnum )
                 vec_t maxlights[ALLSTYLES];
                 for ( style = 0; style < ALLSTYLES; style++ )
                 {
-                        maxlights[style] = VectorMaximum( adds[style] );
+                        maxlights[style] = VectorMaximum( adds[style].light[0] );
                 }
                 for ( m = 0; m < MAXLIGHTMAPS; m++ )
                 {
@@ -2322,7 +2369,10 @@ static void     GatherRGBLight( int threadnum )
                         {
                                 maxlights[beststyle] = 0;
                                 newstyles[j][m] = beststyle;
-                                VectorCopy( adds[beststyle], addlight[j][m] );
+                                for ( int n = 0; n < patch->normal_count; n++ )
+                                {
+                                        VectorCopy( adds[beststyle].light[n], addlight[j][m].light[n] );
+                                }
                         }
                         else
                         {
@@ -2364,7 +2414,9 @@ static void     BounceLight()
                 patch_t *patch = &g_patches[i];
                 for ( j = 0; j < MAXLIGHTMAPS && patch->totalstyle[j] != 255; j++ )
                 {
-                        VectorCopy( patch->totallight[j], emitlight[i][j] );
+                        //Log( "BounceLight copy to emitlight: patchnum %u, light (%4.3f, %4.3f, %4.3f)\n", i, patch->totallight[j].light[0][0],
+                        //     patch->totallight[j].light[0][1], patch->totallight[j].light[0][2] );
+                        VectorCopy( patch->totallight[j].light[0], emitlight[i][j] );
                 }
         }
 
@@ -2387,12 +2439,18 @@ static void     BounceLight()
                         WriteWorld( name );
                 }
         }
+
         for ( i = 0; i < g_num_patches; i++ )
         {
                 patch_t *patch = &g_patches[i];
                 for ( j = 0; j < MAXLIGHTMAPS && patch->totalstyle[j] != 255; j++ )
                 {
-                        VectorCopy( emitlight[i][j], patch->totallight[j] );
+                        Log( "Adding emitlight (%4.3f, %4.3f, %4.3f)\n", emitlight[i][j][0], emitlight[i][j][1], emitlight[i][j][2] );
+                        for ( int n = 0; n < patch->normal_count; n++ )
+                        {
+                                VectorCopy( emitlight[i][j], patch->totallight[j].light[n] );
+                        }
+                        
                 }
         }
 }
@@ -2565,7 +2623,7 @@ static void     RadWorld()
 
                 // these arrays are only used in CollectLight, GatherLight and BounceLight
                 emitlight = ( vec3_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( vec3_t[MAXLIGHTMAPS] ) );
-                addlight = ( vec3_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( vec3_t[MAXLIGHTMAPS] ) );
+                addlight = ( bumpsample_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( bumpsample_t[MAXLIGHTMAPS] ) );
                 newstyles = ( unsigned char( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( unsigned char[MAXLIGHTMAPS] ) );
                 // spread light around
                 BounceLight();
@@ -3950,14 +4008,14 @@ int             main( const int argc, char** argv )
                                         g_corings[style] = style ? g_coring : 0;
                                 }
                         }
-                        if ( g_direct_scale != 1.0 )
-                        {
-                                Warning( "dscale value should be 1.0 for final compile.\nIf you need to adjust the bounced light, use the '-texreflectscale' and '-texreflectgamma' options instead." );
-                        }
-                        if ( g_colour_lightscale[0] != 2.0 || g_colour_lightscale[1] != 2.0 || g_colour_lightscale[2] != 2.0 )
-                        {
-                                Warning( "light scale value should be 2.0 for final compile.\nValues other than 2.0 will result in incorrect interpretation of light_environment's brightness when the engine loads the map." );
-                        }
+                        //if ( g_direct_scale != 1.0 )
+                        //{
+                        //        Warning( "dscale value should be 1.0 for final compile.\nIf you need to adjust the bounced light, use the '-texreflectscale' and '-texreflectgamma' options instead." );
+                        //}
+                        //if ( g_colour_lightscale[0] != 2.0 || g_colour_lightscale[1] != 2.0 || g_colour_lightscale[2] != 2.0 )
+                        //{
+                        //        Warning( "light scale value should be 2.0 for final compile.\nValues other than 2.0 will result in incorrect interpretation of light_environment's brightness when the engine loads the map." );
+                        //}
                         if ( g_drawlerp )
                         {
                                 g_direct_scale = 0.0;

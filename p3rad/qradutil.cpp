@@ -464,7 +464,7 @@ static bool IsPositionValid( positionmap_t *map, const vec3_t &pos_st, vec3_t &p
         VectorAdd( pos, map->face_offset, pos );
         if ( usephongnormal )
         {
-                GetPhongNormal( map->facenum, pos, pos_normal );
+                GetPhongNormal( map->facenum, pos, pos_normal, nullptr, 0 );
         }
         else
         {

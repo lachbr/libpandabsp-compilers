@@ -17,6 +17,7 @@ void DefaultTexture( radtexture_t *tex, const char *name )
         tex->image = img;
         strcpy( tex->name, name );
         tex->name[MAX_TEXTURE_NAME - 1] = '\0';
+        tex->bump = nullptr;
 }
 
 void LoadTextures()
@@ -33,6 +34,8 @@ void LoadTextures()
         for ( i = 0; i < g_numtextures; i++ )
         {
                 radtexture_t *tex = &g_textures[i];
+                tex->bump = nullptr;
+                tex->image = nullptr;
 
                 if ( g_notextures )
                 {
@@ -43,13 +46,30 @@ void LoadTextures()
                         texref_t *tref = &g_bspdata->dtexrefs[i];
                         string name = tref->name;
 
+                        size_t ext_idx = name.find_last_of( "." );
+                        string basename = name.substr( 0, ext_idx );
+                        string ext = name.substr( ext_idx );
+
                         PNMImage *img = new PNMImage;
                         if ( img->read( name ) )
                         {
                                 tex->image = img;
                                 strcpy( tex->name, name.c_str() );
                                 tex->name[MAX_TEXTURE_NAME - 1] = '\0';
-                                Log( "Loaded RAD texture from %s.\n", tref->name );
+
+                                Filename bumpfile = Filename::from_os_specific( basename + "_bump" + ext );
+                                PNMImage *bump = new PNMImage;
+                                if ( bump->read( bumpfile ) )
+                                {
+                                        Log( "Loaded RAD texture from %s and corresponding bump map %s.\n", tref->name, bumpfile.get_fullpath().c_str() );
+                                        tex->bump = bump;
+                                }
+                                else
+                                {
+                                        Log( "Loaded RAD texture from %s.\n", tref->name );
+                                        delete bump;
+                                }
+                                
                         }
                         else
                         {
@@ -70,19 +90,12 @@ void LoadTextures()
                                 for ( int col = 0; col < width; col++ )
                                 {
                                         vec3_t reflectivity;
-                                        if ( img->get_num_channels() == 1 && img->get_channel( col, row, 0 ) * 0xFF == 0xFF )
+                                        VectorCopy( img->get_xel( col, row ), reflectivity );
+                                        for ( int k = 0; k < 3; k++ )
                                         {
-                                                VectorFill( reflectivity, 0.0 );
+                                                reflectivity[k] = pow( reflectivity[k], g_texreflectgamma );
                                         }
-                                        else
-                                        {
-                                                VectorCopy( img->get_xel( col, row ), reflectivity );
-                                                for ( int k = 0; k < 3; k++ )
-                                                {
-                                                        reflectivity[k] = pow( reflectivity[k], g_texreflectgamma );
-                                                }
-                                                VectorScale( reflectivity, g_texreflectscale, reflectivity );
-                                        }
+                                        VectorScale( reflectivity, g_texreflectscale, reflectivity );
                                         VectorAdd( total, reflectivity, total );
                                 }
                         }

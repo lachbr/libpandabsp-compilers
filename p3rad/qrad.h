@@ -63,7 +63,7 @@
 #define DEFAULT_LIGHTSCALE          1.0 //1.0 //vluzacn
 #define DEFAULT_DLIGHT_THRESHOLD	0.1
 #define DEFAULT_DLIGHT_SCALE        2.0 //2.0 //vluzacn
-#define DEFAULT_SMOOTHING_VALUE     50.0
+#define DEFAULT_SMOOTHING_VALUE     45.0
 #define DEFAULT_SMOOTHING2_VALUE	-1.0
 #define DEFAULT_INCREMENTAL         false
 
@@ -80,7 +80,7 @@
 #define DEFAULT_EXTRA               false
 #define DEFAULT_SKY_LIGHTING_FIX    true
 #define DEFAULT_CIRCUS              false
-#define DEFAULT_CORING				0.01
+#define DEFAULT_CORING				0.00
 #define DEFAULT_SUBDIVIDE           true
 #define DEFAULT_CHART               false
 #define DEFAULT_INFO                true
@@ -131,7 +131,7 @@
 #define DEFAULT_BLOCKOPAQUE 1
 #define DEFAULT_TRANSLUCENTDEPTH 2.0f
 #define DEFAULT_NOTEXTURES false
-#define DEFAULT_TEXREFLECTGAMMA 1.0f // 2.0(texgamma cvar) / 2.5 (gamma cvar) * 2.2 (screen gamma) = 1.76
+#define DEFAULT_TEXREFLECTGAMMA 2.2f // 2.0(texgamma cvar) / 2.5 (gamma cvar) * 2.2 (screen gamma) = 1.76
 #define DEFAULT_TEXREFLECTSCALE 1.0f // arbitrary (This is lower than 1.0, because textures are usually brightened in order to look better in Goldsrc. Textures are made brightened because Goldsrc is only able to darken the texture when combining the texture with the lightmap.)
 #define DEFAULT_BLUR 1.0 // classic lighting is equivalent to "-blur 1.0"
 #define DEFAULT_NOEMITTERRANGE false
@@ -233,6 +233,15 @@ typedef struct directlight_s
 
 typedef struct
 {
+        vec3_t light[NUM_BUMP_VECTS + 1];
+} bumpsample_t;
+typedef struct
+{
+        vec3_t norm[NUM_BUMP_VECTS + 1];
+} bumpnormal_t;
+
+typedef struct
+{
         unsigned size : 12;
         unsigned index : 20;
 } transfer_index_t;
@@ -289,21 +298,24 @@ typedef struct patch_s
         vec3_t			texturereflectivity;
         vec3_t			bouncereflectivity;
 
+        bool                    needs_bumpmap;
+        int normal_count;
+
         unsigned char	totalstyle[MAXLIGHTMAPS];
         unsigned char	directstyle[MAXLIGHTMAPS];
         // HLRAD_AUTOCORING: totallight: all light gathered by patch
-        vec3_t          totallight[MAXLIGHTMAPS];				// accumulated by radiosity does NOT include light accounted for by direct lighting
+        bumpsample_t          totallight[MAXLIGHTMAPS];				// accumulated by radiosity does NOT include light accounted for by direct lighting
                                                                                 // HLRAD_AUTOCORING: directlight: emissive light gathered by sample
-        vec3_t			directlight[MAXLIGHTMAPS];				// direct light only
+        bumpsample_t			directlight[MAXLIGHTMAPS];				// direct light only
         int				bouncestyle; // light reflected from this patch must convert to this style. -1 = normal (don't convert)
         unsigned char	emitstyle;
         vec3_t          baselight;                             // emissivity only, uses emitstyle
         bool			emitmode;								// texlight emit mode. 1 for normal, 0 for fast.
         vec_t			samples;
-        vec3_t*			samplelight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
+        bumpsample_t*			samplelight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
         unsigned char*	totalstyle_all;						// NULL, or [ALLSTYLES] during BuildFacelights
-        vec3_t*			totallight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
-        vec3_t*			directlight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
+        bumpsample_t*			totallight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
+        bumpsample_t*			directlight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
         int				leafnum;
 } patch_t;
 
@@ -371,6 +383,7 @@ typedef struct
                                      //byte palette[256][3];
         PNMImage *image;
         vec3_t reflectivity;
+        PNMImage *bump;
 } radtexture_t;
 extern int g_numtextures;
 extern radtexture_t *g_textures;
@@ -535,7 +548,7 @@ extern int		TestPointOpaque( int modelnum, const vec3_t modelorigin, bool solid,
 #endif
 extern void     CreateDirectLights();
 extern void     DeleteDirectLights();
-extern void     GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal ); // added "const" --vluzacn
+extern void     GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal, const void *l = nullptr, int n = 0 ); // added "const" --vluzacn
 
 typedef bool( *funcCheckVisBit ) ( unsigned, unsigned
                                    , vec3_t&
