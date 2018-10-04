@@ -3,8 +3,8 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerCommand>D:\OTHER\lachb\Documents\rpbmStudios\panda_hl_bsp_tools\Release\p3bsp.exe</LocalDebuggerCommand>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>sewer_entrance_room.bsp -threads 1 -dev 4</LocalDebuggerCommandArguments>
-    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\sewer_entrance_room</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerCommandArguments>test_room.bsp -threads 6</LocalDebuggerCommandArguments>
+    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\test_room</LocalDebuggerWorkingDirectory>
     <LocalDebuggerEnvironment>PATH=D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\bin;%PATH%</LocalDebuggerEnvironment>
   </PropertyGroup>
 </Project>

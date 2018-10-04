@@ -323,6 +323,7 @@ static void     WriteFace( face_t* f )
         df->numedges = f->numpoints;
         df->texinfo = WriteTexinfo( f->texturenum );
         df->on_node = (byte)(f->original != NULL);
+        df->bumped_lightmap = 0;
 
         // Save original side/face data
 
