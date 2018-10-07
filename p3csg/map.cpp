@@ -395,6 +395,18 @@ static void ParseBrush( entity_t* mapent )
                         // lightmap scale
                         GetToken( false );
                         side->td.vects.valve.lightmap_scale = atof( g_token );
+
+                        // num verts
+                        GetToken( false );
+                        int numverts = atoi( g_token );
+                        for ( int vert = 0; vert < numverts; vert++ )
+                        {
+                                // 5 tokens per vert (open and close braces, 3 points)
+                                for ( int i = 0; i < 5; i++ )
+                                {
+                                        GetToken( false );
+                                }
+                        }
                 }
 
                 ok = GetToken( true );                               // Done with line, this reads the first item from the next line
