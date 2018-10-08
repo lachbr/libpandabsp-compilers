@@ -2445,7 +2445,6 @@ static void     BounceLight()
                 patch_t *patch = &g_patches[i];
                 for ( j = 0; j < MAXLIGHTMAPS && patch->totalstyle[j] != 255; j++ )
                 {
-                        Log( "Adding emitlight (%4.3f, %4.3f, %4.3f)\n", emitlight[i][j][0], emitlight[i][j][1], emitlight[i][j][2] );
                         for ( int n = 0; n < patch->normal_count; n++ )
                         {
                                 VectorCopy( emitlight[i][j], patch->totallight[j].light[n] );
