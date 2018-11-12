@@ -21,12 +21,12 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                 {
                         start_dot_n = ray.start[plane->type];
                         delta_dot_n = ray.delta[plane->type];
-
                 }
                 else
                 {
-                        start_dot_n = DotProduct( ray.start, plane->normal );
-                        delta_dot_n = DotProduct( ray.delta, plane->normal );
+                        LVector3 normal( plane->normal[0], plane->normal[1], plane->normal[2] );
+                        start_dot_n = ray.start.dot( normal );
+                        delta_dot_n = ray.delta.dot( normal );
                 }
 
                 front = start_dot_n + start * delta_dot_n - (plane->dist / scale);
@@ -35,12 +35,10 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                 if ( front <= -TEST_EPSILON && back <= -TEST_EPSILON )
                 {
                         node_id = node->children[1];
-
                 }
                 else if ( front >= TEST_EPSILON && back >= TEST_EPSILON )
                 {
                         node_id = node->children[0];
-
                 }
                 else
                 {
@@ -51,7 +49,6 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                         if ( delta_dot_n == 0.0 )
                         {
                                 split_frac = 1.0;
-
                         }
                         else
                         {
