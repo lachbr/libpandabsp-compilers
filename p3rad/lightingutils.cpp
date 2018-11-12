@@ -142,7 +142,7 @@ bool LightSurface::test_point_against_surface( const LVector3 &point, dface_t *f
 
         float ds = s - face->lightmap_mins[0];
         float dt = t - face->lightmap_mins[1];
-        if ( ds < face->lightmap_size[0] || dt < face->lightmap_size[1] )
+        if ( ds > face->lightmap_size[0] || dt > face->lightmap_size[1] )
         {
                 // Doesn't lie in rectangle.
                 return false;

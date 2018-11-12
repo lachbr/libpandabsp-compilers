@@ -438,7 +438,6 @@ void compute_ambient_for_leaf( int thread, int leaf_id,
 
 static void ComputeLeafAmbientLighting( int thread )
 {
-        vector_ambientsample list;
         while ( true )
         {
                 int leaf_id = GetThreadWork();
@@ -447,7 +446,7 @@ static void ComputeLeafAmbientLighting( int thread )
                         break;
                 }
 
-                list.clear();
+                vector_ambientsample list;
                 compute_ambient_for_leaf( thread, leaf_id, list );
 
                 leaf_ambient_samples[leaf_id].resize( list.size() );
