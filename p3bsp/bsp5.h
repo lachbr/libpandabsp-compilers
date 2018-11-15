@@ -42,10 +42,7 @@
 #define DEFAULT_NOFILL          false
 #define DEFAULT_NOINSIDEFILL	false
 #define DEFAULT_NOTJUNC         false
-#define DEFAULT_NOBRINK			false
-#define DEFAULT_NOCLIP          false
 #define DEFAULT_NOOPT			false
-#define DEFAULT_NOCLIPNODEMERGE	false
 #define DEFAULT_LEAKONLY        false
 #define DEFAULT_WATERVIS        false
 #define DEFAULT_CHART           false
@@ -218,7 +215,6 @@ void            tjunc( node_t* headnode );
 
 //=============================================================================
 // writebsp.c
-extern void     WriteClipNodes( node_t* headnode );
 extern void     WriteDrawNodes( node_t* headnode );
 
 extern void     BeginBSPFile();
@@ -239,7 +235,7 @@ extern face_t*  AllocFace();
 extern void     FreeFace( face_t* f );
 
 extern struct portal_s* AllocPortal();
-extern void     FreePortal( struct portal_s* p );
+extern void     FreePortal( portal_t* p );
 
 extern surface_t* AllocSurface();
 extern void     FreeSurface( surface_t* s );
@@ -260,19 +256,6 @@ extern bool     CheckFaceForHint( const face_t* const f );
 extern bool     CheckFaceForSkip( const face_t* const f );
 extern bool     CheckFaceForNull( const face_t* const f );
 extern bool		CheckFaceForDiscardable( const face_t *f );
-#define BRINK_FLOOR_THRESHOLD 0.7
-typedef enum
-{
-        BrinkNone = 0,
-        BrinkFloorBlocking,
-        BrinkFloor,
-        BrinkWallBlocking,
-        BrinkWall,
-        BrinkAny,
-} bbrinklevel_e;
-extern void *CreateBrinkinfo( const dclipnode_t *clipnodes, int headnode );
-extern bool FixBrinks( const void *brinkinfo, bbrinklevel_e level, int &headnode_out, dclipnode_t *clipnodes_out, int maxsize, int size, int &size_out );
-extern void DeleteBrinkinfo( void *brinkinfo );
 
 
 // =====================================================================================
@@ -281,19 +264,11 @@ extern void DeleteBrinkinfo( void *brinkinfo );
 extern bool     CheckFaceForEnv_Sky( const face_t* const f );
 // =====================================================================================
 
-
-
-//=============================================================================
-// cull.c
-extern void     CullStuff();
-
 //=============================================================================
 // qbsp.c
 extern bool     g_nofill;
 extern bool		g_noinsidefill;
 extern bool     g_notjunc;
-extern bool		g_nobrink;
-extern bool		g_noclipnodemerge;
 extern bool     g_watervis;
 extern bool     g_chart;
 extern bool     g_estimate;

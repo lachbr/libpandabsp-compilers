@@ -725,7 +725,7 @@ static void     CalcSurfaceInfo( surface_t* surf )
         surf->detaillevel = -1;
         for ( f = surf->faces; f; f = f->next )
         {
-                if ( f->contents >= 0 )
+                if ( f->contents < 0 )
                 {
                         Error( "Bad contents" );
                 }

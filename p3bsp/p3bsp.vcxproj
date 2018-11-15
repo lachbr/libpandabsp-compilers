@@ -155,7 +155,6 @@
     <ClCompile Include="..\common\scriplib.cpp" />
     <ClCompile Include="..\common\threads.cpp" />
     <ClCompile Include="..\common\winding.cpp" />
-    <ClCompile Include="brink.cpp" />
     <ClCompile Include="merge.cpp" />
     <ClCompile Include="outside.cpp" />
     <ClCompile Include="portals.cpp" />

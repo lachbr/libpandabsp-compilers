@@ -34,9 +34,6 @@
     <ClCompile Include="..\common\winding.cpp">
       <Filter>common</Filter>
     </ClCompile>
-    <ClCompile Include="brink.cpp">
-      <Filter>bsp</Filter>
-    </ClCompile>
     <ClCompile Include="merge.cpp">
       <Filter>bsp</Filter>
     </ClCompile>

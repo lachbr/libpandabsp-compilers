@@ -54,12 +54,9 @@ char			g_extentfilename[_MAX_PATH];
 
 // command line flags
 bool			g_noopt = DEFAULT_NOOPT;		// don't optimize BSP on write
-bool			g_noclipnodemerge = DEFAULT_NOCLIPNODEMERGE;
 bool            g_nofill = DEFAULT_NOFILL;      // dont fill "-nofill"
 bool			g_noinsidefill = DEFAULT_NOINSIDEFILL;
 bool            g_notjunc = DEFAULT_NOTJUNC;
-bool			g_nobrink = DEFAULT_NOBRINK;
-bool            g_noclip = DEFAULT_NOCLIP;      // no clipping hull "-noclip"
 bool            g_chart = DEFAULT_CHART;        // print out chart? "-chart"
 bool            g_estimate = DEFAULT_ESTIMATE;  // estimate mode "-estimate"
 bool            g_info = DEFAULT_INFO;
@@ -160,24 +157,6 @@ void            GetParamsFromEnt( entity_t* mapent )
         {
                 g_noopt = true;
         }
-
-        /*
-        nocliphull(choices) : "Generate clipping hulls" : 0 =
-        [
-        0 : "Yes"
-        1 : "No"
-        ]
-        */
-        iTmp = IntForKey( mapent, "nocliphull" );
-        if ( iTmp == 0 )
-        {
-                g_noclip = false;
-        }
-        else if ( iTmp == 1 )
-        {
-                g_noclip = true;
-        }
-        Log( "%30s [ %-9s ]\n", "Clipping Hull Generation", g_noclip ? "off" : "on" );
 
         //////////////////
         Verbose( "\n" );
@@ -1250,78 +1229,9 @@ static bool     ProcessModel()
         model->numfaces = g_bspdata->numfaces - model->firstface;
         model->visleafs = g_bspdata->numleafs - startleafs;
 
-        if ( g_noclip )
-        {
-                /*
-                KGP 12/31/03 - store empty content type in headnode pointers to signify
-                lack of clipping information in a way that doesn't crash the half-life
-                engine at runtime.
-                */
-                model->headnode[1] = CONTENTS_EMPTY;
-                model->headnode[2] = CONTENTS_EMPTY;
-                model->headnode[3] = CONTENTS_EMPTY;
-                goto skipclip;
-        }
-
-        // the clipping hulls are simpler
-        for ( g_hullnum = 1; g_hullnum < NUM_HULLS; g_hullnum++ )
-        {
-                surfs = ReadSurfs( polyfiles[g_hullnum] );
-                detailbrushes = ReadBrushes( brushfiles[g_hullnum] );
-                {
-                        int hullnum = g_hullnum;
-                        if ( surfs->mins[0] > surfs->maxs[0] )
-                        {
-                                Developer( DEVELOPER_LEVEL_MESSAGE, "model %d hull %d empty\n", modnum, hullnum );
-                        }
-                        else
-                        {
-                                vec3_t mins, maxs;
-                                int i;
-                                VectorSubtract( surfs->mins, g_hull_size[hullnum][0], mins );
-                                VectorSubtract( surfs->maxs, g_hull_size[hullnum][1], maxs );
-                                for ( i = 0; i < 3; i++ )
-                                {
-                                        if ( mins[i] > maxs[i] )
-                                        {
-                                                vec_t tmp;
-                                                tmp = ( mins[i] + maxs[i] ) / 2;
-                                                mins[i] = tmp;
-                                                maxs[i] = tmp;
-                                        }
-                                }
-                                for ( i = 0; i < 3; i++ )
-                                {
-                                        model->maxs[i] = qmax( model->maxs[i], maxs[i] );
-                                        model->mins[i] = qmin( model->mins[i], mins[i] );
-                                }
-                        }
-                }
-                nodes = SolidBSP( surfs,
-                                  detailbrushes,
-                                  modnum == 0 );
-                if ( g_bspdata->nummodels == 1 && !g_nofill )                   // assume non-world bmodels are simple
-                {
-                        nodes = FillOutside( nodes, ( g_bLeaked != true ), g_hullnum );
-                }
-                FreePortals( nodes );
-                /*
-                KGP 12/31/03 - need to test that the head clip node isn't empty; if it is
-                we need to set model->headnode equal to the content type of the head, or create
-                a trivial single-node case where the content type is the same for both leaves
-                if setting the content type is invalid.
-                */
-                if ( nodes->planenum == -1 ) //empty!
-                {
-                        model->headnode[g_hullnum] = nodes->contents;
-                }
-                else
-                {
-                        model->headnode[g_hullnum] = g_bspdata->numclipnodes;
-                        WriteClipNodes( nodes );
-                }
-        }
-skipclip:
+        model->headnode[1] = CONTENTS_EMPTY;
+        model->headnode[2] = CONTENTS_EMPTY;
+        model->headnode[3] = CONTENTS_EMPTY;
 
         {
                 entity_t *ent;
@@ -1385,12 +1295,9 @@ static void     Usage()
         Log( "    -subdivide #   : Sets the face subdivide size\n" );
         Log( "    -maxnodesize # : Sets the maximum portal node size\n\n" );
         Log( "    -notjunc       : Don't break edges on t-junctions     (not for final runs)\n" );
-        Log( "    -nobrink       : Don't smooth brinks                  (not for final runs)\n" );
-        Log( "    -noclip        : Don't process the clipping hull      (not for final runs)\n" );
         Log( "    -nofill        : Don't fill outside (will mask LEAKs) (not for final runs)\n" );
         Log( "    -noinsidefill  : Don't fill empty spaces\n" );
         Log( "    -noopt         : Don't optimize planes on BSP write   (not for final runs)\n" );
-        Log( "    -noclipnodemerge: Don't optimize clipnodes\n" );
         Log( "    -texdata #     : Alter maximum texture memory limit (in kb)\n" );
         Log( "    -lightdata #   : Alter maximum lighting memory limit (in kb)\n" );
         Log( "    -chart         : display bsp statitics\n" );
@@ -1405,9 +1312,6 @@ static void     Usage()
 #endif
 
         Log( "    -nonulltex     : Don't strip NULL faces\n" );
-
-
-        Log( "    -nohull2       : Don't generate hull 2 (the clipping hull for large monsters and pushables)\n" );
 
         Log( "    -viewportal    : Show portal boundaries in 'mapname_portal.pts' file\n" );
 
@@ -1466,14 +1370,11 @@ static void     Settings()
         Log( "\n" );
 
         // HLBSP Specific Settings
-        Log( "noclip              [ %7s ] [ %7s ]\n", g_noclip ? "on" : "off", DEFAULT_NOCLIP ? "on" : "off" );
         Log( "nofill              [ %7s ] [ %7s ]\n", g_nofill ? "on" : "off", DEFAULT_NOFILL ? "on" : "off" );
         Log( "noinsidefill        [ %7s ] [ %7s ]\n", g_noinsidefill ? "on" : "off", DEFAULT_NOINSIDEFILL ? "on" : "off" );
         Log( "noopt               [ %7s ] [ %7s ]\n", g_noopt ? "on" : "off", DEFAULT_NOOPT ? "on" : "off" );
-        Log( "no clipnode merging [ %7s ] [ %7s ]\n", g_noclipnodemerge ? "on" : "off", DEFAULT_NOCLIPNODEMERGE ? "on" : "off" );
         Log( "null tex. stripping [ %7s ] [ %7s ]\n", g_bUseNullTex ? "on" : "off", DEFAULT_NULLTEX ? "on" : "off" );
         Log( "notjunc             [ %7s ] [ %7s ]\n", g_notjunc ? "on" : "off", DEFAULT_NOTJUNC ? "on" : "off" );
-        Log( "nobrink             [ %7s ] [ %7s ]\n", g_nobrink ? "on" : "off", DEFAULT_NOBRINK ? "on" : "off" );
         Log( "subdivide size      [ %7d ] [ %7d ] (Min %d) (Max %d)\n",
              g_subdivide_size, DEFAULT_SUBDIVIDE_SIZE, MIN_SUBDIVIDE_SIZE, MAX_SUBDIVIDE_SIZE );
         Log( "max node size       [ %7d ] [ %7d ] (Min %d) (Max %d)\n",
@@ -1659,14 +1560,6 @@ int             main( const int argc, char** argv )
                                 {
                                         g_notjunc = true;
                                 }
-                                else if ( !strcasecmp( argv[i], "-nobrink" ) )
-                                {
-                                        g_nobrink = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-noclip" ) )
-                                {
-                                        g_noclip = true;
-                                }
                                 else if ( !strcasecmp( argv[i], "-nofill" ) )
                                 {
                                         g_nofill = true;
@@ -1759,10 +1652,6 @@ int             main( const int argc, char** argv )
                                 else if ( !strcasecmp( argv[i], "-noopt" ) )
                                 {
                                         g_noopt = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-noclipnodemerge" ) )
-                                {
-                                        g_noclipnodemerge = true;
                                 }
                                 else if ( !strcasecmp( argv[i], "-subdivide" ) )
                                 {
