@@ -271,16 +271,6 @@ static void     SwapBSPFile( bspdata_t *data, const bool todisk )
         }
 
         //
-        // clipnodes
-        //
-        for ( i = 0; i < data->numclipnodes; i++ )
-        {
-                data->dclipnodes[i].planenum = LittleLong( data->dclipnodes[i].planenum );
-                data->dclipnodes[i].children[0] = LittleShort( data->dclipnodes[i].children[0] );
-                data->dclipnodes[i].children[1] = LittleShort( data->dclipnodes[i].children[1] );
-        }
-
-        //
         // texrefs
         //
         for ( i = 0; i < data->numtexrefs; i++ )
@@ -337,7 +327,7 @@ static void     SwapBSPFile( bspdata_t *data, const bool todisk )
         {
                 dbrushside_t *side = &data->dbrushsides[i];
                 side->bevel = LittleShort( side->bevel );
-                side->planenum = LittleShort( side->bevel );
+                side->planenum = LittleShort( side->planenum );
                 side->texinfo = LittleShort( side->texinfo );
         }
 
@@ -428,7 +418,6 @@ bspdata_t            *LoadBSPImage( dheader_t* const header )
         data->numleafs = CopyLump( LUMP_LEAFS, data->dleafs, sizeof( dleaf_t ), header );
         data->numnodes = CopyLump( LUMP_NODES, data->dnodes, sizeof( dnode_t ), header );
         data->numtexinfo = CopyLump( LUMP_TEXINFO, data->texinfo, sizeof( texinfo_t ), header );
-        data->numclipnodes = CopyLump( LUMP_CLIPNODES, data->dclipnodes, sizeof( dclipnode_t ), header );
         data->numfaces = CopyLump( LUMP_FACES, data->dfaces, sizeof( dface_t ), header );
         //data->numorigfaces = CopyLump( LUMP_ORIGFACES, data->dorigfaces, sizeof( dface_t ), header );
         data->nummarksurfaces = CopyLump( LUMP_MARKSURFACES, data->dmarksurfaces, sizeof( data->dmarksurfaces[0] ), header );
@@ -462,7 +451,6 @@ bspdata_t            *LoadBSPImage( dheader_t* const header )
         data->dleafs_checksum = FastChecksum( data->dleafs, data->numleafs * sizeof( data->dleafs[0] ) );
         data->dnodes_checksum = FastChecksum( data->dnodes, data->numnodes * sizeof( data->dnodes[0] ) );
         data->texinfo_checksum = FastChecksum( data->texinfo, data->numtexinfo * sizeof( data->texinfo[0] ) );
-        data->dclipnodes_checksum = FastChecksum( data->dclipnodes, data->numclipnodes * sizeof( data->dclipnodes[0] ) );
         data->dfaces_checksum = FastChecksum( data->dfaces, data->numfaces * sizeof( data->dfaces[0] ) );
         //data->dorigfaces_checksum = FastChecksum( data->dorigfaces, data->numorigfaces * sizeof( data->dorigfaces[0] ) );
         data->dmarksurfaces_checksum = FastChecksum( data->dmarksurfaces, data->nummarksurfaces * sizeof( data->dmarksurfaces[0] ) );
@@ -527,7 +515,6 @@ void            WriteBSPFile( bspdata_t *data, const char* const filename )
         AddLump( LUMP_TEXINFO, data->texinfo, data->numtexinfo * sizeof( texinfo_t ), header, bspfile );
         AddLump( LUMP_FACES, data->dfaces, data->numfaces * sizeof( dface_t ), header, bspfile );
         //AddLump( LUMP_ORIGFACES, data->dorigfaces, data->numorigfaces * sizeof( dface_t ), header, bspfile );
-        AddLump( LUMP_CLIPNODES, data->dclipnodes, data->numclipnodes * sizeof( dclipnode_t ), header, bspfile );
 
         AddLump( LUMP_MARKSURFACES, data->dmarksurfaces, data->nummarksurfaces * sizeof( data->dmarksurfaces[0] ), header, bspfile );
         AddLump( LUMP_SURFEDGES, data->dsurfedges, data->numsurfedges * sizeof( data->dsurfedges[0] ), header, bspfile );
@@ -1072,7 +1059,6 @@ void            PrintBSPFileSizes(bspdata_t *data)
         totalmemory += ArrayUsage( "faces", data->numfaces, ENTRIES( data->dfaces ), ENTRYSIZE( data->dfaces ) );
         //totalmemory += ArrayUsage( "origfaces", data->numorigfaces, ENTRIES( data->dorigfaces ), ENTRYSIZE( data->dorigfaces ) );
         totalmemory += ArrayUsage( "* worldfaces", ( data->nummodels > 0 ? data->dmodels[0].numfaces : 0 ), MAX_MAP_WORLDFACES, 0 );
-        totalmemory += ArrayUsage( "clipnodes", data->numclipnodes, ENTRIES( data->dclipnodes ), ENTRYSIZE( data->dclipnodes ) );
         totalmemory += ArrayUsage( "leaves", data->numleafs, MAX_MAP_LEAFS, ENTRYSIZE( data->dleafs ) );
         totalmemory += ArrayUsage( "* worldleaves", ( data->nummodels > 0 ? data->dmodels[0].visleafs : 0 ), MAX_MAP_LEAFS_ENGINE, 0 );
         totalmemory += ArrayUsage( "marksurfaces", data->nummarksurfaces, ENTRIES( data->dmarksurfaces ), ENTRYSIZE( data->dmarksurfaces ) );
@@ -1667,8 +1653,6 @@ void LoadTextureContents()
                         g_tex_contents[tex] = CONTENTS_BOUNDINGBOX;
                 else if ( !strncmp( contents.c_str(), "origin", 6 ) )
                         g_tex_contents[tex] = CONTENTS_ORIGIN;
-                else if ( !strncmp( contents.c_str(), "clip", 4 ) )
-                        g_tex_contents[tex] = CONTENTS_CLIP;
                 else
                         g_tex_contents[tex] = CONTENTS_SOLID;
 
@@ -1691,13 +1675,13 @@ contents_t GetTextureContents( const char *texname )
 LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
 {
         int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
-        LRGBColor avg(0);
+        LRGBColor avg( 0 );
         for ( int i = 0; i < luxels; i++ )
         {
                 colorrgbexp32_t col = *SampleLightmap( data, face, i, style, 0 );
                 LVector3 vcol( 0 );
                 ColorRGBExp32ToVector( col, vcol );
-                VectorAdd( avg, vcol, avg );
+                avg += vcol;
         }
         avg /= luxels;
         return avg;

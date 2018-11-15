@@ -34,7 +34,7 @@
 #define MAX_MAP_ENTSTRING   (2048*1024) //(512*1024) //vluzacn
 // abitrary, 512Kb of string data should be plenty even with TFC FGD's
 
-#define MAX_MAP_PLANES      32768 // TODO: This can be larger, because although faces can only use plane 0~32767, clipnodes can use plane 0-65535. --vluzacn
+#define MAX_MAP_PLANES      32768 // TODO: This can be larger, because although faces can only use plane 0~32767
 #define MAX_INTERNAL_MAP_PLANES (256*1024)
 // (from email): I have been building a rather complicated map, and using your latest 
 // tools (1.61) it seemed to compile fine.  However, in game, the engine was dropping
@@ -44,8 +44,6 @@
 // I was able to bring the map under the limit, and all of the previous errors went away.
 
 #define MAX_MAP_NODES        32767
-// hard limit (negative short's are used as contents values)
-#define MAX_MAP_CLIPNODES    32767
 // hard limit (negative short's are used as contents values)
 
 #define MAX_MAP_LEAFS        32760
@@ -105,8 +103,8 @@
 #define MAX_LIGHTSTYLES 64
 //=============================================================================
 
-#define BSPVERSION  30
-#define TOOLVERSION 2
+#define BSPVERSION  31
+#define TOOLVERSION 3
 
 // One hammer unit is 1/16th of a foot.
 // One panda unit is one foot.
@@ -133,23 +131,22 @@ typedef struct
 #define LUMP_TEXINFO       6
 #define LUMP_FACES         7
 #define LUMP_LIGHTING      8
-#define LUMP_CLIPNODES     9
-#define LUMP_LEAFS        10
-#define LUMP_MARKSURFACES 11
-#define LUMP_EDGES        12
-#define LUMP_SURFEDGES    13
-#define LUMP_MODELS       14
-#define LUMP_BRUSHES      15
-#define LUMP_BRUSHSIDES   16
-#define LUMP_LEAFAMBIENTLIGHTING 17
-#define LUMP_LEAFAMBIENTINDEX    18
-#define LUMP_LEAFBRUSHES         19
-#define LUMP_STATICPROPS         20
-#define LUMP_STATICPROPVERTEXDATA 21
-#define LUMP_STATICPROPLIGHTING   22
+#define LUMP_LEAFS        9
+#define LUMP_MARKSURFACES 10
+#define LUMP_EDGES        11
+#define LUMP_SURFEDGES    12
+#define LUMP_MODELS       13
+#define LUMP_BRUSHES      14
+#define LUMP_BRUSHSIDES   15
+#define LUMP_LEAFAMBIENTLIGHTING 16
+#define LUMP_LEAFAMBIENTINDEX    17
+#define LUMP_LEAFBRUSHES         18
+#define LUMP_STATICPROPS         19
+#define LUMP_STATICPROPVERTEXDATA 20
+#define LUMP_STATICPROPLIGHTING   21
 
 //#define LUMP_ORIGFACES    15
-#define HEADER_LUMPS      23
+#define HEADER_LUMPS      22
 
 //#define LUMP_MISCPAD      -1
 //#define LUMP_ZEROPAD      -2
@@ -187,34 +184,34 @@ typedef struct
         planetypes      type;                                  // PLANE_X - PLANE_ANYZ ?remove? trivial to regenerate
 } dplane_t;
 
+// Up to 32 unique contents
 typedef enum
 {
-        CONTENTS_EMPTY = -1,
-        CONTENTS_SOLID = -2,
-        CONTENTS_WATER = -3,
-        CONTENTS_SLIME = -4,
-        CONTENTS_LAVA = -5,
-        CONTENTS_SKY = -6,
-        CONTENTS_ORIGIN = -7,                                  // removed at csg time
+        CONTENTS_EMPTY          = 1 << 0,
+        CONTENTS_SOLID          = 1 << 1,
+        CONTENTS_WATER          = 1 << 2,
+        CONTENTS_SLIME          = 1 << 3,
+        CONTENTS_LAVA           = 1 << 4,
+        CONTENTS_SKY            = 1 << 5,
+        CONTENTS_ORIGIN         = 1 << 6,                                  // removed at csg time
 
-        CONTENTS_CURRENT_0 = -9,
-        CONTENTS_CURRENT_90 = -10,
-        CONTENTS_CURRENT_180 = -11,
-        CONTENTS_CURRENT_270 = -12,
-        CONTENTS_CURRENT_UP = -13,
-        CONTENTS_CURRENT_DOWN = -14,
+        CONTENTS_CURRENT_0      = 1 << 7,
+        CONTENTS_CURRENT_90     = 1 << 8,
+        CONTENTS_CURRENT_180    = 1 << 9,
+        CONTENTS_CURRENT_270    = 1 << 10,
+        CONTENTS_CURRENT_UP     = 1 << 11,
+        CONTENTS_CURRENT_DOWN   = 1 << 12,
 
-        CONTENTS_TRANSLUCENT = -15,
-        CONTENTS_HINT = -16,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
+        CONTENTS_TRANSLUCENT    = 1 << 13,
+        CONTENTS_HINT           = 1 << 14,     // Filters down to CONTENTS_EMPTY by bsp, ENGINE SHOULD NEVER SEE THIS
 
-        CONTENTS_NULL = -17,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
+        CONTENTS_NULL           = 1 << 15,     // AJM  // removed in csg and bsp, VIS or RAD shouldnt have to deal with this, only clip planes!
 
 
-        CONTENTS_BOUNDINGBOX = -19, // similar to CONTENTS_ORIGIN
+        CONTENTS_BOUNDINGBOX    = 1 << 16, // similar to CONTENTS_ORIGIN
 
-        CONTENTS_TOEMPTY = -32,
-        CONTENTS_PROP = -33,
-        CONTENTS_CLIP = -34,
+        CONTENTS_TOEMPTY        = 1 << 17,
+        CONTENTS_PROP           = 1 << 18,
 } contents_t;
 
 // !!! if this is changed, it must be changed in asm_i386.h too !!!
@@ -227,12 +224,6 @@ typedef struct
         unsigned short  firstface;
         unsigned short  numfaces;                              // counting both sides
 } dnode_t;
-
-typedef struct
-{
-        int             planenum;
-        short           children[2];                           // negative numbers are contents
-} dclipnode_t;
 
 typedef struct texinfo_s
 {
@@ -449,10 +440,6 @@ struct bspdata_t
         int	numorigfaces;
         dface_t	dorigfaces[MAX_MAP_FACES];
         int	dorigfaces_checksum;
-
-        int      numclipnodes;
-        dclipnode_t dclipnodes[MAX_MAP_CLIPNODES];
-        int      dclipnodes_checksum;
 
         int      numedges;
         dedge_t  dedges[MAX_MAP_EDGES];

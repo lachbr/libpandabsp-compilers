@@ -543,7 +543,7 @@ static void     LogArgs( int argc, char** argv )
 // =====================================================================================
 void            Banner()
 {
-        Log( "%s " ZHLT_VERSIONSTRING " " HACK_VERSIONSTRING
+        Log( "%s " TOOLS_VERSIONSTRING
 #ifndef VERSION_32BIT
              " " PLATFORM_VERSIONSTRING
 #endif

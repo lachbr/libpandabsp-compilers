@@ -20,6 +20,7 @@ struct Ray
 
                 is_swept = delta.length_squared() != 0;
                 extents = maxs - mins;
+                extents *= 0.5;
                 is_ray = extents.length_squared() < 1e-6;
                 start_offset = ( mins + maxs ) / 2;
                 start = ( start + start_offset );
@@ -43,6 +44,7 @@ struct Trace
         LPoint3 end_pos;
         dplane_t plane;
         PN_stdfloat fraction;
+        PN_stdfloat fraction_left_solid;
         int contents;
         bool all_solid;
         bool start_solid;
@@ -51,6 +53,26 @@ struct Trace
         LPoint3 maxs;
         LVector3 extents;
         texinfo_t *surface;
+
+        bspdata_t *bspdata;
+
+        INLINE bool has_hit() const
+        {
+                return fraction != 1.0;
+        }
+
+        Trace() :
+                fraction( 1.0 ),
+                fraction_left_solid( 0.0 ),
+                contents( 0 ),
+                all_solid( false ),
+                start_solid( false ),
+                is_point( false ),
+                surface( nullptr ),
+                bspdata( nullptr )
+        {
+        }
+
 };
 
 class BaseBSPEnumerator

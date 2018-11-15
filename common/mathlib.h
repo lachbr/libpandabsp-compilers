@@ -300,6 +300,27 @@ inline void VectorIRotate( const LVector3& in1, const LMatrix3 &in2, LVector3 &o
         out[2] = in1[0] * in2[0][2] + in1[1] * in2[1][2] + in1[2] * in2[2][2];
 }
 
+INLINE void VectorLerp( const LVector3 &src1, const LVector3 &src2, float t, LVector3 &dest )
+{
+        dest[0] = src1[0] + ( src2[0] - src1[0] ) * t;
+        dest[1] = src1[1] + ( src2[1] - src1[1] ) * t;
+        dest[2] = src1[2] + ( src2[2] - src1[2] ) * t;
+}
+
+INLINE float DotProductAbs( const LVector3 &v0, const LVector3 &v1 )
+{
+        return fabsf( v0[0] * v1[0] ) +
+                fabsf( v0[1] * v1[1] ) +
+                fabsf( v0[2] * v1[2] );
+}
+
+INLINE float DotProductAbs( const LVector3 &v0, const float *v1 )
+{
+        return fabsf( v0[0] * v1[0] ) +
+                fabsf( v0[1] * v1[1] ) +
+                fabsf( v0[2] * v1[2] );
+}
+
 void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 &face_normal,
                      const LVector3 &phong_normal, LVector3 *bump_vecs );
 

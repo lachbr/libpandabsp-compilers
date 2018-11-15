@@ -23,15 +23,13 @@ using std::endl;
 //#define MODIFICATIONS_STRING "Submit detailed bug reports to (merlinis@bigpond.net.au)\n"
 //#define MODIFICATIONS_STRING "Submit detailed bug reports to (amckern@yahoo.com)\n"
 //#define MODIFICATIONS_STRING "Submit detailed bug reports to (vluzacn@163.com)\n" //--vluzacn
-#define MODIFICATIONS_STRING ""
+#define MODIFICATIONS_STRING "Submit detailed bug reports to (brianlach72@gmail.com)\n"
 
 #ifdef _DEBUG
-#define ZHLT_VERSIONSTRING "v3.4 dbg"
+#define TOOLS_VERSIONSTRING "v1.0 dbg"
 #else
-#define ZHLT_VERSIONSTRING "v3.4"
+#define TOOLS_VERSIONSTRING "v1.0"
 #endif
-
-#define HACK_VERSIONSTRING "VL34" //--vluzacn
 
 //#if !defined (HLCSG) && !defined (HLBSP) && !defined (HLVIS) && !defined (HLRAD) && !defined (RIPENT) //--vluzacn
 //#error "You must define one of these in the settings of each project: HLCSG, HLBSP, HLVIS, HLRAD, RIPENT. The most likely cause is that you didn't load the project from the sln file."
