@@ -37,11 +37,9 @@ BSPBoundingBox     world_bounds;
 
 vec_t           g_tiny_threshold = DEFAULT_TINY_THRESHOLD;
 
-bool            g_noclip = DEFAULT_NOCLIP;              // no clipping hull "-noclip"
 bool            g_onlyents = DEFAULT_ONLYENTS;          // onlyents mode "-onlyents"
 bool            g_wadtextures = DEFAULT_WADTEXTURES;    // "-nowadtextures"
 bool            g_chart = DEFAULT_CHART;                // show chart "-chart"
-bool            g_skyclip = DEFAULT_SKYCLIP;            // no sky clipping "-noskyclip"
 bool            g_estimate = DEFAULT_ESTIMATE;          // progress estimates "-estimate"
 bool            g_info = DEFAULT_INFO;                  // "-info" ?
 const char*     g_hullfile = NULL;                      // external hullfile "-hullfie sdfsd"
@@ -50,11 +48,7 @@ const char*		g_wadconfigname = NULL;
 
 bool            g_bUseNullTex = DEFAULT_NULLTEX;        // "-nonulltex"
 
-cliptype		g_cliptype = DEFAULT_CLIPTYPE;			// "-cliptype <value>"
-
 const char*			g_nullfile = NULL;
-
-bool            g_bClipNazi = DEFAULT_CLIPNAZI;         // "-noclipeconomy"
 
 bool            g_bWadAutoDetect = DEFAULT_WADAUTODETECT; // "-wadautodetect"
 
@@ -155,26 +149,6 @@ void            GetParamsFromEnt( entity_t* mapent )
                 Log( "%30s [ %-9s ]\n", "Custom Wad Configuration File", g_wadcfgfile );
         }
 
-        // noclipeconomy(choices) : "Strip Uneeded Clipnodes?" : 1 = [ 1 : "Yes" 0 : "No" ]
-        iTmp = IntForKey( mapent, "noclipeconomy" );
-        if ( iTmp == 1 )
-        {
-                g_bClipNazi = true;
-        }
-        else if ( iTmp == 0 )
-        {
-                g_bClipNazi = false;
-        }
-        Log( "%30s [ %-9s ]\n", "Clipnode Economy Mode", g_bClipNazi ? "on" : "off" );
-
-        /*
-        hlcsg(choices) : "HLCSG" : 1 =
-        [
-        1 : "Normal"
-        2 : "Onlyents"
-        0 : "Off"
-        ]
-        */
         iTmp = IntForKey( mapent, "hlcsg" );
         g_onlyents = false;
         if ( iTmp == 2 )
@@ -188,62 +162,6 @@ void            GetParamsFromEnt( entity_t* mapent )
                 CheckFatal();
         }
         Log( "%30s [ %-9s ]\n", "Onlyents", g_onlyents ? "on" : "off" );
-
-        /*
-        nocliphull(choices) : "Generate clipping hulls" : 0 =
-        [
-        0 : "Yes"
-        1 : "No"
-        ]
-        */
-        iTmp = IntForKey( mapent, "nocliphull" );
-        if ( iTmp == 1 )
-        {
-                g_noclip = true;
-        }
-        else
-        {
-                g_noclip = false;
-        }
-        Log( "%30s [ %-9s ]\n", "Clipping Hull Generation", g_noclip ? "off" : "on" );
-        // cliptype(choices) : "Clip Hull Type" : 4 = [ 0 : "Smallest" 1 : "Normalized" 2: "Simple" 3 : "Precise" 4 : "Legacy" ]
-        iTmp = IntForKey( mapent, "cliptype" );
-        switch ( iTmp )
-        {
-        case 0:
-                g_cliptype = clip_smallest;
-                break;
-        case 1:
-                g_cliptype = clip_normalized;
-                break;
-        case 2:
-                g_cliptype = clip_simple;
-                break;
-        case 3:
-                g_cliptype = clip_precise;
-                break;
-        default:
-                g_cliptype = clip_legacy;
-                break;
-        }
-        Log( "%30s [ %-9s ]\n", "Clip Hull Type", GetClipTypeString( g_cliptype ) );
-        /*
-        noskyclip(choices) : "No Sky Clip" : 0 =
-        [
-        1 : "On"
-        0 : "Off"
-        ]
-        */
-        iTmp = IntForKey( mapent, "noskyclip" );
-        if ( iTmp == 1 )
-        {
-                g_skyclip = false;
-        }
-        else
-        {
-                g_skyclip = true;
-        }
-        Log( "%30s [ %-9s ]\n", "Sky brush clip generation", g_skyclip ? "on" : "off" );
 
         ///////////////
         Log( "\n" );
@@ -498,10 +416,7 @@ static void     SaveOutside( const brush_t* const b, const int hull, bface_t* ou
                         }
                 }
 
-                WriteFace( hull, f
-                           ,
-                           ( hull ? b->clipnodedetaillevel : b->detaillevel )
-                );
+                WriteFace( hull, f, b->detaillevel );
 
                 //              if (mirrorcontents != CONTENTS_SOLID)
                 {
@@ -517,10 +432,7 @@ static void     SaveOutside( const brush_t* const b, const int hull, bface_t* ou
                                 VectorCopy( f->w->m_Points[f->w->m_NumPoints - 1 - i], f->w->m_Points[i] );
                                 VectorCopy( temp, f->w->m_Points[f->w->m_NumPoints - 1 - i] );
                         }
-                        WriteFace( hull, f
-                                   ,
-                                   ( hull ? b->clipnodedetaillevel : b->detaillevel )
-                        );
+                        WriteFace( hull, f, b->detaillevel );
                 }
 
                 FreeFace( f );
@@ -643,9 +555,7 @@ static void     CSGBrush( int brushnum )
         for ( hull = 0; hull < NUM_HULLS; hull++ )
         {
                 bh1 = &b1->hulls[hull];
-                if ( bh1->faces &&
-                        ( hull ? b1->clipnodedetaillevel : b1->detaillevel )
-                     )
+                if ( bh1->faces && b1->detaillevel )
                 {
                         switch ( b1->contents )
                         {
@@ -691,17 +601,12 @@ static void     CSGBrush( int brushnum )
                         bh2 = &b2->hulls[hull];
                         if ( b2->contents == CONTENTS_TOEMPTY )
                                 continue;
-                        if (
-                                ( hull ? ( b2->clipnodedetaillevel - 0 > b1->clipnodedetaillevel + 0 ) : ( b2->detaillevel - b2->chopdown > b1->detaillevel + b1->chopup ) )
-                                )
+                        if ( b2->detaillevel - b2->chopdown > b1->detaillevel + b1->chopup )
                                 continue; // you can't chop
                         if ( b2->contents == b1->contents &&
-                                ( hull ? ( b2->clipnodedetaillevel != b1->clipnodedetaillevel ) : ( b2->detaillevel != b1->detaillevel ) )
-                             )
+                             b2->detaillevel != b1->detaillevel )
                         {
-                                overwrite =
-                                        ( hull ? ( b2->clipnodedetaillevel < b1->clipnodedetaillevel ) : ( b2->detaillevel < b1->detaillevel ) )
-                                        ;
+                                overwrite = b2->detaillevel < b1->detaillevel;
                         }
                         if ( b2->contents == b1->contents
                              && hull == 0 && b2->detaillevel == b1->detaillevel
@@ -736,9 +641,7 @@ static void     CSGBrush( int brushnum )
                                         outside = f;
                                         continue;
                                 }
-                                if (
-                                        ( hull ? ( b2->clipnodedetaillevel > b1->clipnodedetaillevel ) : ( b2->detaillevel > b1->detaillevel ) )
-                                        )
+                                if ( b2->detaillevel > b1->detaillevel )
                                 {
                                         const char *texname = GetTextureByNumber_CSG( f->texinfo );
                                         if ( f->texinfo == -1 || !strncasecmp( texname, "SKIP", 4 ) || !strncasecmp( texname, "HINT", 4 )
@@ -864,18 +767,14 @@ static void     CSGBrush( int brushnum )
                                         // there is one convex fragment of the original
                                         // face left inside brush2
 
-                                        if (
-                                                ( hull ? ( b2->clipnodedetaillevel > b1->clipnodedetaillevel ) : ( b2->detaillevel > b1->detaillevel ) )
-                                                )
+                                        if ( b2->detaillevel > b1->detaillevel )
                                         { // don't chop or set contents, only nullify
                                                 f->next = outside;
                                                 outside = f;
                                                 f->texinfo = -1;
                                                 continue;
                                         }
-                                        if (
-                                                ( hull ? b2->clipnodedetaillevel < b1->clipnodedetaillevel : b2->detaillevel < b1->detaillevel )
-                                                && b2->contents == CONTENTS_SOLID )
+                                        if (b2->detaillevel < b1->detaillevel && b2->contents == CONTENTS_SOLID )
                                         { // real solid
                                                 FreeFace( f );
                                                 continue;
@@ -938,28 +837,43 @@ void EmitBrushes()
         g_bspdata->dbrushsides.clear();
         g_bspdata->dbrushes.clear();
 
+        pvector<dbrushside_t> temp_brushsides;
+        temp_brushsides.resize( MAX_MAP_SIDES );
+
+        int numbrushsides = 0;
+
+        // Save out the map brushes and their sides
         for ( int bnum = 0; bnum < g_nummapbrushes; bnum++ )
         {
+                std::cout << "Writing brush " << bnum << std::endl;
                 brush_t *b = &g_mapbrushes[bnum];
 
                 dbrush_t db;
 
                 db.contents = b->contents;
-                db.firstside = (int)g_bspdata->dbrushsides.size();
-                db.numsides = (int)b->original_sides.size();
+                db.firstside = b->firstside;
+                db.numsides = b->numsides;
+                std::cout << "\tContents:\t" << db.contents << "\n"
+                        << "\tFirst side:\t" << db.firstside << "\n"
+                        << "\tNum sides:\t" << db.numsides << std::endl;
 
-                for ( int j = 0; j < b->original_sides.size(); j++ )
+                for ( int j = 0; j < b->numsides; j++ )
                 {
-                        if ( b->original_sides[j] == nullptr )
-                        {
-                                Warning( "Bad original side %i for brush %i", j, bnum );
-                                continue;
-                        }
+                        int bside_idx = b->firstside + j;
+                        std::cout << "\tWriting brush side " << bside_idx << std::endl;
+                        side_t *bside = &g_brushsides[bside_idx];
                         dbrushside_t cp;
-                        cp.planenum = b->original_sides[j]->planenum;
-                        cp.texinfo = b->original_sides[j]->texinfo;
-                        cp.bevel = b->original_sides[j]->bevel;
-                        g_bspdata->dbrushsides.push_back( cp );
+                        cp.planenum = bside->planenum;
+                        cp.texinfo = bside->texinfo;
+                        cp.bevel = bside->bevel;
+                        std::cout << "\t\tPlane num:\t" << cp.planenum << "\n"
+                                << "\t\tTex info:\t" << cp.texinfo << "\n"
+                                << "\t\tBevel:\t" << cp.bevel << std::endl;
+                        temp_brushsides[bside_idx] = cp;
+                        if ( bside_idx + 1 > numbrushsides )
+                        {
+                                numbrushsides = bside_idx + 1;
+                        }
                 }
 
                 // add any axis planes not contained in the brush to bevel off corners
@@ -982,6 +896,14 @@ void EmitBrushes()
 
                 g_bspdata->dbrushes.push_back( db );
         }
+
+        std::cout << "Saving " << numbrushsides << " brush sides" << std::endl;
+        // Only save used brushsides
+        for ( int i = 0; i < numbrushsides; i++ )
+        {
+                g_bspdata->dbrushsides.push_back( temp_brushsides[i] );
+        }
+
 }
 
 // =====================================================================================
@@ -1274,149 +1196,6 @@ void WriteBSP( const char* const name )
 // =====================================================================================
 //
 
-// AJM: added in function
-// =====================================================================================
-//  CopyGenerictoCLIP
-//      clips a generic brush
-// =====================================================================================
-/*static void     CopyGenerictoCLIP(const brush_t* const b)
-{
-// code blatently ripped from CopySKYtoCLIP()
-
-int             i;
-entity_t*       mapent;
-brush_t*        newbrush;
-
-mapent = &g_entities[b->entitynum];
-mapent->numbrushes++;
-
-newbrush = &g_mapbrushes[g_nummapbrushes];
-#ifdef HLCSG_COUNT_NEW
-newbrush->originalentitynum = b->originalentitynum;
-newbrush->originalbrushnum = b->originalbrushnum;
-#endif
-newbrush->entitynum = b->entitynum;
-newbrush->brushnum = g_nummapbrushes - mapent->firstbrush;
-newbrush->firstside = g_numbrushsides;
-newbrush->numsides = b->numsides;
-newbrush->contents = CONTENTS_CLIP;
-newbrush->noclip = 0;
-
-for (i = 0; i < b->numsides; i++)
-{
-int             j;
-
-side_t*         side = &g_brushsides[g_numbrushsides];
-
-*side = g_brushsides[b->firstside + i];
-safe_strncpy(side->td.name, "CLIP", sizeof(side->td.name));
-
-for (j = 0; j < NUM_HULLS; j++)
-{
-newbrush->hulls[j].faces = NULL;
-newbrush->hulls[j].bounds = b->hulls[j].bounds;
-}
-
-g_numbrushsides++;
-hlassume(g_numbrushsides < MAX_MAP_SIDES, assume_MAX_MAP_SIDES);
-}
-
-g_nummapbrushes++;
-hlassume(g_nummapbrushes < MAX_MAP_BRUSHES, assume_MAX_MAP_BRUSHES);
-}*/
-
-// AJM: added in 
-unsigned int    BrushClipHullsDiscarded = 0;
-unsigned int    ClipNodesDiscarded = 0;
-
-//AJM: added in function
-static void     MarkEntForNoclip( entity_t*  ent )
-{
-        int             i;
-        brush_t*        b;
-
-        for ( i = ent->firstbrush; i < ent->firstbrush + ent->numbrushes; i++ )
-        {
-                b = &g_mapbrushes[i];
-                b->noclip = 1;
-
-                BrushClipHullsDiscarded++;
-                ClipNodesDiscarded += b->numsides;
-        }
-}
-
-// AJM
-// =====================================================================================
-//  CheckForNoClip
-//      marks the noclip flag on any brushes that dont need clipnode generation, eg. func_illusionaries
-// =====================================================================================
-static void     CheckForNoClip()
-{
-        int             i;
-        entity_t*       ent;
-
-        char            entclassname[MAX_KEY];
-        int             spawnflags;
-        int				count = 0;
-
-        if ( !g_bClipNazi )
-                return; // NO CLIP FOR YOU!!!
-
-        for ( i = 0; i < g_bspdata->numentities; i++ )
-        {
-                if ( !g_bspdata->entities[i].numbrushes )
-                        continue; // not a model
-
-                if ( !i )
-                        continue; // dont waste our time with worldspawn
-
-                ent = &g_bspdata->entities[i];
-
-                strcpy_s( entclassname, ValueForKey( ent, "classname" ) );
-                spawnflags = atoi( ValueForKey( ent, "spawnflags" ) );
-                int skin = IntForKey( ent, "skin" ); //vluzacn
-
-                if ( ( skin != -16 ) &&
-                        (
-                                !strcmp( entclassname, "env_bubbles" )
-                                || !strcmp( entclassname, "func_illusionary" )
-                                || !strcmp( entclassname, "func_physics" )
-                                || ( spawnflags & 8 ) &&
-                                (   /* NOTE: func_doors as far as i can tell may need clipnodes for their
-                                    player collision detection, so for now, they stay out of it. */
-                                  !strcmp( entclassname, "func_train" )
-                                  || !strcmp( entclassname, "func_door" )
-                                  || !strcmp( entclassname, "func_water" )
-                                  || !strcmp( entclassname, "func_door_rotating" )
-                                  || !strcmp( entclassname, "func_pendulum" )
-                                  || !strcmp( entclassname, "func_train" )
-                                  || !strcmp( entclassname, "func_tracktrain" )
-                                  || !strcmp( entclassname, "func_vehicle" )
-                                  )
-                                || ( skin != 0 ) && ( !strcmp( entclassname, "func_door" ) || !strcmp( entclassname, "func_water" ) )
-                                || ( spawnflags & 2 ) && ( !strcmp( entclassname, "func_conveyor" ) )
-                                || ( spawnflags & 1 ) && ( !strcmp( entclassname, "func_rot_button" ) )
-                                || ( spawnflags & 64 ) && ( !strcmp( entclassname, "func_rotating" ) )
-                                ) )
-                {
-                        MarkEntForNoclip( ent );
-                        count++;
-                }
-                /*
-                // condition 6: its a func_wall, while we noclip it, we remake the clipnodes manually
-                else if (!strncasecmp(entclassname, "func_wall", 9))
-                {
-                for (int j = ent->firstbrush; j < ent->firstbrush + ent->numbrushes; j++)
-                CopyGenerictoCLIP(&g_mapbrushes[i]);
-
-                MarkEntForNoclip(ent);
-                }
-                */
-        }
-
-        Log( "%i entities discarded from clipping hulls\n", count );
-}
-
 // =====================================================================================
 //  ProcessModels
 // =====================================================================================
@@ -1570,15 +1349,10 @@ static void     Usage()
         Log( "    -lang file       : localization file\n" );
         Log( "    -nowadtextures   : include all used textures into bsp\n" );
         Log( "    -wadinclude file : place textures used from wad specified into bsp\n" );
-        Log( "    -noclip          : don't create clipping hull\n" );
 
-        Log( "    -clipeconomy     : turn clipnode economy mode on\n" );
-
-        Log( "    -cliptype value  : set to smallest, normalized, simple, precise, or legacy (default)\n" );
         Log( "    -nullfile file   : specify list of entities to retexture with NULL\n" );
 
         Log( "    -onlyents        : do an entity update from .map to .bsp\n" );
-        Log( "    -noskyclip       : disable automatic clipping of SKY brushes\n" );
         Log( "    -tiny #          : minmum brush face surface area before it is discarded\n" );
         Log( "    -brushunion #    : threshold to warn about overlapping brushes\n\n" );
         Log( "    -hullfile file   : Reads in custom collision hull dimensions\n" );
@@ -1688,18 +1462,10 @@ static void     Settings()
 
         // HLCSG Specific Settings
 
-        Log( "noclip                [ %7s ] [ %7s ]\n", g_noclip ? "on" : "off", DEFAULT_NOCLIP ? "on" : "off" );
-
         Log( "null texture stripping[ %7s ] [ %7s ]\n", g_bUseNullTex ? "on" : "off", DEFAULT_NULLTEX ? "on" : "off" );
-
-
-        Log( "clipnode economy mode [ %7s ] [ %7s ]\n", g_bClipNazi ? "on" : "off", DEFAULT_CLIPNAZI ? "on" : "off" );
-
-        Log( "clip hull type        [ %7s ] [ %7s ]\n", GetClipTypeString( g_cliptype ), GetClipTypeString( DEFAULT_CLIPTYPE ) );
 
         Log( "onlyents              [ %7s ] [ %7s ]\n", g_onlyents ? "on" : "off", DEFAULT_ONLYENTS ? "on" : "off" );
         Log( "wadtextures           [ %7s ] [ %7s ]\n", g_wadtextures ? "on" : "off", DEFAULT_WADTEXTURES ? "on" : "off" );
-        Log( "skyclip               [ %7s ] [ %7s ]\n", g_skyclip ? "on" : "off", DEFAULT_SKYCLIP ? "on" : "off" );
         Log( "hullfile              [ %7s ] [ %7s ]\n", g_hullfile ? g_hullfile : "None", "None" );
         Log( "wad configuration file[ %7s ] [ %7s ]\n", g_wadcfgfile ? g_wadcfgfile : "None", "None" );
         Log( "wad.cfg group name    [ %7s ] [ %7s ]\n", g_wadconfigname ? g_wadconfigname : "None", "None" );
@@ -1857,18 +1623,6 @@ int             main( const int argc, char** argv )
                                 {
                                         g_log = false;
                                 }
-                                else if ( !strcasecmp( argv[i], "-skyclip" ) )
-                                {
-                                        g_skyclip = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-noskyclip" ) )
-                                {
-                                        g_skyclip = false;
-                                }
-                                else if ( !strcasecmp( argv[i], "-noclip" ) )
-                                {
-                                        g_noclip = true;
-                                }
                                 else if ( !strcasecmp( argv[i], "-onlyents" ) )
                                 {
                                         g_onlyents = true;
@@ -1877,44 +1631,6 @@ int             main( const int argc, char** argv )
                                 else if ( !strcasecmp( argv[i], "-nonulltex" ) )
                                 {
                                         g_bUseNullTex = false;
-                                }
-
-                                else if ( !strcasecmp( argv[i], "-clipeconomy" ) )
-                                {
-                                        g_bClipNazi = true;
-                                }
-
-                                else if ( !strcasecmp( argv[i], "-cliptype" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                ++i;
-                                                if ( !strcasecmp( argv[i], "smallest" ) )
-                                                {
-                                                        g_cliptype = clip_smallest;
-                                                }
-                                                else if ( !strcasecmp( argv[i], "normalized" ) )
-                                                {
-                                                        g_cliptype = clip_normalized;
-                                                }
-                                                else if ( !strcasecmp( argv[i], "simple" ) )
-                                                {
-                                                        g_cliptype = clip_simple;
-                                                }
-                                                else if ( !strcasecmp( argv[i], "precise" ) )
-                                                {
-                                                        g_cliptype = clip_precise;
-                                                }
-                                                else if ( !strcasecmp( argv[i], "legacy" ) )
-                                                {
-                                                        g_cliptype = clip_legacy;
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Log( "Error: -cliptype: incorrect usage of parameter\n" );
-                                                Usage();
-                                        }
                                 }
 
                                 else if ( !strcasecmp( argv[i], "-nullfile" ) )
@@ -2372,8 +2088,6 @@ int             main( const int argc, char** argv )
                                 LogTimeElapsed( end - start );
                                 return 0;
                         }
-
-                        CheckForNoClip();
 
                         // createbrush
                         NamedRunThreadsOnIndividual( g_nummapbrushes, g_estimate, CreateBrush );

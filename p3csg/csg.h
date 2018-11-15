@@ -33,19 +33,14 @@
 
 #define DEFAULT_BRUSH_UNION_THRESHOLD 0.0f
 #define DEFAULT_TINY_THRESHOLD        0.0
-#define DEFAULT_NOCLIP      false
 #define DEFAULT_ONLYENTS    false
 #define DEFAULT_WADTEXTURES false
-#define DEFAULT_SKYCLIP     true
 #define DEFAULT_CHART       false
 #define DEFAULT_INFO        true
 
 #define FLOOR_Z 0.7 // Quake default
-#define DEFAULT_CLIPTYPE clip_simple //clip_legacy //--vluzacn
 
 #define DEFAULT_NULLTEX     true
-
-#define DEFAULT_CLIPNAZI    false
 
 #define DEFAULT_WADAUTODETECT false
 
@@ -149,27 +144,51 @@ typedef struct
 
 typedef struct brush_s
 {
-        int				originalentitynum;
-        int				originalbrushnum;
-        int             entitynum;
-        int             brushnum;
+        int     originalentitynum;
+        int     originalbrushnum;
+        int     entitynum;
+        int     brushnum;
 
-        int             firstside;
-        int             numsides;
+        int     firstside;
+        int     numsides;
 
-        unsigned int    noclip; // !!!FIXME: this should be a flag bitfield so we can use it for other stuff (ie. is this a detail brush...)
-        unsigned int	cliphull;
-        bool			bevel;
-        int				detaillevel;
-        int				chopdown; // allow this brush to chop brushes of lower detail level
-        int				chopup; // allow this brush to be chopped by brushes of higher detail level
-        int				clipnodedetaillevel;
-        int				coplanarpriority;
-        char *			hullshapes[NUM_HULLS]; // might be NULL
+        bool    bevel;
+        int     detaillevel;
+        int     chopdown; // allow this brush to chop brushes of lower detail level
+        int     chopup; // allow this brush to be chopped by brushes of higher detail level
+        int     coplanarpriority;
+        char *  hullshapes[NUM_HULLS]; // might be NULL
 
-        int             contents;
+        int     contents;
         brushhull_t     hulls[NUM_HULLS];
-        pvector<side_t *> original_sides;
+
+        void operator = ( const brush_s &other )
+        {
+                originalentitynum = other.originalentitynum;
+                originalbrushnum = other.originalbrushnum;
+                entitynum = other.entitynum;
+                brushnum = other.brushnum;
+                firstside = other.firstside;
+                numsides = other.numsides;
+                bevel = other.bevel;
+                detaillevel = other.detaillevel;
+                chopdown = other.chopdown;
+                chopup = other.chopup;
+                coplanarpriority = other.coplanarpriority;
+                memcpy( hullshapes, other.hullshapes, sizeof( other.hullshapes ) );
+                contents = other.contents;
+                memcpy( hulls, other.hulls, sizeof( other.hulls ) );
+        }
+
+        INLINE brush_s()
+        {
+        }
+
+        INLINE brush_s( const brush_s &copy )
+        {
+                operator = ( copy );
+        }
+
 } brush_t;
 
 typedef struct
@@ -261,21 +280,13 @@ extern void		InitDefaultHulls();
 
 extern bool     g_chart;
 extern bool     g_onlyents;
-extern bool     g_noclip;
 extern bool     g_wadtextures;
-extern bool     g_skyclip;
 extern bool     g_estimate;
 extern const char* g_hullfile;
 
 extern bool     g_bUseNullTex;
 
-
-extern bool     g_bClipNazi;
-
 #define EnumPrint(a) #a
-typedef enum { clip_smallest, clip_normalized, clip_simple, clip_precise, clip_legacy } cliptype;
-extern cliptype g_cliptype;
-extern const char*	GetClipTypeString( cliptype );
 
 extern vec_t g_scalesize;
 extern bool g_resetlog;

@@ -33,14 +33,14 @@ brush_t *CopyCurrentBrush( entity_t *entity, const brush_t *brush )
         brush_t *newb = &g_mapbrushes[g_nummapbrushes];
         g_nummapbrushes++;
         hlassume( g_nummapbrushes <= MAX_MAP_BRUSHES, assume_MAX_MAP_BRUSHES );
-        memcpy( newb, brush, sizeof( brush_t ) );
+        //memcpy( newb, brush, sizeof( brush_t ) );
+        *newb = *brush;
         newb->firstside = g_numbrushsides;
         g_numbrushsides += brush->numsides;
         hlassume( g_numbrushsides <= MAX_MAP_SIDES, assume_MAX_MAP_SIDES );
         memcpy( &g_brushsides[newb->firstside], &g_brushsides[brush->firstside], brush->numsides * sizeof( side_t ) );
         newb->entitynum = entity - g_bspdata->entities;
         newb->brushnum = entity->numbrushes;
-        newb->original_sides = brush->original_sides;
         entity->numbrushes++;
         for ( int h = 0; h < NUM_HULLS; h++ )
         {
@@ -171,19 +171,11 @@ static void ParseBrush( entity_t* mapent )
         b->originalbrushnum = g_numparsedbrushes;
         b->entitynum = g_bspdata->numentities - 1;
         b->brushnum = g_nummapbrushes - mapent->firstbrush - 1;
-
-        b->noclip = 0;
-        if ( IntForKey( mapent, "zhlt_noclip" ) )
-        {
-                b->noclip = 1;
-        }
-        b->cliphull = 0;
         b->bevel = false;
         {
                 b->detaillevel = IntForKey( mapent, "zhlt_detaillevel" );
                 b->chopdown = IntForKey( mapent, "zhlt_chopdown" );
                 b->chopup = IntForKey( mapent, "zhlt_chopup" );
-                b->clipnodedetaillevel = IntForKey( mapent, "zhlt_clipnodedetaillevel" );
                 b->coplanarpriority = IntForKey( mapent, "zhlt_coplanarpriority" );
                 bool wrong = false;
                 if ( b->detaillevel < 0 )
@@ -200,11 +192,6 @@ static void ParseBrush( entity_t* mapent )
                 {
                         wrong = true;
                         b->chopup = 0;
-                }
-                if ( b->clipnodedetaillevel < 0 )
-                {
-                        wrong = true;
-                        b->clipnodedetaillevel = 0;
                 }
                 if ( wrong )
                 {
@@ -246,7 +233,6 @@ static void ParseBrush( entity_t* mapent )
 
                 b->numsides++;
                 side->brushnum = b->brushnum;
-                b->original_sides.push_back( side );
 
                 side->bevel = false;
                 // read the three point plane definition
@@ -283,11 +269,6 @@ static void ParseBrush( entity_t* mapent )
                 //_strupr(g_token);
                 string strtoken = g_token;
                 {
-                        if ( !strncasecmp( g_token, "NOCLIP", 6 ) || !strncasecmp( g_token, "NULLNOCLIP", 10 ) )
-                        {
-                                strcpy( g_token, "NULL" );
-                                b->noclip = true;
-                        }
                         if ( !strncasecmp( g_token, "BEVELBRUSH", 10 ) )
                         {
                                 strcpy( g_token, "NULL" );
@@ -301,24 +282,6 @@ static void ParseBrush( entity_t* mapent )
                         if ( GetTextureContents( g_token ) == CONTENTS_NULL )
                         {
                                 strcpy( g_token, "NULL" );
-                        }
-                        if ( GetTextureContents( g_token ) == CONTENTS_CLIP )
-                        {
-                                b->cliphull |= ( 1 << NUM_HULLS ); // arbitrary nonexistent hull
-                                int h;
-                                if ( !strncasecmp( g_token, "CLIPHULL", 8 ) && ( h = g_token[8] - '0', 0 < h && h < NUM_HULLS ) )
-                                {
-                                        b->cliphull |= ( 1 << h ); // hull h
-                                }
-                                if ( !strncasecmp( g_token, "CLIPBEVEL", 9 ) )
-                                {
-                                        side->bevel = true;
-                                }
-                                if ( !strncasecmp( g_token, "CLIPBEVELBRUSH", 14 ) )
-                                {
-                                        b->bevel = true;
-                                }
-                                strcpy( g_token, "SKIP" );
                         }
                 }
                 safe_strncpy( side->td.name, g_token, sizeof( side->td.name ) );
@@ -465,18 +428,6 @@ static void ParseBrush( entity_t* mapent )
 
                 side->td.txcommand = g_TXcommand;                  // Quark stuff, but needs setting always
         };
-        if ( b->cliphull != 0 ) // has CLIP* texture
-        {
-                unsigned int mask_anyhull = 0;
-                for ( int h = 1; h < NUM_HULLS; h++ )
-                {
-                        mask_anyhull |= ( 1 << h );
-                }
-                if ( ( b->cliphull & mask_anyhull ) == 0 ) // no CLIPHULL1 or CLIPHULL2 or CLIPHULL3 texture
-                {
-                        b->cliphull |= mask_anyhull; // CLIP all hulls
-                }
-        }
 
         b->contents = contents = CheckBrushContents( b );
         for ( j = 0; j < b->numsides; j++ )
@@ -619,43 +570,6 @@ static void ParseBrush( entity_t* mapent )
                         free( origin );
                 }
         }
-        if ( g_skyclip && b->contents == CONTENTS_SKY && !b->noclip )
-        {
-                brush_t *newb = CopyCurrentBrush( mapent, b );
-                newb->contents = CONTENTS_SOLID;
-                newb->cliphull = ~0;
-                for ( j = 0; j < newb->numsides; j++ )
-                {
-                        side = &g_brushsides[newb->firstside + j];
-                        strcpy( side->td.name, "NULL" );
-                }
-        }
-        if ( b->cliphull != 0 && b->contents == CONTENTS_TOEMPTY )
-        {
-                // check for mix of CLIP and normal texture
-                bool mixed = false;
-                for ( j = 0; j < b->numsides; j++ )
-                {
-                        side = &g_brushsides[b->firstside + j];
-                        if ( !strncasecmp( side->td.name, "NULL", 4 ) )
-                        { // this is not supposed to be a HINT brush, so remove all invisible faces from hull 0.
-                                strcpy( side->td.name, "SKIP" );
-                        }
-                        if ( strncasecmp( side->td.name, "SKIP", 4 ) )
-                                mixed = true;
-                }
-                if ( mixed )
-                {
-                        brush_t *newb = CopyCurrentBrush( mapent, b );
-                        newb->cliphull = 0;
-                }
-                b->contents = CONTENTS_SOLID;
-                for ( j = 0; j < b->numsides; j++ )
-                {
-                        side = &g_brushsides[b->firstside + j];
-                        strcpy( side->td.name, "NULL" );
-                }
-        }
 
 }
 
@@ -666,7 +580,6 @@ static void ParseBrush( entity_t* mapent )
 // =====================================================================================
 bool            ParseMapEntity()
 {
-        bool            all_clip = true;
         int             this_entity;
         entity_t*       mapent;
         epair_t*        e;
@@ -747,21 +660,6 @@ bool            ParseMapEntity()
                         Free( e->key );
                         Free( e->value );
                         Free( e );
-                }
-        }
-        {
-                int i;
-                for ( i = 0; i < mapent->numbrushes; i++ )
-                {
-                        brush_t *brush = &g_mapbrushes[mapent->firstbrush + i];
-                        if (
-                                brush->cliphull == 0
-                                && brush->contents != CONTENTS_ORIGIN
-                                && brush->contents != CONTENTS_BOUNDINGBOX
-                                )
-                        {
-                                all_clip = false;
-                        }
                 }
         }
         if ( *ValueForKey( mapent, "zhlt_usemodel" ) )
@@ -982,7 +880,7 @@ bool            ParseMapEntity()
         {
                 // Let the map tell which version of the compiler it comes from, to help tracing compiler bugs.
                 char versionstring[128];
-                sprintf( versionstring, "ZHLT " ZHLT_VERSIONSTRING " " HACK_VERSIONSTRING " (%s)", __DATE__ );
+                sprintf( versionstring, "P3BSPTools " TOOLS_VERSIONSTRING " (%s)", __DATE__ );
                 SetKeyValue( mapent, "compiler", versionstring );
         }
 
