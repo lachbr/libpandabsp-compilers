@@ -10,10 +10,6 @@
 
 #include <map>
 
-typedef std::map< int, int > PlaneMap;
-static PlaneMap gPlaneMap;
-static int gNumMappedPlanes;
-static dplane_t gMappedPlanes[MAX_MAP_PLANES];
 extern bool g_noopt;
 typedef std::map< int, int > texinfomap_t;
 static int g_nummappedtexinfo;
@@ -27,23 +23,7 @@ static texinfomap_t g_texinfomap;
 static int WritePlane( int planenum )
 {
         planenum = planenum & ( ~1 );
-
-        if ( g_noopt )
-        {
-                return planenum;
-        }
-
-        PlaneMap::iterator item = gPlaneMap.find( planenum );
-        if ( item != gPlaneMap.end() )
-        {
-                return item->second;
-        }
-        //add plane to BSP
-        hlassume( gNumMappedPlanes < MAX_MAP_PLANES, assume_MAX_MAP_PLANES );
-        gMappedPlanes[gNumMappedPlanes] = g_dplanes[planenum];
-        gPlaneMap.insert( PlaneMap::value_type( planenum, gNumMappedPlanes ) );
-
-        return gNumMappedPlanes++;
+        return planenum;
 }
 
 
@@ -518,18 +498,13 @@ void            FinishBSPFile()
                         }
                         g_bspdata->numtexinfo = g_nummappedtexinfo;
                 }
-                Log( "Reduced %d planes to %d\n", g_bspdata->numplanes, gNumMappedPlanes );
-                for ( int counter = 0; counter < gNumMappedPlanes; counter++ )
-                {
-                        g_dplanes[counter] = gMappedPlanes[counter];
-                }
-                g_bspdata->numplanes = gNumMappedPlanes;
         }
         else
         {
                 hlassume( g_bspdata->numtexinfo < MAX_MAP_TEXINFO, assume_MAX_MAP_TEXINFO );
-                hlassume( g_bspdata->numplanes < MAX_MAP_PLANES, assume_MAX_MAP_PLANES );
         }
+
+        hlassume( g_bspdata->numplanes < MAX_MAP_PLANES, assume_MAX_MAP_PLANES );
 
 #ifdef PLATFORM_CAN_CALC_EXTENT
         WriteExtentFile( g_bspdata, g_extentfilename );
@@ -540,6 +515,8 @@ void            FinishBSPFile()
         {
                 PrintBSPFileSizes( g_bspdata );
         }
+
+        Log( "Writing %d planes\n", g_bspdata->numplanes );
 
 #undef dplane_t // this allow us to temporarily access the raw data directly without the layer of indirection
 #undef g_dplanes
