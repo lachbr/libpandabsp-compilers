@@ -59,7 +59,7 @@ void LoadStaticProps()
                         // Which leaf does the prop reside in?
                         dleaf_t *leaf = PointInLeaf( prop->pos );
 
-                        bool shadow_caster = prop->shadows;
+                        bool shadow_caster = prop->flags & STATICPROPFLAGS_LIGHTMAPSHADOWS;
 
                         RADStaticProp *sprop = new RADStaticProp;
                         sprop->shadows = shadow_caster;
@@ -200,8 +200,9 @@ void ComputeStaticPropLighting( int thread )
                 Warning( "ThreadComputeStaticPropLighting: prop is nullptr on thread %i\n", thread );
                 return;
         }
-        if ( !g_bspdata->dstaticprops[prop->propnum].flags & STATICPROPFLAGS_STATICLIGHTING )
+        if ( ( g_bspdata->dstaticprops[prop->propnum].flags & STATICPROPFLAGS_STATICLIGHTING ) == 0 )
         {
+                // baked lighting not wanted
                 return;
         }
 
