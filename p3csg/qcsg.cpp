@@ -845,7 +845,6 @@ void EmitBrushes()
         // Save out the map brushes and their sides
         for ( int bnum = 0; bnum < g_nummapbrushes; bnum++ )
         {
-                std::cout << "Writing brush " << bnum << std::endl;
                 brush_t *b = &g_mapbrushes[bnum];
 
                 dbrush_t db;
@@ -853,22 +852,15 @@ void EmitBrushes()
                 db.contents = b->contents;
                 db.firstside = b->firstside;
                 db.numsides = b->numsides;
-                std::cout << "\tContents:\t" << db.contents << "\n"
-                        << "\tFirst side:\t" << db.firstside << "\n"
-                        << "\tNum sides:\t" << db.numsides << std::endl;
 
                 for ( int j = 0; j < b->numsides; j++ )
                 {
                         int bside_idx = b->firstside + j;
-                        std::cout << "\tWriting brush side " << bside_idx << std::endl;
                         side_t *bside = &g_brushsides[bside_idx];
                         dbrushside_t cp;
                         cp.planenum = bside->planenum;
                         cp.texinfo = bside->texinfo;
                         cp.bevel = bside->bevel;
-                        std::cout << "\t\tPlane num:\t" << cp.planenum << "\n"
-                                << "\t\tTex info:\t" << cp.texinfo << "\n"
-                                << "\t\tBevel:\t" << cp.bevel << std::endl;
                         temp_brushsides[bside_idx] = cp;
                         if ( bside_idx + 1 > numbrushsides )
                         {

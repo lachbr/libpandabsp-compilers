@@ -980,10 +980,9 @@ bool            ParseMapEntity()
                 GetVectorForKey( mapent, "angles", angles );
                 VectorCopy( angles, prop.hpr );
 
-                prop.shadows = (unsigned char)IntForKey( mapent, "shadows" );
-                prop.first_vertex_data = -1; // will be filled in by p3rad
+                prop.first_vertex_data = -1; // will be filled in by p3rad if STATICPROPFLAGS_STATICLIGHTING bit is set
                 prop.num_vertex_datas = 0;
-                prop.flags = STATICPROPFLAGS_STATICLIGHTING;
+                prop.flags = (unsigned short)IntForKey( mapent, "spawnflags" );
                 prop.lightsrc = -1;
                 g_bspdata->dstaticprops.push_back( prop );
                 propname_to_propnum[ValueForKey( mapent, "targetname" )] = g_bspdata->dstaticprops.size() - 1;
