@@ -336,9 +336,28 @@ typedef struct
 
 enum
 {
-        STATICPROPFLAGS_NOLIGHTING = 0x0,
-        STATICPROPFLAGS_STATICLIGHTING = 0x1,
-        STATICPROPFLAGS_DYNAMICLIGHTING = 0x2,
+        STATICPROPFLAGS_NOLIGHTING              = 1 << 0,
+
+        // use the vertex lighting baked in by p3rad
+        STATICPROPFLAGS_STATICLIGHTING          = 1 << 1,
+
+        // treat as a dynamic node, updated with ambient cube
+        STATICPROPFLAGS_DYNAMICLIGHTING         = 1 << 2,
+
+        // clear_model_nodes() and flatten_strong()
+        STATICPROPFLAGS_HARDFLATTEN             = 1 << 3,
+
+        // flatten together with other props in the same leaf
+        STATICPROPFLAGS_GROUPFLATTEN            = 1 << 4,
+
+        // cast real-time depth shadows
+        STATICPROPFLAGS_REALSHADOWS             = 1 << 5,
+
+        // prop casted shadows onto the lightmaps in p3rad
+        STATICPROPFLAGS_LIGHTMAPSHADOWS         = 1 << 6,
+
+        // set_two_sided()
+        STATICPROPFLAGS_DOUBLESIDE              = 1 << 7,
 };
 
 struct dstaticprop_t
@@ -355,8 +374,6 @@ struct dstaticprop_t
         short num_vertex_datas;
 
         short lightsrc; // index of light that this prop casts, -1 for none
-
-        unsigned char shadows;
 };
 
 struct dstaticpropvertexdata_t
