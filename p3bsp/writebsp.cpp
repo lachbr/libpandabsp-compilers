@@ -454,8 +454,6 @@ void            BeginBSPFile()
 {
         // these values may actually be initialized
         // if the file existed when loaded, so clear them explicitly
-        gNumMappedPlanes = 0;
-        gPlaneMap.clear();
         g_nummappedtexinfo = 0;
         g_texinfomap.clear();
         g_bspdata->nummodels = 0;
