@@ -94,6 +94,15 @@
     <ClCompile Include="..\common\bsptools.cpp">
       <Filter>common</Filter>
     </ClCompile>
+    <ClCompile Include="radial.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\mathlib\sse.cpp">
+      <Filter>common\mathlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\common\mathlib\sseconst.cpp">
+      <Filter>common\mathlib</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\template\basictypes.h">
@@ -168,6 +177,18 @@
     <ClInclude Include="..\common\bsptools.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="radial.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="lightmap.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathlib\ssemath.h">
+      <Filter>common\mathlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\mathlib\sse.h">
+      <Filter>common\mathlib</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="common">
@@ -178,6 +199,9 @@
     </Filter>
     <Filter Include="rad">
       <UniqueIdentifier>{c193c38f-a439-407c-8d85-0ba25e1be21a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="common\mathlib">
+      <UniqueIdentifier>{b7a947d4-0ad3-418f-989e-0fbd45981be7}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

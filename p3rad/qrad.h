@@ -228,13 +228,93 @@ typedef struct directlight_s
         vec_t			texlightgap;
         bool			topatch;
         int flags;
+
+        int index;
+        byte *pvs;
+        int leaf;
+        int facenum;
+
 } directlight_t;
 
+INLINE byte PVSCheck( const byte *pvs, int leaf )
+{
+        if ( leaf >= 0 )
+        {
+                return pvs[leaf >> 3] & ( 1 << ( leaf & 7 ) );
+        }
+        
+        return 1;
+}
+
+typedef struct lightvalue_s
+{
+        lightvalue_s()
+        {
+                Zero();
+        }
+
+        LVector3 light;
+        float direct_sun_amt;
+
+        vec_t &operator []( int n )
+        {
+                return light[n];
+        }
+
+        INLINE void Zero()
+        {
+                light.set( 0.0, 0.0, 0.0 );
+                direct_sun_amt = 0.0;
+        }
+
+        INLINE void Scale( float scale )
+        {
+                light *= scale;
+                direct_sun_amt *= scale;
+        }
+
+        INLINE void AddWeighted( lightvalue_s &src, float weight )
+        {
+                light += weight * src.light;
+                direct_sun_amt += weight * src.direct_sun_amt;
+        }
+
+        INLINE void AddWeighted( LVector3 &src, float weight )
+        {
+                light += weight * src;
+        }
+
+        INLINE float Intensity() const
+        {
+                return light[0] + light[1] + light[2];
+        }
+
+        INLINE void AddLight( float amt, const LVector3 &color, float sun_amt = 0.0 )
+        {
+                VectorMA( light, amt, color, light );
+                direct_sun_amt += sun_amt;
+        }
+
+        INLINE void AddLight( lightvalue_s &src )
+        {
+                light += src.light;
+                direct_sun_amt += src.direct_sun_amt;
+        }
+
+
+} lightvalue_t;
 
 typedef struct
 {
-        vec3_t light[NUM_BUMP_VECTS + 1];
+        lightvalue_t light[NUM_BUMP_VECTS + 1];
+
+        lightvalue_t &operator []( int n )
+        {
+                return light[n];
+        }
+
 } bumpsample_t;
+
 typedef struct
 {
         vec3_t norm[NUM_BUMP_VECTS + 1];
@@ -323,24 +403,12 @@ typedef struct patch_s
 vec3_t* GetTotalLight( patch_t* patch, int style
 );
 
-typedef struct facelist_s
+struct SSE_sampleLightOutput_t
 {
-        dface_t*		face;
-        facelist_s*	next;
-} facelist_t;
-typedef struct
-{
-        dface_t*        faces[2];
-        vec3_t          interface_normal; // HLRAD_GetPhongNormal_VL: this field must be set when smooth==true
-        vec3_t			vertex_normal[2];
-        vec_t           cos_normals_angle; // HLRAD_GetPhongNormal_VL: this field must be set when smooth==true
-        bool            coplanar;
-        bool			smooth;
-        facelist_t*		vertex_facelist[2]; //possible smooth faces, not include faces[0] and faces[1]
-        matrix_t		textotex[2]; // how we translate texture coordinates from one face to the other face
-} edgeshare_t;
-
-extern edgeshare_t g_edgeshare[MAX_MAP_EDGES];
+        fltx4 dot[NUM_BUMP_VECTS + 1];
+        fltx4 falloff;
+        fltx4 sun_amount;
+};
 
 //
 // lerp.c stuff
@@ -397,6 +465,7 @@ extern int             leafparents[MAX_MAP_LEAFS];
 extern int             nodeparents[MAX_MAP_NODES];
 extern int numdlights;
 extern directlight_t* directlights[MAX_MAP_LEAFS];
+extern directlight_t* activelights;
 
 extern patch_t* g_face_patches[MAX_MAP_FACES];
 extern entity_t* g_face_entity[MAX_MAP_FACES];
@@ -406,11 +475,93 @@ extern vec3_t   g_face_centroids[MAX_MAP_EDGES];
 extern entity_t* g_face_texlights[MAX_MAP_FACES];
 extern patch_t* g_patches; // shrinked to its real size, because 1048576 patches * 256 bytes = 256MB will be too big
 extern unsigned g_num_patches;
+extern float g_sun_angular_extent;
 
 extern float    g_lightscale;
 extern float    g_dlight_threshold;
 extern float    g_coring;
 extern int      g_lerp_enabled;
+
+#include <simpleHashMap.h>
+
+struct radtimer_t
+{
+        string operation;
+        double total;
+        
+        SimpleHashMap<string, double, string_hash> subops;
+
+        void record_subop( const string &op, double time )
+        {
+                ThreadLock();
+
+                if ( subops.find( op ) == -1 )
+                {
+                        subops[op] = time;
+                }
+                else
+                {
+                        subops[op] += time;
+                }
+
+                total += time;
+
+                ThreadUnlock();
+        }
+
+        void report()
+        {
+                ThreadLock();
+
+                std::cout << "Operation " << operation << " (Total " << total << " seconds):" << std::endl;
+                for ( size_t i = 0; i < subops.size(); i++ )
+                {
+                        std::cout << "\tSub-operation " << subops.get_key( i ) << " took "
+                                << subops.get_data( i ) << " seconds (" << subops.get_data( i ) / total << "%)" << std::endl;
+                }
+
+                ThreadUnlock();
+        }
+};
+
+extern pvector<radtimer_t> g_radtimers;
+
+INLINE void RecordRadTimerOp( const string &op, const string &subop, double time )
+{
+        radtimer_t *found = nullptr;
+        for ( size_t i = 0; i < g_radtimers.size(); i++ )
+        {
+                if ( g_radtimers[i].operation == op )
+                {
+                        found = &g_radtimers[i];
+                }
+        }
+
+        if ( !found )
+        {
+                radtimer_t timer;
+                timer.operation = op;
+                timer.total = 0.0;
+                size_t idx = g_radtimers.size();
+                g_radtimers.push_back( timer );
+                found = &g_radtimers[idx];
+        }
+
+        found->record_subop( subop, time );
+}
+
+#define StartRadTimer(op, subop) double _##op##_##subop##_begin = ClockObject::get_global_clock()->get_real_time();
+#define StopRadTimer(op, subop) \
+double _##op##_##subop##_end = ClockObject::get_global_clock()->get_real_time();\
+RecordRadTimerOp(#op, #subop, _##op##_##subop##_end - _##op##_##subop##_begin);
+
+INLINE void ReportRadTimers()
+{
+        for ( size_t i = 0; i < g_radtimers.size(); i++ )
+        {
+                g_radtimers[i].report();
+        }
+}
 
 extern void     MakeShadowSplits();
 
@@ -505,7 +656,7 @@ extern void     BuildDiffuseNormals();
 extern void     BuildFacelights( int facenum );
 extern void     PrecompLightmapOffsets();
 extern void		ReduceLightmap();
-extern void     FinalLightFace( int facenum );
+//extern void     FinalLightFace( int facenum );
 extern void		ScaleDirectLights(); // run before AddPatchLights
 extern void		CreateFacelightDependencyList(); // run before AddPatchLights
 extern void		AddPatchLights( int facenum );

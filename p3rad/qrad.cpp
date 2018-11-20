@@ -18,6 +18,7 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 
 #include "qrad.h"
 #include "radstaticprop.h"
+#include "radial.h"
 #include "leaf_ambient_lighting.h"
 #include <virtualFileSystem.h>
 
@@ -61,7 +62,7 @@ vec3_t          g_face_offset[MAX_MAP_FACES];              // for rotating bmode
 
 vec_t           g_direct_scale = DEFAULT_DLIGHT_SCALE;
 
-unsigned        g_numbounce = DEFAULT_BOUNCE;              // 3; /* Originally this was 8 */
+unsigned        g_numbounce = 100; // max number of bounces
 
 static bool     g_dumppatches = DEFAULT_DUMPPATCHES;
 
@@ -88,6 +89,8 @@ float			g_smoothing_value_2 = DEFAULT_SMOOTHING2_VALUE;
 bool            g_circus = DEFAULT_CIRCUS;
 bool            g_allow_opaques = DEFAULT_ALLOW_OPAQUES;
 bool			g_allow_spread = DEFAULT_ALLOW_SPREAD;
+
+pvector<radtimer_t> g_radtimers;
 
 // --------------------------------------------------------------------------
 // Changes by Adam Foster - afoster@compsoc.man.ac.uk
@@ -1981,7 +1984,7 @@ static void     WriteWorld( const char* const name )
 // patch's addlight = 0
 // pull received light from children.
 // =====================================================================================
-static void     CollectLight()
+static void     CollectLight( LVector3 &total )
 {
         unsigned        j; //LRC
         unsigned        i;
@@ -2016,12 +2019,15 @@ static void     CollectLight()
                                         VectorCopy( newtotallight[j].light[n], patch->totallight[j].light[n] );
                                 }
                                 VectorCopy( addlight[i][j].light[0], emitlight[i][j] );
+                                VectorAdd( total, emitlight[i][j], total );
                         }
                         else
                         {
                                 patch->totalstyle[j] = 255;
                         }
                 }
+
+                memset( addlight[i], 0, sizeof( addlight[i] ) );
                 
         }
 }
@@ -2409,6 +2415,8 @@ static void     BounceLight()
 
         unsigned        j; //LRC
 
+        bool keep_bouncing = true;
+
         for ( i = 0; i < g_num_patches; i++ )
         {
                 patch_t *patch = &g_patches[i];
@@ -2420,9 +2428,10 @@ static void     BounceLight()
                 }
         }
 
-        for ( i = 0; i < g_numbounce; i++ )
+        LVector3 last_added( 0 );
+        i = 0;
+        while ( keep_bouncing )
         {
-                printf( "Bounce %u ", i + 1 );
                 if ( g_rgb_transfers )
                 {
                         NamedRunThreadsOn( g_num_patches, g_estimate, GatherRGBLight );
@@ -2431,8 +2440,20 @@ static void     BounceLight()
                 {
                         NamedRunThreadsOn( g_num_patches, g_estimate, GatherLight );
                 }
-                CollectLight();
 
+                LVector3 totaladd( 0 );
+                CollectLight( totaladd );
+
+                LVector3 added = totaladd - last_added;
+
+                last_added = totaladd;
+
+                printf( "\tBounce #%i added RGB(%.0f, %.0f, %.0f)\n", i + 1, added[0], added[1], added[2] );
+
+                if ( i + 1 == g_numbounce || ( added[0] < 1.0 && added[1] < 1.0 && added[2] < 1.0 ) )
+                        keep_bouncing = false;
+
+                i++;
                 if ( g_dumppatches )
                 {
                         sprintf( name, "bounce%u.txt", i );
@@ -2611,6 +2632,8 @@ static void     RadWorld()
         NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, FindFacePositions );
 
         // build initial facelights
+        lightinfo = (lightinfo_t *)malloc( g_bspdata->numfaces * sizeof( lightinfo_t ) );
+        memset( lightinfo, 0, sizeof( lightinfo ) );
         NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, BuildFacelights );
 
         FreePositionMaps();
@@ -2623,12 +2646,14 @@ static void     RadWorld()
                 // these arrays are only used in CollectLight, GatherLight and BounceLight
                 emitlight = ( vec3_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( vec3_t[MAXLIGHTMAPS] ) );
                 addlight = ( bumpsample_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( bumpsample_t[MAXLIGHTMAPS] ) );
+                //addlight = new bumpsample_t[MAXLIGHTMAPS][g_num_patches + 1];
                 newstyles = ( unsigned char( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( unsigned char[MAXLIGHTMAPS] ) );
                 // spread light around
                 BounceLight();
 
                 FreeBlock( emitlight );
                 emitlight = NULL;
+                //delete[] addlight;
                 FreeBlock( addlight );
                 addlight = NULL;
                 FreeBlock( newstyles );
@@ -2638,14 +2663,14 @@ static void     RadWorld()
         FreeTransfers();
         FreeStyleArrays();
 
+        ScaleDirectLights();
+
         NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, CreateTriangulations );
 
         // blend bounced light into direct light and save
         PrecompLightmapOffsets();
 
-
-        ScaleDirectLights();
-
+#if 0
         {
 
                 CreateFacelightDependencyList();
@@ -2654,6 +2679,7 @@ static void     RadWorld()
 
                 FreeFacelightDependencyList();
         }
+#endif
 
         FreeTriangulations();
 
@@ -2669,6 +2695,8 @@ static void     RadWorld()
 
         // free up the direct lights now that we have facelights
         DeleteDirectLights();
+
+        ReportRadTimers();
 }
 
 // =====================================================================================

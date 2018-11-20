@@ -103,7 +103,7 @@
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
       <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>PLATFORM_WINDOWS_PC64;NOMINMAX;HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>COMPILER_MSVC64;PLATFORM_WINDOWS_PC64;NOMINMAX;HLRAD;VERSION_64BIT;NDEBUG;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;WITHIN_PANDA;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
       <PrecompiledHeaderOutputFile>.\Release\hlrad.pch</PrecompiledHeaderOutputFile>
@@ -148,6 +148,8 @@
     <ClCompile Include="..\common\halton.cpp" />
     <ClCompile Include="..\common\log.cpp" />
     <ClCompile Include="..\common\mathlib.cpp" />
+    <ClCompile Include="..\common\mathlib\sse.cpp" />
+    <ClCompile Include="..\common\mathlib\sseconst.cpp" />
     <ClCompile Include="..\common\messages.cpp" />
     <ClCompile Include="..\common\scriplib.cpp" />
     <ClCompile Include="..\common\threads.cpp" />
@@ -162,6 +164,7 @@
     <ClCompile Include="nomatrix.cpp" />
     <ClCompile Include="qrad.cpp" />
     <ClCompile Include="qradutil.cpp" />
+    <ClCompile Include="radial.cpp" />
     <ClCompile Include="radstaticprop.cpp" />
     <ClCompile Include="sparse.cpp" />
     <ClCompile Include="trace.cpp" />
@@ -174,6 +177,8 @@
     <ClInclude Include="..\common\anorms.h" />
     <ClInclude Include="..\common\bsptools.h" />
     <ClInclude Include="..\common\halton.h" />
+    <ClInclude Include="..\common\mathlib\sse.h" />
+    <ClInclude Include="..\common\mathlib\ssemath.h" />
     <ClInclude Include="..\template\basictypes.h" />
     <ClInclude Include="..\common\blockmem.h" />
     <ClInclude Include="..\common\boundingbox.h" />
@@ -189,11 +194,13 @@
     <ClInclude Include="..\common\messages.h" />
     <ClInclude Include="leaf_ambient_lighting.h" />
     <ClInclude Include="lightingutils.h" />
+    <ClInclude Include="lightmap.h" />
     <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />
     <ClInclude Include="..\common\win32fix.h" />
     <ClInclude Include="..\common\winding.h" />
+    <ClInclude Include="radial.h" />
     <ClInclude Include="radstaticprop.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

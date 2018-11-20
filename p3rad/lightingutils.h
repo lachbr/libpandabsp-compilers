@@ -1,3 +1,13 @@
+/**
+ * PANDA3D BSP TOOLS
+ * Copyright (c) CIO Team. All rights reserved.
+ *
+ * @file lightingutils.h
+ * @author Brian Lach
+ * @date July 31, 2018
+ *
+ */
+
 #ifndef LIGHTINGUTILS_H
 #define LIGHTINGUTILS_H
 

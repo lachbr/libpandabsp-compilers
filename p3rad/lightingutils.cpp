@@ -1,3 +1,13 @@
+/**
+ * PANDA3D BSP TOOLS
+ * Copyright (c) CIO Team. All rights reserved.
+ *
+ * @file lightingutils.cpp
+ * @author Brian Lach
+ * @date July 31, 2018
+ *
+ */
+
 #include "lightingutils.h"
 #include "winding.h"
 #include "anorms.h"
