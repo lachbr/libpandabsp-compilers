@@ -63,7 +63,7 @@ extern void     threads_InitCrit();
 extern void     threads_UninitCrit();
 #endif
 
-#define NamedRunThreadsOn(n,p,f) { Log("%s\n", #f); RunThreadsOn(n,p,f); }
-#define NamedRunThreadsOnIndividual(n,p,f) { Log("%s\n", #f); RunThreadsOnIndividual(n,p,f); }
+#define NamedRunThreadsOn(n,p,f) { printf("%-20s ", #f ":"); RunThreadsOn(n,p,f); }
+#define NamedRunThreadsOnIndividual(n,p,f) { printf("%-20s ", #f ":"); RunThreadsOnIndividual(n,p,f); }
 
 #endif //**/ THREADS_H__

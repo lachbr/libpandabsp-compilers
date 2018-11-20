@@ -17,6 +17,8 @@
 
 #include <aa_luse.h>
 
+#define ALIGN16_POST
+
 #if !defined(qmax) 
 #define qmax(a,b)            (((a) > (b)) ? (a) : (b)) // changed 'max' to 'qmax'. --vluzacn
 #endif
@@ -323,5 +325,17 @@ INLINE float DotProductAbs( const LVector3 &v0, const float *v1 )
 
 void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 &face_normal,
                      const LVector3 &phong_normal, LVector3 *bump_vecs );
+
+INLINE LVector3 GetLVector3( const vec3_t &vec )
+{
+        return LVector3( vec[0], vec[1], vec[2] );
+}
+
+INLINE vec3_t GetVec3( const LVector3 &v )
+{
+        vec3_t vec;
+        VectorCopy( v, vec );
+        return vec;
+}
 
 #endif //MATHLIB_H__
