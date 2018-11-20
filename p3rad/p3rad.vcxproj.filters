@@ -189,6 +189,9 @@
     <ClInclude Include="..\common\mathlib\sse.h">
       <Filter>common\mathlib</Filter>
     </ClInclude>
+    <ClInclude Include="patch.h">
+      <Filter>rad</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="common">

@@ -80,9 +80,9 @@ dleaf_t*        PointInLeaf( const vec3_t point )
 */
 vec_t           PatchPlaneDist( const patch_t* const patch )
 {
-        const dplane_t* plane = getPlaneFromFaceNumber( patch->faceNumber );
+        const dplane_t* plane = getPlaneFromFaceNumber( patch->facenum );
 
-        return plane->dist + DotProduct( g_face_offset[patch->faceNumber], plane->normal );
+        return plane->dist + DotProduct( g_face_offset[patch->facenum], plane->normal );
 }
 
 void            MakeBackplanes()

@@ -20,6 +20,7 @@
 #include "winding.h"
 #include "compress.h"
 #include "cmdlinecfg.h"
+#include "mathlib/ssemath.h"
 
 #include <pnmImage.h>
 
@@ -187,6 +188,8 @@ matrix_t;
 // LIGHTMAP.C STUFF
 //
 
+extern Winding *WindingFromFace( dface_t *f );
+
 typedef enum
 {
         emit_surface,
@@ -350,54 +353,65 @@ typedef enum
         ePatchFlagOutside = 1
 } ePatchFlags;
 
-typedef struct patch_s
+struct transfer_t
 {
-        struct patch_s* next;                                  // next in face
-        vec3_t          origin;                                // Center centroid of winding (cached info calculated from winding)
-        vec_t           area;                                  // Surface area of this patch (cached info calculated from winding)
-        vec3_t face_mins, face_maxs, mins, maxs;
-        vec_t			exposure;
-        vec_t			emitter_range;                         // Range from patch origin (cached info calculated from winding)
-        int				emitter_skylevel;                      // The "skylevel" used for sampling of normals, when the receiver patch is within the range of ACCURATEBOUNCE_THRESHOLD * this->radius. (cached info calculated from winding)
-        Winding*        winding;                               // Winding (patches are triangles, so its easy)
-        vec_t           scale;                                 // Texture scale for this face (blend of S and T scale)
-        vec_t           chop;                                  // Texture chop for this face factoring in S and T scale
-        vec_t           luxscale;
+        int patch;
+        float transfer;
+};
 
-        unsigned        iIndex;
-        unsigned        iData;
+struct patch_t
+{
+        Winding *winding;
+        LVector3 mins, maxs, face_mins, face_maxs;
+        LVector3 origin;
+        dplane_t *plane; // plane (corrected for facing)
+        unsigned short iteration_key;
 
-        transfer_index_t* tIndex;
-        transfer_data_t*  tData;
-        rgb_transfer_data_t*	tRGBData;
+        // these are packed into one dword
+        unsigned int normal_major_axis : 2; // major axis of base face normal
+        unsigned int sky : 1;
+        unsigned int bumped : 1;
+        unsigned int pad : 28;
 
-        int             faceNumber;
-        ePatchFlags     flags;
-        bool			translucent_b;                           // gather light from behind
-        vec3_t			translucent_v;
-        vec3_t			texturereflectivity;
-        vec3_t			bouncereflectivity;
+        LVector3 normal; // adjusted for phong shading
 
-        bool                    needs_bumpmap;
-        int normal_count;
+        float plane_dist;
 
-        unsigned char	totalstyle[MAXLIGHTMAPS];
-        unsigned char	directstyle[MAXLIGHTMAPS];
-        // HLRAD_AUTOCORING: totallight: all light gathered by patch
-        bumpsample_t          totallight[MAXLIGHTMAPS];				// accumulated by radiosity does NOT include light accounted for by direct lighting
-                                                                                // HLRAD_AUTOCORING: directlight: emissive light gathered by sample
-        bumpsample_t			directlight[MAXLIGHTMAPS];				// direct light only
-        int				bouncestyle; // light reflected from this patch must convert to this style. -1 = normal (don't convert)
-        unsigned char	emitstyle;
-        vec3_t          baselight;                             // emissivity only, uses emitstyle
-        bool			emitmode;								// texlight emit mode. 1 for normal, 0 for fast.
-        vec_t			samples;
-        bumpsample_t*			samplelight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
-        unsigned char*	totalstyle_all;						// NULL, or [ALLSTYLES] during BuildFacelights
-        bumpsample_t*			totallight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
-        bumpsample_t*			directlight_all;						// NULL, or [ALLSTYLES] during BuildFacelights
-        int				leafnum;
-} patch_t;
+        float chop;
+        float luxscale;
+        float scale[2];
+
+        bumpsample_t totallight;
+        LVector3 baselight;
+        float basearea;
+
+        LVector3 directlight;
+        float area;
+
+        LVector3 reflectivity;
+
+        LVector3 samplelight;
+        float samplearea;
+        int facenum;
+        int leafnum;
+        int parent;
+        int child1;
+        int child2;
+
+        int next;
+        int nextparent;
+        int nextclusterchild;
+
+        int numtransfers;
+        transfer_t *transfers;
+
+        short indices[3];
+};
+
+extern pvector<patch_t> g_patches;
+extern pvector<int> g_face_patches;
+extern pvector<int> g_face_parents;
+extern pvector<int> g_cluster_children;
 
 //LRC
 vec3_t* GetTotalLight( patch_t* patch, int style
@@ -467,14 +481,11 @@ extern int numdlights;
 extern directlight_t* directlights[MAX_MAP_LEAFS];
 extern directlight_t* activelights;
 
-extern patch_t* g_face_patches[MAX_MAP_FACES];
 extern entity_t* g_face_entity[MAX_MAP_FACES];
 extern vec3_t   g_face_offset[MAX_MAP_FACES];              // for models with origins
 extern eModelLightmodes g_face_lightmode[MAX_MAP_FACES];
 extern vec3_t   g_face_centroids[MAX_MAP_EDGES];
 extern entity_t* g_face_texlights[MAX_MAP_FACES];
-extern patch_t* g_patches; // shrinked to its real size, because 1048576 patches * 256 bytes = 256MB will be too big
-extern unsigned g_num_patches;
 extern float g_sun_angular_extent;
 
 extern float    g_lightscale;
@@ -699,7 +710,7 @@ extern int		TestPointOpaque( int modelnum, const vec3_t modelorigin, bool solid,
 #endif
 extern void     CreateDirectLights();
 extern void     DeleteDirectLights();
-extern void     GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal, const void *l = nullptr, int n = 0 ); // added "const" --vluzacn
+extern void     GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &phongnormal );
 
 typedef bool( *funcCheckVisBit ) ( unsigned, unsigned
                                    , vec3_t&

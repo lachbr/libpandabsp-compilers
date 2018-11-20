@@ -3220,19 +3220,19 @@ static void AddSamplesToPatches( sample_t *(samples)[ALLSTYLES], const unsigned 
 // =====================================================================================
 //  GetPhongNormal
 // =====================================================================================
-void            GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnormal, const void *vl, int n )
+void            GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &phongnormal )
 {
-        const lightinfo_t *l = (lightinfo_t *)vl;
-        int             j;
-        int				s; // split every edge into two parts
-        const dface_t*  f = g_bspdata->dfaces + facenum;
-        const dplane_t* p = getPlaneFromFace( f );
-        vec3_t          facenormal;
+        int j;
+        dface_t *f = g_bspdata->dfaces + facenum;
+        LVector3 facenormal, vspot;
 
-        VectorCopy( p->normal, facenormal );
+        VectorCopy( g_bspdata->dplanes[f->planenum].normal, facenormal );
         VectorCopy( facenormal, phongnormal );
 
+        if ( g_smoothing_threshold != -1 )
         {
+                faceneighbor_t *fn = &faceneighbor[facenum];
+
                 // Calculate modified point normal for surface
                 // Use the edge normals iff they are defined.  Bend the surface towards the edge normal(s)
                 // Crude first attempt: find nearest edge normal and do a simple interpolation with facenormal.
@@ -3241,143 +3241,47 @@ void            GetPhongNormal( int facenum, const vec3_t spot, vec3_t phongnorm
 
                 for ( j = 0; j < f->numedges; j++ )
                 {
-                        vec3_t          p1;
-                        vec3_t          p2;
-                        vec3_t          v1;
-                        vec3_t          v2;
-                        vec3_t          vspot;
-                        unsigned        prev_edge;
-                        unsigned        next_edge;
-                        int             e;
-                        int             e1;
-                        int             e2;
-                        edgeshare_t*    es;
-                        edgeshare_t*    es1;
-                        edgeshare_t*    es2;
-                        float           a1;
-                        float           a2;
-                        float           aa;
-                        float           bb;
-                        float           ab;
+                        LVector3	v1, v2;
+                        float		a1, a2, aa, bb, ab;
+                        int			vert1, vert2;
 
-                        if ( j )
+                        LVector3& n1 = fn->normal[j];
+                        LVector3& n2 = fn->normal[( j + 1 ) % f->numedges];
+
+                        vert1 = EdgeVertex( f, j );
+                        vert2 = EdgeVertex( f, j + 1 );
+
+                        LVector3 p1 = GetLVector3( g_bspdata->dvertexes[vert1].point );
+                        LVector3 p2 = GetLVector3( g_bspdata->[vert2].point );
+
+                        // Build vectors from the middle of the face to the edge vertexes and the sample pos.
+                        VectorSubtract( p1, g_face_centroids[facenum], v1 );
+                        VectorSubtract( p2, g_face_centroids[facenum], v2 );
+                        VectorSubtract( spot, g_face_centroids[facenum], vspot );
+                        aa = DotProduct( v1, v1 );
+                        bb = DotProduct( v2, v2 );
+                        ab = DotProduct( v1, v2 );
+                        a1 = ( bb * DotProduct( v1, vspot ) - ab * DotProduct( vspot, v2 ) ) / ( aa * bb - ab * ab );
+                        a2 = ( DotProduct( vspot, v2 ) - a1 * ab ) / bb;
+
+                        // Test center to sample vector for inclusion between center to vertex vectors (Use dot product of vectors)
+                        if ( a1 >= 0.0 && a2 >= 0.0 )
                         {
-                                prev_edge = f->firstedge + ( ( j + f->numedges - 1 ) % f->numedges );
+                                // calculate distance from edge to pos
+                                LVector3	temp;
+                                float scale;
+
+                                // Interpolate between the center and edge normals based on sample position
+                                scale = 1.0 - a1 - a2;
+                                VectorScale( fn->facenormal, scale, phongnormal );
+                                VectorScale( n1, a1, temp );
+                                VectorAdd( phongnormal, temp, phongnormal );
+                                VectorScale( n2, a2, temp );
+                                VectorAdd( phongnormal, temp, phongnormal );
+                                nassertv( VectorLength( phongnormal ) > 1.0e-20 );
+                                phongnormal.normalize();
+                                return;
                         }
-                        else
-                        {
-                                prev_edge = f->firstedge + f->numedges - 1;
-                        }
-
-                        if ( ( j + 1 ) != f->numedges )
-                        {
-                                next_edge = f->firstedge + ( ( j + 1 ) % f->numedges );
-                        }
-                        else
-                        {
-                                next_edge = f->firstedge;
-                        }
-
-                        e = g_bspdata->dsurfedges[f->firstedge + j];
-                        e1 = g_bspdata->dsurfedges[prev_edge];
-                        e2 = g_bspdata->dsurfedges[next_edge];
-
-                        es = &g_edgeshare[abs( e )];
-                        es1 = &g_edgeshare[abs( e1 )];
-                        es2 = &g_edgeshare[abs( e2 )];
-
-                        if ( ( !es->smooth || es->coplanar ) && ( !es1->smooth || es1->coplanar ) && ( !es2->smooth || es2->coplanar ) )
-                        {
-                                continue;
-                        }
-
-                        if ( e > 0 )
-                        {
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[e].v[0]].point, p1 );
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[e].v[1]].point, p2 );
-                        }
-                        else
-                        {
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[-e].v[1]].point, p1 );
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[-e].v[0]].point, p2 );
-                        }
-
-                        // Adjust for origin-based models
-                        VectorAdd( p1, g_face_offset[facenum], p1 );
-                        VectorAdd( p2, g_face_offset[facenum], p2 );
-                        for ( s = 0; s < 2; s++ )
-                        {
-                                vec3_t s1, s2;
-                                if ( s == 0 )
-                                {
-                                        VectorCopy( p1, s1 );
-                                }
-                                else
-                                {
-                                        VectorCopy( p2, s1 );
-                                }
-
-                                VectorAdd( p1, p2, s2 ); // edge center
-                                VectorScale( s2, 0.5, s2 );
-
-                                VectorSubtract( s1, g_face_centroids[facenum], v1 );
-                                VectorSubtract( s2, g_face_centroids[facenum], v2 );
-                                VectorSubtract( spot, g_face_centroids[facenum], vspot );
-
-                                aa = DotProduct( v1, v1 );
-                                bb = DotProduct( v2, v2 );
-                                ab = DotProduct( v1, v2 );
-                                a1 = ( bb * DotProduct( v1, vspot ) - ab * DotProduct( vspot, v2 ) ) / ( aa * bb - ab * ab );
-                                a2 = ( DotProduct( vspot, v2 ) - a1 * ab ) / bb;
-
-                                // Test center to sample vector for inclusion between center to vertex vectors (Use dot product of vectors)
-                                if ( a1 >= -0.01 && a2 >= -0.01 )
-                                {
-                                        // calculate distance from edge to pos
-                                        vec3_t          n1, n2;
-                                        vec3_t          temp;
-
-                                        if ( es->smooth )
-                                                if ( s == 0 )
-                                                {
-                                                        VectorCopy( es->vertex_normal[e>0 ? 0 : 1], n1 );
-                                                }
-                                                else
-                                                {
-                                                        VectorCopy( es->vertex_normal[e>0 ? 1 : 0], n1 );
-                                                }
-                                        else if ( s == 0 && es1->smooth )
-                                        {
-                                                VectorCopy( es1->vertex_normal[e1>0 ? 1 : 0], n1 );
-                                        }
-                                        else if ( s == 1 && es2->smooth )
-                                        {
-                                                VectorCopy( es2->vertex_normal[e2>0 ? 0 : 1], n1 );
-                                        }
-                                        else
-                                        {
-                                                VectorCopy( facenormal, n1 );
-                                        }
-
-                                        if ( es->smooth )
-                                        {
-                                                VectorCopy( es->interface_normal, n2 );
-                                        }
-                                        else
-                                        {
-                                                VectorCopy( facenormal, n2 );
-                                        }
-
-                                        // Interpolate between the center and edge normals based on sample position
-                                        VectorScale( facenormal, 1.0 - a1 - a2, phongnormal );
-                                        VectorScale( n1, a1, temp );
-                                        VectorAdd( phongnormal, temp, phongnormal );
-                                        VectorScale( n2, a2, temp );
-                                        VectorAdd( phongnormal, temp, phongnormal );
-                                        VectorNormalize( phongnormal );
-                                        break;
-                                }
-                        } // s=0,1
                 }
         }
 }

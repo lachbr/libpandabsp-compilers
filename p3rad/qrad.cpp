@@ -44,16 +44,17 @@ eVisMethods		g_method = DEFAULT_METHOD;
 
 vec_t           g_fade = DEFAULT_FADE;
 
-patch_t*        g_face_patches[MAX_MAP_FACES];
 entity_t*       g_face_entity[MAX_MAP_FACES];
 eModelLightmodes g_face_lightmode[MAX_MAP_FACES];
-patch_t*		g_patches;
 entity_t*		g_face_texlights[MAX_MAP_FACES];
-unsigned        g_num_patches;
 
-static vec3_t( *emitlight )[MAXLIGHTMAPS]; //LRC
-static bumpsample_t( *addlight )[MAXLIGHTMAPS]; //LRC
-static unsigned char( *newstyles )[MAXLIGHTMAPS];
+pvector<patch_t> g_patches;
+pvector<int> g_face_patches;
+pvector<int> g_face_parents;
+pvector<int> g_cluster_children;
+
+static pvector<LVector3> emitlight;
+static pvector<bumpsample_t> addlight;
 
 vector_string	g_multifiles;
 string		g_mfincludefile;
@@ -516,7 +517,7 @@ static void     ReadLightFile( const char* const filename )
 // =====================================================================================
 //  LightForTexture
 // =====================================================================================
-static void     LightForTexture( const char* const name, vec3_t result )
+static void     LightForTexture( const char* const name, LVector3 &result )
 {
         texlight_i it;
         for ( it = s_texlights.begin(); it != s_texlights.end(); it++ )
@@ -540,42 +541,10 @@ static void     LightForTexture( const char* const name, vec3_t result )
 // =====================================================================================
 //  BaseLightForFace
 // =====================================================================================
-static void     BaseLightForFace( const dface_t* const f, vec3_t light )
+static void     BaseLightForFace( const dface_t* const f, LVector3 &light, float *area, LVector3 &reflectivity )
 {
-        int fn = f - g_bspdata->dfaces;
-        if ( g_face_texlights[fn] )
-        {
-                double r, g, b, scaler;
-                switch ( sscanf( ValueForKey( g_face_texlights[fn], "_light" ), "%lf %lf %lf %lf", &r, &g, &b, &scaler ) )
-                {
-                case -1:
-                case 0:
-                        r = 0.0;
-                case 1:
-                        g = b = r;
-                case 3:
-                        break;
-                case 4:
-                        r *= scaler / 255.0;
-                        g *= scaler / 255.0;
-                        b *= scaler / 255.0;
-                        break;
-                default:
-                        vec3_t origin;
-                        GetVectorForKey( g_face_texlights[fn], "origin", origin );
-                        Log( "light at (%f,%f,%f) has bad or missing '_light' value : '%s'\n",
-                             origin[0], origin[1], origin[2], ValueForKey( g_face_texlights[fn], "_light" ) );
-                        r = g = b = 0;
-                        break;
-                }
-                light[0] = r > 0 ? r : 0;
-                light[1] = g > 0 ? g : 0;
-                light[2] = b > 0 ? b : 0;
-                return;
-        }
         texinfo_t*      tx;
         texref_t*       tref;
-        int             ofs;
 
         //
         // check for light emited by texture
@@ -584,6 +553,18 @@ static void     BaseLightForFace( const dface_t* const f, vec3_t light )
         tref = &g_bspdata->dtexrefs[tx->texref];
 
         LightForTexture( tref->name, light );
+
+        PNMImage *img = g_textures[tx->texref].image;
+        *area = img->get_x_size() * img->get_y_size();
+
+        VectorScale( g_textures[tx->texref].reflectivity, g_texreflectscale, reflectivity );
+
+        // always keep this less than 1 or the solution will not converge
+        for ( int i = 0; i < 3; i++ )
+        {
+                if ( reflectivity[i] > 0.99 )
+                        reflectivity[i] = 0.99;
+        }
 }
 
 // =====================================================================================
@@ -1694,6 +1675,424 @@ static entity_t *FindTexlightEntity( int facenum )
         }
         return found;
 }
+
+static int num_degenerate_faces = 0;
+static int fakeplanes = 0;
+
+static void MakePatchForFace( int facenum, Winding *w )
+{
+        dface_t *f = g_bspdata->dfaces + facenum;
+        float area;
+        LVector3 centroid( 0 );
+        int i, j;
+        texinfo_t *tex;
+
+        tex = g_bspdata->texinfo + f->texinfo;
+
+        area = w->getArea();
+        if ( area <= 0 )
+        {
+                num_degenerate_faces++;
+                return;
+        }
+
+        totalarea += area;
+
+        // get a patch
+        size_t patchidx = g_patches.size();
+        patch_t patch;
+        memset( &patch, 0, sizeof( patch_t ) );
+        patch.next = -1;
+        patch.nextparent = -1;
+        patch.nextclusterchild = -1;
+        patch.child1 = -1;
+        patch.child2 = -1;
+        patch.parent = -1;
+        patch.bumped = 0;
+
+        // link and save patch data
+        patch.next = g_face_patches[facenum];
+        g_face_patches[facenum] = patchidx;
+
+        // compute a separate chop sacle for chop - since the patch "scale" is the texture scale
+        // we want textures with higher resolution lightmap to be chopped up more
+        float chopscale[2];
+        chopscale[0] = chopscale[1] = 16.0f;
+        if ( g_texscale )
+        {
+                // compute the texture "scale" in s, t
+                for ( i = 0; i < 2; i++ )
+                {
+                        patch.scale[i] = 0.0f;
+                        chopscale[i] = 0.0f;
+                        for ( j = 0; j < 3; j++ )
+                        {
+                                patch.scale[i] += tex->vecs[i][j] *
+                                        tex->vecs[i][j];
+                                chopscale[i] += tex->lightmap_vecs[i][j] *
+                                        tex->lightmap_vecs[i][j];
+                        }
+                        patch.scale[i] = std::sqrt( patch.scale[i] );
+                        chopscale[i] = std::sqrt( chopscale[i] );
+                }
+        }
+        else
+        {
+                patch.scale[0] = patch.scale[1] = 1.0f;
+        }
+
+        patch.area = area;
+
+        patch.sky = GetTextureContents( g_bspdata->dtexrefs[tex->texref].name ) == CONTENTS_SKY;
+
+        // chop scaled up lightmaps coarser
+        patch.luxscale = ( chopscale[0] + chopscale[1] ) / 2;
+        patch.chop = g_maxchop;
+
+        patch.winding = w;
+
+        patch.plane = g_bspdata->dplanes + f->planenum;
+
+        if ( g_face_offset[facenum][0] || g_face_offset[facenum][1] || g_face_offset[facenum][2] )
+        {
+                dplane_t *pl;
+
+                if ( g_bspdata->numplanes + fakeplanes >= MAX_MAP_PLANES )
+                {
+                        Error( "numplanes + fakeplanes >= MAX_MAP_PLANES" );
+                }
+
+                pl = g_bspdata->dplanes + ( g_bspdata->numplanes + fakeplanes );
+                fakeplanes++;
+
+                *pl = *( patch.plane );
+                pl->dist += DotProduct( g_face_offset[facenum], pl->normal );
+                patch.plane = pl;
+        }
+
+        patch.facenum = facenum;
+
+        vec3_t pcenter;
+        w->getCenter( pcenter );
+        VectorCopy( pcenter, patch.origin );
+
+        // save "Center" for generating the face normals later
+        VectorSubtract( patch.origin, g_face_offset[facenum], g_face_centroids[facenum] );
+
+        VectorCopy( patch.plane->normal, patch.normal );
+
+        vec3_t fmins, fmaxs;
+        w->getBounds( fmins, fmaxs );
+        VectorCopy( fmins, patch.face_mins );
+        VectorCopy( fmaxs, patch.face_maxs );
+
+        BaseLightForFace( f, patch.baselight, &patch.basearea, patch.reflectivity );
+
+        // chop all texlights very fine
+        //if ( !VectorCompare( patch.baselight, vec3_origin ) )
+        //{
+        //
+        //}
+
+        // get rid of extra functionality on displacement surfaces
+        // nope
+
+        g_patches.push_back( patch );
+}
+
+static void MakePatches()
+{
+        int     i, j;
+        dface_t *f;
+        int fn;
+        Winding *w;
+        dmodel_t *mod;
+        LVector3 origin;
+        entity_t *ent;
+
+        ParseEntities( g_bspdata );
+        printf( "%i faces\n", g_bspdata->numfaces );
+
+        for ( i = 0; i < g_bspdata->nummodels; i++ )
+        {
+                mod = g_bspdata->dmodels + i;
+                ent = EntityForModel( g_bspdata, i );
+                VectorCopy( vec3_origin, origin );
+
+                // bmodels with origin brushes need to be offset into
+                // their in-use position
+                vec3_t vorigin;
+                GetVectorForKey( ent, "origin", vorigin );
+                VectorCopy( vorigin, origin );
+                for ( j = 0; j < mod->numfaces; j++ )
+                {
+                        fn = mod->firstface + j;
+                        g_face_entity[fn] = ent;
+                        VectorCopy( origin, g_face_offset[fn] );
+                        f = g_bspdata->dfaces + fn;
+                        w = WindingFromFace( f );
+                        MakePatchForFace( fn, w );
+                }
+        }
+
+        if ( num_degenerate_faces > 0 )
+        {
+                printf( "%d degenerate faces\n", num_degenerate_faces );
+        }
+
+        printf( "%i square feet [%.2f square inches]\n", (int)( totalarea / 144 ), totalarea );
+}
+
+bool PreventSubdivision( patch_t *patch )
+{
+        if ( GetTextureContents( g_bspdata->dtexrefs[g_bspdata->texinfo[g_bspdata->dfaces[patch->facenum].texinfo].texref].name ) == CONTENTS_SKY )
+        {
+                return true;
+        }
+
+        return false;
+}
+
+int CreateChildPatch( int parentnum, Winding *w, float area, const LVector3 &center )
+{
+        int childidx = (int)g_patches.size();
+
+        patch_t child;
+        patch_t *parent = &g_patches[parentnum];
+
+        // copy all elements of parent patch to children
+        child = *parent;
+
+        // set up links
+        child.next = -1;
+        child.nextparent = -1;
+        child.nextclusterchild = -1;
+        child.child1 = -1;
+        child.child2 = -1;
+        child.parent = parentnum;
+        child.iteration_key = 0;
+
+        child.winding = w;
+        child.area = area;
+
+        VectorCopy( center, child.origin );
+        GetPhongNormal( child.facenum, child.origin, child.normal );
+
+        child.plane_dist = child.plane->dist;
+
+        vec3_t vmins, vmaxs;
+        child.winding->getBounds( vmins, vmaxs );
+        VectorCopy( vmins, child.mins );
+        VectorCopy( vmaxs, child.maxs );
+
+        if ( child.baselight.length() == 0 )
+                return childidx;
+
+        // subdivide patch towards minchop if on the edge of the face
+        LVector3 total;
+        VectorSubtract( child.maxs, child.mins, total );
+        VectorScale( total, child.luxscale, total );
+
+        if ( child.chop > g_minchop && ( total[0] < child.chop ) && ( total[1] < child.chop ) && ( total[2] < child.chop ) )
+        {
+                for ( int i = 0; i < 3; ++i )
+                {
+                        if ( ( child.face_maxs[i] == child.maxs[i] || child.face_mins[i] == child.mins[i] )
+                             && total[i] > g_minchop )
+                        {
+                                child.chop = std::max( g_minchop, child.chop / 2 );
+                                break;
+                        }
+                }
+        }
+
+        return childidx;
+}
+
+void SubdividePatch( int patchnum )
+{
+        Winding *w, *o1, *o2;
+        LVector3 total;
+        LVector3 split;
+        float dist;
+        float widest = -1;
+        int i, widest_axis = -1;
+        bool subdivide = false;
+
+        // get the current patch
+        patch_t *patch = &g_patches[patchnum];
+        if ( !patch )
+                return;
+
+        // never subdivide sky patches
+        if ( patch->sky )
+                return;
+
+        // get the patch winding
+        w = patch->winding;
+
+        // subdivide along the widest axis
+        VectorSubtract( patch->maxs, patch->mins, total );
+        VectorScale( total, patch->luxscale, total );
+        for ( i = 0; i < 3; i++ )
+        {
+                if ( total[i] > widest )
+                {
+                        widest_axis = i;
+                        widest = total[i];
+                }
+
+                if ( ( total[i] >= patch->chop ) && total[i] >= g_minchop )
+                {
+                        subdivide = true;
+                }
+        }
+
+        if ( !subdivide && widest_axis != -1 )
+        {
+                // make more square
+                if ( total[widest_axis] > total[( widest_axis + 1 ) % 3] * 2 && total[widest_axis] > total[( widest_axis + 2 ) % 3] * 2 )
+                {
+                        if ( patch->chop > g_minchop )
+                        {
+                                subdivide = true;
+                                patch->chop = std::max( g_minchop, patch->chop / 2 );
+                        }
+                }
+        }
+
+        if ( !subdivide )
+                return;
+
+        // split the winding
+        VectorCopy( vec3_origin, split );
+        split[widest_axis] = 1;
+        dist = ( patch->mins[widest_axis] + patch->maxs[widest_axis] ) * 0.5f;
+        vec3_t vsplit;
+        VectorCopy( split, vsplit );
+        w->Clip( vsplit, dist, &o1, &o2, ON_EPSILON );
+
+        // calculate the area of the patches to see if they are "significant"
+        vec3_t center1, center2;
+        float area1 = o1->getAreaAndBalancePoint( center1 );
+        float area2 = o2->getAreaAndBalancePoint( center2 );
+
+        if ( area1 == 0 || area2 == 0 )
+        {
+                Log( "zero area child patch\n" );
+                return;
+        }
+
+        // create new child patches
+        int ndxchild1 = CreateChildPatch( patchnum, o1, area1, GetLVector3( center1 ) );
+        int ndxchild2 = CreateChildPatch( patchnum, o2, area2, GetLVector3( center2 ) );
+
+        patch = &g_patches[patchnum];
+        patch->child1 = ndxchild1;
+        patch->child2 = ndxchild2;
+
+        SubdividePatch( ndxchild1 );
+        SubdividePatch( ndxchild2 );
+}
+
+static void SubdividePatches()
+{
+        if ( g_numbounce == 0 )
+                return;
+
+        size_t i, num;
+        size_t patch_count = g_patches.size();
+        printf( "%i patches before subdivision\n", patch_count );
+
+        for ( i = 0; i < patch_count; i++ )
+        {
+                patch_t *cur = &g_patches[i];
+                cur->plane_dist = cur->plane->dist;
+
+                cur->nextparent = g_face_parents[cur->facenum];
+                g_face_parents[cur->facenum] = cur - g_patches.data();
+        }
+
+        for ( i = 0; i < patch_count; i++ )
+        {
+                patch_t *patch = &g_patches[i];
+                patch->parent = -1;
+                if ( PreventSubdivision( patch ) )
+                        continue;
+
+                if ( !g_fastmode )
+                {
+                        SubdividePatch( i );
+                }
+        }
+
+        // fixup next pointers
+        for ( i = 0; i < (size_t)g_bspdata->numfaces; i++ )
+        {
+                g_face_patches[i] = -1;
+        }
+
+        patch_count = g_patches.size();
+        for ( i = 0; i < patch_count; i++ )
+        {
+                patch_t *cur = &g_patches[i];
+                cur->next = g_face_patches[cur->facenum];
+                g_face_patches[cur->facenum] = cur - g_patches.data();
+        }
+
+        // Cache off the leaf number:
+        // We have to do this after subdivision because some patches span leaves.
+        // (only the faces for model #0 are split by it's BSP which is what governs the PVS, and the leaves we're interested in)
+        // Sub models (1-255) are only split for the BSP that their model forms.
+        // When those patches are subdivided their origins can end up in a different leaf.
+        // The engine will split (clip) those faces at run time to the world BSP because the models
+        // are dynamic and can be moved.  In the software renderer, they must be split exactly in order
+        // to sort per polygon.
+        for ( i = 0; i < patch_count; i++ )
+        {
+                vec3_t vorg;
+                VectorCopy( g_patches[i].origin, vorg );
+                g_patches[i].leafnum = PointInLeaf( vorg ) - g_bspdata->dleafs;
+
+                //
+                // test for point in solid space (can happen with detail and displacement surfaces)
+                //
+                if ( g_patches[i].leafnum == -1 )
+                {
+                        for ( int j = 0; j < g_patches[i].winding->m_NumPoints; j++ )
+                        {
+                                int clusterNumber = PointInLeaf( g_patches[i].winding->m_Points[j] ) - g_bspdata->dleafs;
+                                if ( clusterNumber != -1 )
+                                {
+                                        g_patches[i].leafnum = clusterNumber;
+                                        break;
+                                }
+                        }
+                }
+        }
+
+        // build the list of patches that need to be lit
+        for ( num = 0; num < patch_count; num++ )
+        {
+                // do them in reverse order
+                i = patch_count - num - 1;
+
+                // skip patches with children
+                patch_t *pCur = &g_patches[i];
+                if ( pCur->child1 == -1 )
+                {
+                        if ( pCur->leafnum != -1 )
+                        {
+                                pCur->nextclusterchild = g_cluster_children[pCur->leafnum];
+                                g_cluster_children[pCur->leafnum] = pCur - g_patches.data();
+                        }
+                }
+        }
+
+        printf( "%i patches after subdivision\n", patch_count );
+}
+
+#if 0
 static void     MakePatches()
 {
         int             i;
@@ -1856,6 +2255,7 @@ static void     MakePatches()
         Log( "%i base patches\n", g_num_patches );
         Log( "%i square feet [%.2f square inches]\n", (int)( totalarea / 144 ), totalarea );
 }
+#endif
 
 // =====================================================================================
 //  patch_sorter
@@ -2552,75 +2952,21 @@ static void     RadWorld()
         MakeBackplanes();
         MakeParents( 0, -1 );
         MakeTnodes( &g_bspdata->dmodels[0] );
-        CreateOpaqueNodes();
-        LoadOpaqueEntities();
+
+        // TODO?
+        //BuildClusterTable();
 
         // turn each face into a single patch
         MakePatches();
-        if ( g_drawpatch )
-        {
-                char name[_MAX_PATH + 20];
-                sprintf( name, "%s_patch.pts", g_Mapname );
-                Log( "Writing '%s' ...\n", name );
-                FILE *f;
-                f = fopen( name, "w" );
-                if ( f )
-                {
-                        const int pos_count = 15;
-                        const vec3_t pos[pos_count] = { { 0,0,0 },{ 1,0,0 },{ 0,1,0 },{ -1,0,0 },{ 0,-1,0 },{ 1,0,0 },{ 0,0,1 },{ -1,0,0 },{ 0,0,-1 },{ 0,-1,0 },{ 0,0,1 },{ 0,1,0 },{ 0,0,-1 },{ 1,0,0 },{ 0,0,0 } };
-                        int j, k;
-                        patch_t *patch;
-                        vec3_t v;
-                        for ( j = 0, patch = g_patches; j < g_num_patches; j++, patch++ )
-                        {
-                                if ( patch->flags == ePatchFlagOutside )
-                                        continue;
-                                VectorCopy( patch->origin, v );
-                                for ( k = 0; k < pos_count; ++k )
-                                        fprintf( f, "%g %g %g\n", v[0] + pos[k][0], v[1] + pos[k][1], v[2] + pos[k][2] );
-                        }
-                        fclose( f );
-                        Log( "OK.\n" );
-                }
-                else
-                        Log( "Error.\n" );
-        }
-        CheckMaxPatches();                                     // Check here for exceeding max patches, to prevent a lot of work from occuring before an error occurs
-        SortPatches();                                         // Makes the runs in the Transfer Compression really good
         PairEdges();
-        if ( g_drawedge )
-        {
-                char name[_MAX_PATH + 20];
-                sprintf( name, "%s_edge.pts", g_Mapname );
-                Log( "Writing '%s' ...\n", name );
-                FILE *f;
-                f = fopen( name, "w" );
-                if ( f )
-                {
-                        const int pos_count = 15;
-                        const vec3_t pos[pos_count] = { { 0,0,0 },{ 1,0,0 },{ 0,1,0 },{ -1,0,0 },{ 0,-1,0 },{ 1,0,0 },{ 0,0,1 },{ -1,0,0 },{ 0,0,-1 },{ 0,-1,0 },{ 0,0,1 },{ 0,1,0 },{ 0,0,-1 },{ 1,0,0 },{ 0,0,0 } };
-                        int j, k;
-                        edgeshare_t *es;
-                        vec3_t v;
-                        for ( j = 0, es = g_edgeshare; j < MAX_MAP_EDGES; j++, es++ )
-                        {
-                                if ( es->smooth )
-                                {
-                                        int v0 = g_bspdata->dedges[j].v[0], v1 = g_bspdata->dedges[j].v[1];
-                                        VectorAdd( g_bspdata->dvertexes[v0].point, g_bspdata->dvertexes[v1].point, v );
-                                        VectorScale( v, 0.5, v );
-                                        VectorAdd( v, es->interface_normal, v );
-                                        VectorAdd( v, g_face_offset[es->faces[0] - g_bspdata->dfaces], v );
-                                        for ( k = 0; k < pos_count; ++k )
-                                                fprintf( f, "%g %g %g\n", v[0] + pos[k][0], v[1] + pos[k][1], v[2] + pos[k][2] );
-                                }
-                        }
-                        fclose( f );
-                        Log( "OK.\n" );
-                }
-                else
-                        Log( "Error.\n" );
-        }
+
+        // TODO
+        // store the vertex normals calculated in PairEdges
+        // so that the can be written to the bsp file for 
+        // use in the engine
+        //SaveVertexNormals();
+
+        SubdividePatches();
 
         BuildDiffuseNormals();
         // create directlights out of g_patches and lights

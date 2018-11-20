@@ -195,6 +195,7 @@
     <ClInclude Include="leaf_ambient_lighting.h" />
     <ClInclude Include="lightingutils.h" />
     <ClInclude Include="lightmap.h" />
+    <ClInclude Include="patch.h" />
     <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />
