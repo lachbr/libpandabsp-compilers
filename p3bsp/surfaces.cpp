@@ -10,7 +10,7 @@
 //  MakeFaceEdges
 
 static int      subdivides;
-static int      g_maxLightmapDimension = 32;
+static int      g_maxLightmapDimension = MAX_LIGHTMAP_DIM;
 
 /* a surface has all of the faces that could be drawn on a given plane
 the outside filling stage can remove some of them so a better bsp can be generated */
@@ -63,12 +63,11 @@ void            SubdivideFace( face_t* f, face_t** prevptr )
 
         for ( axis = 0; axis < 2; axis++ )
         {
-                VectorCopy( tex->lightmap_vecs[axis], temp );
                 while ( 1 )
                 {
                         mins = 99999999;
                         maxs = -99999999;
-
+                        VectorCopy( tex->lightmap_vecs[axis], temp );
                         for ( i = 0; i < f->numpoints; i++ )
                         {
                                 v = DotProduct( f->pts[i], temp );
@@ -82,7 +81,7 @@ void            SubdivideFace( face_t* f, face_t** prevptr )
                                 }
                         }
 
-                        if ( ( maxs - mins ) <= MAX_LIGHTMAP_DIM )
+                        if ( ( maxs - mins ) <= g_maxLightmapDimension )
                         {
                                 break;
                         }
@@ -93,7 +92,7 @@ void            SubdivideFace( face_t* f, face_t** prevptr )
                         v = VectorNormalize( temp );
 
                         VectorCopy( temp, plane.normal );
-                        plane.dist = ( mins + MAX_LIGHTMAP_DIM - 1 ) / v;
+                        plane.dist = ( mins + g_maxLightmapDimension - 1 ) / v;
                         next = f->next;
                         SplitFace( f, &plane, &front, &back );
                         if ( !front || !back )
