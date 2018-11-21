@@ -122,34 +122,35 @@ typedef struct
         int             fileofs, filelen;
 } lump_t;
 
-#define LUMP_ENTITIES      0
-#define LUMP_PLANES        1
-#define LUMP_TEXTURES      2
-#define LUMP_VERTEXES      3
-#define LUMP_VISIBILITY    4
-#define LUMP_NODES         5
-#define LUMP_TEXINFO       6
-#define LUMP_FACES         7
-#define LUMP_LIGHTING      8
-#define LUMP_LEAFS        9
-#define LUMP_MARKSURFACES 10
-#define LUMP_EDGES        11
-#define LUMP_SURFEDGES    12
-#define LUMP_MODELS       13
-#define LUMP_BRUSHES      14
-#define LUMP_BRUSHSIDES   15
-#define LUMP_LEAFAMBIENTLIGHTING 16
-#define LUMP_LEAFAMBIENTINDEX    17
-#define LUMP_LEAFBRUSHES         18
-#define LUMP_STATICPROPS         19
-#define LUMP_STATICPROPVERTEXDATA 20
-#define LUMP_STATICPROPLIGHTING   21
+enum
+{
+        LUMP_ENTITIES,
+        LUMP_PLANES,
+        LUMP_TEXTURES,
+        LUMP_VERTEXES,
+        LUMP_VISIBILITY,
+        LUMP_NODES,
+        LUMP_TEXINFO,
+        LUMP_FACES,
+        LUMP_LIGHTING,
+        LUMP_LEAFS,
+        LUMP_MARKSURFACES,
+        LUMP_EDGES,
+        LUMP_SURFEDGES,
+        LUMP_MODELS,
+        LUMP_BRUSHES,
+        LUMP_BRUSHSIDES,
+        LUMP_LEAFAMBIENTLIGHTING,
+        LUMP_LEAFAMBIENTINDEX,
+        LUMP_LEAFBRUSHES,
+        LUMP_STATICPROPS,
+        LUMP_STATICPROPVERTEXDATA,
+        LUMP_STATICPROPLIGHTING,
+        LUMP_VERTNORMALS,
+        LUMP_VERTNORMALINDICES,
+};
 
-//#define LUMP_ORIGFACES    15
-#define HEADER_LUMPS      22
-
-//#define LUMP_MISCPAD      -1
-//#define LUMP_ZEROPAD      -2
+static const int HEADER_LUMPS = 22;
 
 typedef struct
 {
@@ -225,6 +226,14 @@ typedef struct
         unsigned short  numfaces;                              // counting both sides
 } dnode_t;
 
+enum texflags_t
+{
+        TEX_SPECIAL     = 1 << 0,
+        TEX_BUMPLIGHT   = 1 << 1,
+        TEX_SKY         = 1 << 2,
+        TEX_SKY2D       = 1 << 3,
+};
+
 typedef struct texinfo_s
 {
         float           vecs[2][4]; // [s/t][xyz offset]
@@ -233,9 +242,6 @@ typedef struct texinfo_s
         int             texref;
         int             flags;
 } texinfo_t;
-
-#define TEX_SPECIAL     1                                  // sky or slime or null, no lightmap or 256 subdivision
-#define TEX_BUMPLIGHT   2
 
 // note that edge 0 is never used, because negative edge nums are used for
 // counterclockwise use of the edge in a face
@@ -315,6 +321,12 @@ enum
 
 #define NUM_AMBIENTS            4                  // automatic ambient sounds
 
+enum leafflags_t
+{
+        LEAF_FLAGS_SKY          = 1 << 0,
+        LEAF_FLAGS_SKY2D        = 1 << 1,
+};
+
 // leaf 0 is the generic CONTENTS_SOLID leaf, used for all solid areas
 // all other leafs need visibility info
 typedef struct
@@ -332,6 +344,9 @@ typedef struct
         unsigned short  nummarksurfaces;
 
         byte            ambient_level[NUM_AMBIENTS];
+
+        int flags;
+
 } dleaf_t;
 
 enum
@@ -500,6 +515,8 @@ extern bool		CalcFaceExtents_test();
 extern void		LoadExtentFile( const char *const filename );
 #endif
 extern void		GetFaceExtents( bspdata_t *data, int facenum, int mins_out[2], int maxs_out[2] );
+
+extern int GetNumWorldLeafs( bspdata_t *data );
 
 //
 // Entity Related Stuff

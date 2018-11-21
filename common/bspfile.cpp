@@ -1693,3 +1693,8 @@ INLINE colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, in
         int bump_count = face->bumped_lightmap ? NUM_BUMP_VECTS + 1 : 1;
         return &data->dlightdata[face->lightofs + ( ( style * bump_count + bump ) * luxels ) + luxel];
 }
+
+int GetNumWorldLeafs( bspdata_t *bspdata )
+{
+        return bspdata->dmodels[0].visleafs + 1;
+}

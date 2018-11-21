@@ -31,6 +31,13 @@
 
 extern const vec3_t vec3_origin;
 
+INLINE void P_swap( float &a, float &b )
+{
+        float temp = b;
+        b = a;
+        a = temp;
+}
+
 // HLCSG_HLBSP_DOUBLEPLANE: We could use smaller epsilon for hlcsg and hlbsp (hlcsg and hlbsp use double as vec_t), which will totally eliminate all epsilon errors. But we choose this big epsilon to tolerate the imprecision caused by Hammer. Basically, this is a balance between precision and flexibility.
 #define NORMAL_EPSILON   0.00001
 #define ON_EPSILON       0.04 // we should ensure that (float)BOGUS_RANGE < (float)(BOGUA_RANGE + 0.2 * ON_EPSILON)
@@ -331,11 +338,24 @@ INLINE LVector3 GetLVector3( const vec3_t &vec )
         return LVector3( vec[0], vec[1], vec[2] );
 }
 
-INLINE vec3_t GetVec3( const LVector3 &v )
+INLINE LVector3 GetLVector3_2( const vec_t *vec )
 {
-        vec3_t vec;
-        VectorCopy( v, vec );
-        return vec;
+        return LVector3( vec[0], vec[1], vec[2] );
+}
+
+extern bool SolveInverseQuadratic( float x1, float y1, float x2, float y2,
+                                   float x3, float y3, float &a, float &b, float &c );
+extern bool SolveInverseQuadraticMonotonic( float x1, float y1, float x2, float y2,
+                                            float x3, float y3, float &a, float &b, float &c );
+
+static INLINE float FLerp( float f1, float f2, float t )
+{
+        return f1 + ( f2 - f1 ) * t;
+}
+
+static INLINE float FLerp( float f1, float f2, float i1, float i2, float x )
+{
+        return f1 + ( f2 - f1 ) * ( x - i1 ) / ( i2 - i1 );
 }
 
 #endif //MATHLIB_H__
