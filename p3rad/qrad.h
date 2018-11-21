@@ -194,6 +194,11 @@ extern Winding *WindingFromFace( dface_t *f );
 
 INLINE byte PVSCheck( const byte *pvs, int leaf )
 {
+        leaf -= 1;
+
+        ThreadLock();
+        printf( "checking pvs for leaf %i\n", leaf );
+        ThreadUnlock();
         if ( leaf >= 0 )
         {
                 return pvs[leaf >> 3] & ( 1 << ( leaf & 7 ) );

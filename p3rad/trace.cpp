@@ -437,7 +437,7 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
 
 int TestLine(const vec3_t start, const vec3_t stop, vec_t *skyhit)
 {
-        float frac_vis = 0.0;
+        float frac_vis = 1.0;
         return TestLine( start, stop, frac_vis, skyhit );
 }
 

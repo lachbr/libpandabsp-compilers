@@ -18,11 +18,13 @@ float Lights::sun_angular_extent = 0.0;
 directlight_t *Lights::skylight = nullptr;
 directlight_t *Lights::ambientlight = nullptr;
 
+#define VIS_SIZE ( MAX_MAP_LEAFS + 7 ) / 8
+
 int GetVisCache( int lastoffset, int cluster, byte *pvs )
 {
         if ( !g_bspdata->visdatasize )
         {
-                memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
+                memset( pvs, 255, VIS_SIZE );
                 lastoffset = -1;
         }
         else
@@ -30,7 +32,7 @@ int GetVisCache( int lastoffset, int cluster, byte *pvs )
                 if ( cluster < 0 )
                 {
                         // erorr point embedded in wall
-                        memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
+                        memset( pvs, 255, VIS_SIZE );
                         lastoffset = -1;
                 }
                 else
@@ -40,10 +42,11 @@ int GetVisCache( int lastoffset, int cluster, byte *pvs )
                         {
                                 if ( thisoffset == -1 )
                                 {
+                                        memset( pvs, 0, VIS_SIZE );
                                         Error( "visofs == -1" );
                                 }
 
-                                DecompressVis( g_bspdata, &g_bspdata->dvisdata[thisoffset], pvs, sizeof( pvs ) );
+                                DecompressVis( g_bspdata, &g_bspdata->dvisdata[thisoffset], pvs, VIS_SIZE );
                         }
                         lastoffset = thisoffset;
                 }
@@ -56,7 +59,7 @@ void SetDLightVis( directlight_t *dl, int leafnum )
 {
         if ( dl->pvs == nullptr )
         {
-                dl->pvs = (byte *)calloc( 1, ( GetNumWorldLeafs( g_bspdata ) + 7 ) / 8 );
+                dl->pvs = (byte *)calloc( 1, VIS_SIZE );
         }
 
         GetVisCache( -1, leafnum, dl->pvs );
@@ -70,11 +73,11 @@ void MergeDLightVis( directlight_t *dl, int leafnum )
         }
         else
         {
-                byte pvs[( MAX_MAP_LEAFS + 7 ) / 8];
+                byte pvs[VIS_SIZE];
                 GetVisCache( -1, leafnum, pvs );
 
                 // merge both vis graphs
-                for ( int i = 0; i < GetNumWorldLeafs( g_bspdata ); i++ )
+                for ( int i = 0; i < GetNumWorldLeafs( g_bspdata ) + 1; i++ )
                 {
                         dl->pvs[i] |= pvs[i];
                 }

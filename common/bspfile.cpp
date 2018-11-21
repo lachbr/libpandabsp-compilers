@@ -1696,5 +1696,5 @@ INLINE colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, in
 
 int GetNumWorldLeafs( bspdata_t *bspdata )
 {
-        return bspdata->dmodels[0].visleafs + 1;
+        return bspdata->dmodels[0].visleafs;
 }

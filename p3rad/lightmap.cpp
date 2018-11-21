@@ -89,8 +89,12 @@ void PairEdges()
         {
                 fn = &faceneighbor[i];
 
+                const dplane_t *pl = getPlaneFromFace( f );
+
                 // get face normal
-                VectorCopy( g_bspdata->dplanes[f->planenum].normal, fn->facenormal );
+                VectorCopy( pl->normal, fn->facenormal );
+
+                std::cout << "Base fn face normal " << fn->facenormal << std::endl;
         }
 
         // find neighbors
@@ -356,7 +360,9 @@ void            GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &pho
         dface_t *f = g_bspdata->dfaces + facenum;
         LVector3 facenormal, vspot;
 
-        VectorCopy( g_bspdata->dplanes[f->planenum].normal, facenormal );
+        const dplane_t *pl = getPlaneFromFace( f );
+
+        VectorCopy( pl->normal, facenormal );
         VectorCopy( facenormal, phongnormal );
 
         if ( g_smoothing_threshold != -1 )
@@ -438,6 +444,8 @@ void InitLightInfo( lightinfo_t &l, int facenum )
         facelight_t *fl = &facelight[facenum];
         
         l.bumped = g_patches[g_face_patches[facenum]].bumped;
+        fl->normal_count = l.bumped ? NUM_BUMP_VECTS + 1 : 1;
+        l.normal_count = fl->normal_count;
         fl->bumped = l.bumped;
         l.surfnum = facenum;
         l.face = f;
@@ -451,36 +459,26 @@ void InitLightInfo( lightinfo_t &l, int facenum )
         //
         // rotate plane
         //
-        if ( l.isflat )
-        {
-                VectorCopy( l.facenormal, l.normals[0] );
-                VectorCopy( l.facenormal, fl->normals[0] );
-                l.normal_count = 1;
-                fl->normal_count = 1;
-                if ( l.bumped )
-                {
-                        f->bumped_lightmap = 1;
-                        // also make the 3 bump map normals
-                        l.normal_count += NUM_BUMP_VECTS;
-                        fl->normal_count = l.normal_count;
-                        LVector3 bump_vecs[NUM_BUMP_VECTS];
-                        LVector3 fnorm( l.normals[0][0], l.normals[0][1], l.normals[0][2] );
-                        GetBumpNormals( &g_bspdata->texinfo[f->texinfo], fnorm, fnorm, bump_vecs );
-
-                        for ( int b = 0; b < NUM_BUMP_VECTS; b++ )
-                        {
-                                VectorCopy( bump_vecs[b], l.normals[b + 1] );
-                                VectorCopy( l.normals[b + 1], fl->normals[b + 1] );
-                        }
-                }
-
-
-        }
 
         l.facedist = plane->dist;
 
         CalcFaceVectors( &l );
         CalcFaceExtents( &l );
+
+        if ( g_smoothing_threshold != 1 )
+        {
+                faceneighbor_t *fn = &faceneighbor[facenum];
+
+                for ( int j = 0; j < f->numedges; j++ )
+                {
+                        float dot = DotProduct( l.facenormal, fn->normal[j] );
+                        if ( dot < 1.0 - EQUAL_EPSILON )
+                        {
+                                l.isflat = false;
+                                break;
+                        }
+                }
+        }
 }
 
 void InitSampleInfo( const lightinfo_t &l, int thread, SSE_SampleInfo_t &info )
@@ -776,7 +774,9 @@ void GetPhongNormal( int facenum, const FourVectors &spot, FourVectors &phongnor
         LVector3 facenormal;
         FourVectors vspot;
 
-        VectorCopy( g_bspdata->dplanes[f->planenum].normal, facenormal );
+        const dplane_t *pl = getPlaneFromFace( f );
+
+        VectorCopy( pl->normal, facenormal );
         phongnormal.DuplicateVector( facenormal );
 
         FourVectors face_centroid;
@@ -861,7 +861,7 @@ void ComputeIlluminationPointAndNormalsSSE( const lightinfo_t &l, const FourVect
         LVector3 v[4];
 
         info->points = pos;
-        bool comp_normals = ( info->normal_count > 1 && l.bumped );
+        bool comp_normals = ( info->normal_count > 1 && !l.isflat );
 
         // FIXME: move sample point off the surface a bit, this is done so that
         // light sampling will not be affected by a bug	where raycasts will
@@ -869,9 +869,11 @@ void ComputeIlluminationPointAndNormalsSSE( const lightinfo_t &l, const FourVect
         // logic in GatherSampleLight
         FourVectors facenormal;
         facenormal.DuplicateVector( l.facenormal );
+        LVector3 vfn;
+        VectorCopy( l.facenormal, vfn );
         info->points += facenormal;
 
-        if ( l.bumped )
+        if ( !l.isflat )
         {
                 // TODO org models
                 //FourVectors modelorg;
@@ -1097,6 +1099,12 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
 
         if ( input.dl->facenum == -1 )
         {
+                ThreadLock();
+                std::cout << "using light origin of" << input.dl->origin << std::endl;
+                std::cout << "Normal of " << input.normals[0].Vec( 0 ) << std::endl;
+                std::cout << "input position " << input.pos.Vec( 0 ) << std::endl;
+                ThreadUnlock();
+
                 src.DuplicateVector( input.dl->origin );
         }
         
@@ -1144,6 +1152,9 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
                 out.falloff = AddSIMD( out.falloff, MulSIMD( linear, falloffevaldist ) );
                 out.falloff = AddSIMD( out.falloff, constant );
                 out.falloff = ReciprocalSIMD( out.falloff );
+                ThreadLock();
+                std::cout << "Pointlight fallof is: " << SubFloat( out.falloff, 0 ) << std::endl;
+                ThreadUnlock();
                 break;
 
         case emit_surface:
@@ -1230,14 +1241,19 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
         VectorCopy( input.pos.Vec( 0 ), vstart );
         VectorCopy( src.Vec( 0 ), vsrc );
         int contents = TestLine( vstart, vsrc, frac_vis );
+        ThreadLock();
+        std::cout << "TestLine frac vis " << frac_vis << " contents " << contents << std::endl;
+        ThreadUnlock();
         if ( contents == CONTENTS_SOLID )
+        {
                 // hit something, light occluded
                 frac_vis = 0.0;
+        }
         fraction_visible4 = ReplicateX4( frac_vis );
         dot = MulSIMD( fraction_visible4, dot );
         out.dot[0] = dot;
 
-        for ( int i = 0; i < input.normal_count; i++ )
+        for ( int i = 1; i < input.normal_count; i++ )
         {
                 if ( ignore_normals )
                         out.dot[i] = ReplicateX4( (float)CONSTANT_DOT );
@@ -1247,6 +1263,10 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
                         out.dot[i] = MaxSIMD( Four_Zeros, out.dot[i] );
                 }
         }
+
+        ThreadLock();
+        std::cout << "output dot " << SubFloat( out.dot[0], 0 ) << std::endl;
+        ThreadUnlock();
 }
 
 void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int facenum,
@@ -1350,7 +1370,13 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
                 }
 
                 if ( skip )
+                {
+                        ThreadLock();
+                        printf( "GatherSampleLightAt4Points: pvs check failed, skip\n" );
+                        ThreadUnlock();
                         continue;
+                }
+                        
 
                 GatherSampleLightSSE( out, dl, info.facenum, info.points,
                                       info.point_normals, info.normal_count, info.thread );
@@ -1367,7 +1393,13 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
                 }
 
                 if ( skip )
+                {
+                        ThreadLock();
+                        printf( "GatherSampleLightAt4Points: all zeros, skip\n" );
+                        ThreadUnlock();
                         continue;
+                }
+                        
 
                 // figure out the lightstyle for this particular sample
                 int lightstyleidx = FindOrAllocateLightstyleSamples( info.face, info.facelight, dl->style, info.normal_count );
@@ -2013,7 +2045,7 @@ void BuildFacelights( const int facenum )
 
                 ComputeIlluminationPointAndNormalsSSE( l, positions, normals, &sampleinfo, num_samples );
 
-                if ( l.bumped )
+                if ( !l.isflat )
                 {
                         // fixup sample normals in case of smooth faces
                         for ( int i = 0; i < num_samples; i++ )
@@ -2026,7 +2058,7 @@ void BuildFacelights( const int facenum )
                 GatherSampleLightAt4Points( sampleinfo, nsample, num_samples );
         }
 
-        if ( g_extra )
+        if ( false)//g_extra )
         {
                 // for each lightstyle, perform a supersampling pass
                 for ( i = 0; i < MAXLIGHTMAPS; i++ )

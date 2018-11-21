@@ -537,10 +537,11 @@ void FinalLightFace( const int facenum )
                         LVector3 samp_pos;
                         VectorCopy( fl->sample[j].pos, samp_pos );
 
-                        if ( false )//!g_fastmode )
+                        if ( false)//!g_fastmode )
                         {
                                 base_sample_ok = SampleRadial( rad, samp_pos, &lb, bump_sample_count );
                                 //lb = rad->light[j];
+
                         }
                         else
                         {
@@ -573,6 +574,14 @@ void FinalLightFace( const int facenum )
 
                                 // save out to BSP file
                                 colorrgbexp32_t *col = SampleLightmap( g_bspdata, g_bspdata->dfaces + facenum, j, k, bump_sample );
+                                if ( col == nullptr )
+                                {
+                                        ThreadLock();
+                                        nassert_raise( "FinalLightFace: col is nullptr" );
+                                        ThreadUnlock();
+                                        continue;
+                                }
+                                        
                                 LVector3 vcol;
                                 VectorCopy( lb[bump_sample], vcol );
                                 VectorToColorRGBExp32( vcol, *col );
