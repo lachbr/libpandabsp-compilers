@@ -16,6 +16,7 @@
 #include "bspfile.h"
 #include "qrad.h"
 #include "bsptools.h"
+#include "lights.h"
 
 class LightSurface : public BaseBSPEnumerator
 {

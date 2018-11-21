@@ -333,141 +333,6 @@ void            SnapToPlane(const dplane_t* const plane, vec_t* const point, vec
 	dist -= offset;
 	VectorMA (point, -dist, plane->normal, point);
 }
-// =====================================================================================
-//  CalcSightArea
-// =====================================================================================
-vec_t CalcSightArea (const vec3_t receiver_origin, const vec3_t receiver_normal, const Winding *emitter_winding, int skylevel
-					, vec_t lighting_power, vec_t lighting_scale
-					)
-{
-	// maybe there are faster ways in calculating the weighted area, but at least this way is not bad.
-	vec_t area = 0.0;
-
-	int numedges = emitter_winding->m_NumPoints;
-	vec3_t *edges = (vec3_t *)malloc (numedges * sizeof (vec3_t));
-	hlassume (edges != NULL, assume_NoMemory);
-	bool error = false;
-	for (int x = 0; x < numedges; x++)
-	{
-		vec3_t v1, v2, normal;
-		VectorSubtract (emitter_winding->m_Points[x], receiver_origin, v1);
-		VectorSubtract (emitter_winding->m_Points[(x + 1) % numedges], receiver_origin, v2);
-		CrossProduct (v1, v2, normal); // pointing inward
-		if (!VectorNormalize (normal))
-		{
-			error = true;
-		}
-		VectorCopy (normal, edges[x]);
-	}
-	if (!error)
-	{
-		int i, j;
-		vec3_t *pnormal;
-		vec_t *psize;
-		vec_t dot;
-		vec3_t *pedge;
-		for (i = 0, pnormal = g_skynormals[skylevel], psize = g_skynormalsizes[skylevel]; i < g_numskynormals[skylevel]; i++, pnormal++, psize++)
-		{
-			dot = DotProduct (*pnormal, receiver_normal);
-			if (dot <= 0)
-				continue;
-			for (j = 0, pedge = edges; j < numedges; j++, pedge++)
-			{
-				if (DotProduct (*pnormal, *pedge) <= 0)
-				{
-					break;
-				}
-			}
-			if (j < numedges)
-			{
-				continue;
-			}
-			if (lighting_power != 1.0)
-			{
-				dot = pow (dot, lighting_power);
-			}
-			area += dot * (*psize);
-		}
-		area = area * 4 * Q_PI; // convert to absolute sphere area
-	}
-	free (edges);
-	area *= lighting_scale;
-	return area;
-}
-
-vec_t CalcSightArea_SpotLight (const vec3_t receiver_origin, const vec3_t receiver_normal, const Winding *emitter_winding, const vec3_t emitter_normal, vec_t emitter_stopdot, vec_t emitter_stopdot2, int skylevel
-					, vec_t lighting_power, vec_t lighting_scale
-					)
-{
-	// stopdot = cos (cone)
-	// stopdot2 = cos (cone2)
-	// stopdot >= stopdot2 >= 0
-	// ratio = 1.0 , when dot2 >= stopdot
-	// ratio = (dot - stopdot2) / (stopdot - stopdot2) , when stopdot > dot2 > stopdot2
-	// ratio = 0.0 , when stopdot2 >= dot2
-	vec_t area = 0.0;
-
-	int numedges = emitter_winding->m_NumPoints;
-	vec3_t *edges = (vec3_t *)malloc (numedges * sizeof (vec3_t));
-	hlassume (edges != NULL, assume_NoMemory);
-	bool error = false;
-	for (int x = 0; x < numedges; x++)
-	{
-		vec3_t v1, v2, normal;
-		VectorSubtract (emitter_winding->m_Points[x], receiver_origin, v1);
-		VectorSubtract (emitter_winding->m_Points[(x + 1) % numedges], receiver_origin, v2);
-		CrossProduct (v1, v2, normal); // pointing inward
-		if (!VectorNormalize (normal))
-		{
-			error = true;
-		}
-		VectorCopy (normal, edges[x]);
-	}
-	if (!error)
-	{
-		int i, j;
-		vec3_t *pnormal;
-		vec_t *psize;
-		vec_t dot;
-		vec_t dot2;
-		vec3_t *pedge;
-		for (i = 0, pnormal = g_skynormals[skylevel], psize = g_skynormalsizes[skylevel]; i < g_numskynormals[skylevel]; i++, pnormal++, psize++)
-		{
-			dot = DotProduct (*pnormal, receiver_normal);
-			if (dot <= 0)
-				continue;
-			for (j = 0, pedge = edges; j < numedges; j++, pedge++)
-			{
-				if (DotProduct (*pnormal, *pedge) <= 0)
-				{
-					break;
-				}
-			}
-			if (j < numedges)
-			{
-				continue;
-			}
-			if (lighting_power != 1.0)
-			{
-				dot = pow (dot, lighting_power);
-			}
-			dot2 = -DotProduct (*pnormal, emitter_normal);
-			if (dot2 <= emitter_stopdot2 + NORMAL_EPSILON)
-			{
-				dot = 0;
-			}
-			else if (dot2 < emitter_stopdot)
-			{
-				dot = dot * (dot2 - emitter_stopdot2) / (emitter_stopdot - emitter_stopdot2);
-			}
-			area += dot * (*psize);
-		}
-		area = area * 4 * Q_PI; // convert to absolute sphere area
-	}
-	free (edges);
-	area *= lighting_scale;
-	return area;
-}
 
 // =====================================================================================
 //  GetAlternateOrigin
@@ -480,8 +345,8 @@ void GetAlternateOrigin (const vec3_t pos, const vec3_t normal, const patch_t *p
 	dplane_t clipplane;
 	Winding w;
 
-	faceplane = getPlaneFromFaceNumber (patch->faceNumber);
-	faceplaneoffset = g_face_offset[patch->faceNumber];
+	faceplane = getPlaneFromFaceNumber (patch->facenum);
+	faceplaneoffset = g_face_offset[patch->facenum];
 	facenormal = faceplane->normal;
 	VectorCopy (normal, clipplane.normal);
 	clipplane.dist = DotProduct (pos, clipplane.normal);

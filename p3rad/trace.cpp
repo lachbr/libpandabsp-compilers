@@ -313,7 +313,7 @@ void            MakeTnodes( dmodel_t* /*bm*/ )
 
 int             TestLine_r( const int node, const vec3_t start, const vec3_t stop
                             , int &linecontent
-                            , vec_t *skyhit
+                            , vec_t *skyhit, float &total_fraction_visible
 )
 {
         tnode_t*        tnode;
@@ -387,27 +387,27 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
         {
                 return TestLine_r( tnode->children[0], start, stop
                                    , linecontent
-                                   , skyhit
+                                   , skyhit, total_fraction_visible
                 );
         }
         if ( front < -ON_EPSILON / 2 && back < -ON_EPSILON / 2 )
         {
                 return TestLine_r( tnode->children[1], start, stop
                                    , linecontent
-                                   , skyhit
+                                   , skyhit, total_fraction_visible
                 );
         }
         if ( fabs( front ) <= ON_EPSILON && fabs( back ) <= ON_EPSILON )
         {
                 int r1 = TestLine_r( tnode->children[0], start, stop
                                      , linecontent
-                                     , skyhit
+                                     , skyhit, total_fraction_visible
                 );
                 if ( r1 == CONTENTS_SOLID )
                         return CONTENTS_SOLID;
                 int r2 = TestLine_r( tnode->children[1], start, stop
                                      , linecontent
-                                     , skyhit
+                                     , skyhit, total_fraction_visible
                 );
                 if ( r2 == CONTENTS_SOLID )
                         return CONTENTS_SOLID;
@@ -419,29 +419,37 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
         frac = front / ( front - back );
         if ( frac < 0 ) frac = 0;
         if ( frac > 1 ) frac = 1;
+        total_fraction_visible = frac;
         mid[0] = start[0] + ( stop[0] - start[0] ) * frac;
         mid[1] = start[1] + ( stop[1] - start[1] ) * frac;
         mid[2] = start[2] + ( stop[2] - start[2] ) * frac;
         r = TestLine_r( tnode->children[side], start, mid
                         , linecontent
-                        , skyhit
+                        , skyhit, total_fraction_visible
         );
         if ( r != CONTENTS_EMPTY )
                 return r;
         return TestLine_r( tnode->children[!side], mid, stop
                            , linecontent
-                           , skyhit
+                           , skyhit, total_fraction_visible
         );
 }
 
-int             TestLine( const vec3_t start, const vec3_t stop
-                          , vec_t *skyhit
+int TestLine(const vec3_t start, const vec3_t stop, vec_t *skyhit)
+{
+        float frac_vis = 0.0;
+        return TestLine( start, stop, frac_vis, skyhit );
+}
+
+int             TestLine( const vec3_t start, const vec3_t stop,
+                          float &total_fraction_visible, vec_t *skyhit
 )
 {
         int linecontent = 0;
         return TestLine_r( 0, start, stop
                            , linecontent
-                           , skyhit
+                           , skyhit,
+                           total_fraction_visible
         );
 }
 

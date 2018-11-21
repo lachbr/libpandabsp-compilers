@@ -40,16 +40,10 @@
     <ClCompile Include="..\common\winding.cpp">
       <Filter>common</Filter>
     </ClCompile>
-    <ClCompile Include="lerp.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
     <ClCompile Include="lightmap.cpp">
       <Filter>rad</Filter>
     </ClCompile>
     <ClCompile Include="loadtextures.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="nomatrix.cpp">
       <Filter>rad</Filter>
     </ClCompile>
     <ClCompile Include="qrad.cpp">
@@ -61,28 +55,10 @@
     <ClCompile Include="radstaticprop.cpp">
       <Filter>rad</Filter>
     </ClCompile>
-    <ClCompile Include="sparse.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
     <ClCompile Include="trace.cpp">
       <Filter>rad</Filter>
     </ClCompile>
-    <ClCompile Include="transfers.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="transparency.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="vismatrix.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="vismatrixutil.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
     <ClCompile Include="leaf_ambient_lighting.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="compress.cpp">
       <Filter>rad</Filter>
     </ClCompile>
     <ClCompile Include="lightingutils.cpp">
@@ -101,6 +77,15 @@
       <Filter>common\mathlib</Filter>
     </ClCompile>
     <ClCompile Include="..\common\mathlib\sseconst.cpp">
+      <Filter>common\mathlib</Filter>
+    </ClCompile>
+    <ClCompile Include="lights.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="vismat.cpp">
+      <Filter>rad</Filter>
+    </ClCompile>
+    <ClCompile Include="powsse.cpp">
       <Filter>common\mathlib</Filter>
     </ClCompile>
   </ItemGroup>
@@ -165,9 +150,6 @@
     <ClInclude Include="leaf_ambient_lighting.h">
       <Filter>rad</Filter>
     </ClInclude>
-    <ClInclude Include="compress.h">
-      <Filter>rad</Filter>
-    </ClInclude>
     <ClInclude Include="lightingutils.h">
       <Filter>rad</Filter>
     </ClInclude>
@@ -189,7 +171,10 @@
     <ClInclude Include="..\common\mathlib\sse.h">
       <Filter>common\mathlib</Filter>
     </ClInclude>
-    <ClInclude Include="patch.h">
+    <ClInclude Include="lights.h">
+      <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="vismat.h">
       <Filter>rad</Filter>
     </ClInclude>
   </ItemGroup>

@@ -31,5 +31,7 @@ typedef struct radial_s
 extern void FinalLightFace( const int facenum );
 extern void WorldToLuxelSpace( lightinfo_t *l, const LVector3 &pos, LVector2 &coord );
 extern void LuxelToWorldSpace( lightinfo_t *l, float s, float t, LVector3 &world );
+extern void WorldToLuxelSpace( lightinfo_t *l, const FourVectors &world, FourVectors &coord );
+extern void LuxelToWorldSpace( lightinfo_t *l, fltx4 s, fltx4 t, FourVectors &world );
 
 #endif // RADIAL_H

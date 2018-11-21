@@ -132,4 +132,8 @@ struct SSE_SampleInfo_t
         FourVectors point_normals[NUM_BUMP_VECTS + 1];
 };
 
+extern void GatherSampleLightSSE( SSE_sampleLightOutput_t &output, directlight_t *dl, int facenum,
+                                  const FourVectors &pos, FourVectors *normals, int normal_count,
+                                  int thread, int lightflags = 0, float epsilon = 0 );
+
 #endif // LIGHTMAP_H

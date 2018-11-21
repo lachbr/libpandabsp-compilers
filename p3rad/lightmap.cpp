@@ -1,6 +1,9 @@
 #include "lightmap.h"
-
+#include "lights.h"
 #include "radial.h"
+#include "halton.h"
+#include "anorms.h"
+#include "bsptools.h"
 
 #include <clockObject.h>
 
@@ -13,259 +16,6 @@ vec3_t          g_face_centroids[MAX_MAP_EDGES]; // BUG: should this be [MAX_MAP
 bool            g_sky_lighting_fix = DEFAULT_SKY_LIGHTING_FIX;
 
 #define VectorOut(vec) vec[0] << ", " << vec[1] << ", " << vec[2]
-
-//#define TEXTURE_STEP   16.0
-
-// =====================================================================================
-//  PairEdges
-// =====================================================================================
-typedef struct
-{
-        int numclipplanes;
-        dplane_t *clipplanes;
-}
-intersecttest_t;
-bool TestFaceIntersect( intersecttest_t *t, int facenum )
-{
-        dface_t *f2 = &g_bspdata->dfaces[facenum];
-        Winding *w = new Winding( *f2, g_bspdata );
-        int k;
-        for ( k = 0; k < w->m_NumPoints; k++ )
-        {
-                VectorAdd( w->m_Points[k], g_face_offset[facenum], w->m_Points[k] );
-        }
-        for ( k = 0; k < t->numclipplanes; k++ )
-        {
-                if ( !w->Clip( t->clipplanes[k], false
-                               , ON_EPSILON / 16.0f
-                ) )
-                {
-                        break;
-                }
-        }
-        bool intersect = w->m_NumPoints > 0;
-        delete w;
-        return intersect;
-}
-intersecttest_t *CreateIntersectTest( const dplane_t *p, int facenum )
-{
-        dface_t *f = &g_bspdata->dfaces[facenum];
-        intersecttest_t *t;
-        t = (intersecttest_t *)malloc( sizeof( intersecttest_t ) );
-        hlassume( t != NULL, assume_NoMemory );
-        t->clipplanes = (dplane_t *)malloc( f->numedges * sizeof( dplane_t ) );
-        hlassume( t->clipplanes != NULL, assume_NoMemory );
-        t->numclipplanes = 0;
-        int j;
-        for ( j = 0; j < f->numedges; j++ )
-        {
-                // should we use winding instead?
-                int edgenum = g_bspdata->dsurfedges[f->firstedge + j];
-                {
-                        vec3_t v0, v1;
-                        vec3_t dir, normal;
-                        if ( edgenum < 0 )
-                        {
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[-edgenum].v[1]].point, v0 );
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[-edgenum].v[0]].point, v1 );
-                        }
-                        else
-                        {
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[edgenum].v[0]].point, v0 );
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[edgenum].v[1]].point, v1 );
-                        }
-                        VectorAdd( v0, g_face_offset[facenum], v0 );
-                        VectorAdd( v1, g_face_offset[facenum], v1 );
-                        VectorSubtract( v1, v0, dir );
-                        CrossProduct( dir, p->normal, normal ); // facing inward
-                        if ( !VectorNormalize( normal ) )
-                        {
-                                continue;
-                        }
-                        VectorCopy( normal, t->clipplanes[t->numclipplanes].normal );
-                        t->clipplanes[t->numclipplanes].dist = DotProduct( v0, normal );
-                        t->numclipplanes++;
-                }
-        }
-        return t;
-}
-void FreeIntersectTest( intersecttest_t *t )
-{
-        free( t->clipplanes );
-        free( t );
-}
-void AddFaceForVertexNormal_printerror( const int edgeabs, const int edgeend, dface_t *const f )
-{
-        if ( DEVELOPER_LEVEL_WARNING <= g_developer )
-        {
-                int i, e;
-                Log( "AddFaceForVertexNormal - bad face:\n" );
-                Log( " edgeabs=%d edgeend=%d\n", edgeabs, edgeend );
-                for ( i = 0; i < f->numedges; i++ )
-                {
-                        e = g_bspdata->dsurfedges[f->firstedge + i];
-                        edgeshare_t *es = &g_edgeshare[abs( e )];
-                        int v0 = g_bspdata->dedges[abs( e )].v[0], v1 = g_bspdata->dedges[abs( e )].v[1];
-                        Log( " e=%d v0=%d(%f,%f,%f) v1=%d(%f,%f,%f) share0=%d share1=%d\n", e,
-                             v0, g_bspdata->dvertexes[v0].point[0], g_bspdata->dvertexes[v0].point[1], g_bspdata->dvertexes[v0].point[2],
-                             v1, g_bspdata->dvertexes[v1].point[0], g_bspdata->dvertexes[v1].point[1], g_bspdata->dvertexes[v1].point[2],
-                             ( es->faces[0] == NULL ? -1 : es->faces[0] - g_bspdata->dfaces ), ( es->faces[1] == NULL ? -1 : es->faces[1] - g_bspdata->dfaces ) );
-                }
-        }
-}
-int AddFaceForVertexNormal( const int edgeabs, int &edgeabsnext, const int edgeend, int &edgeendnext, dface_t *const f, dface_t *&fnext, vec_t &angle, vec3_t &normal )
-// Must guarantee these faces will form a loop or a chain, otherwise will result in endless loop.
-//
-//   e[end]/enext[endnext]
-//  *
-//  |\.
-//  |a\ fnext
-//  |  \,
-//  | f \.
-//  |    \.
-//  e   enext
-//
-{
-        VectorCopy( getPlaneFromFace( f )->normal, normal );
-        int vnum = g_bspdata->dedges[edgeabs].v[edgeend];
-        int iedge, iedgenext, edge, edgenext;
-        int i, e, count1, count2;
-        vec_t dot;
-        for ( count1 = count2 = 0, i = 0; i < f->numedges; i++ )
-        {
-                e = g_bspdata->dsurfedges[f->firstedge + i];
-                if ( g_bspdata->dedges[abs( e )].v[0] == g_bspdata->dedges[abs( e )].v[1] )
-                        continue;
-                if ( abs( e ) == edgeabs )
-                {
-                        iedge = i;
-                        edge = e;
-                        count1++;
-                }
-                else if ( g_bspdata->dedges[abs( e )].v[0] == vnum || g_bspdata->dedges[abs( e )].v[1] == vnum )
-                {
-                        iedgenext = i;
-                        edgenext = e;
-                        count2++;
-                }
-        }
-        if ( count1 != 1 || count2 != 1 )
-        {
-                AddFaceForVertexNormal_printerror( edgeabs, edgeend, f );
-                return -1;
-        }
-        int vnum11, vnum12, vnum21, vnum22;
-        vec3_t vec1, vec2;
-        vnum11 = g_bspdata->dedges[abs( edge )].v[edge>0 ? 0 : 1];
-        vnum12 = g_bspdata->dedges[abs( edge )].v[edge>0 ? 1 : 0];
-        vnum21 = g_bspdata->dedges[abs( edgenext )].v[edgenext>0 ? 0 : 1];
-        vnum22 = g_bspdata->dedges[abs( edgenext )].v[edgenext>0 ? 1 : 0];
-        if ( vnum == vnum12 && vnum == vnum21 && vnum != vnum11 && vnum != vnum22 )
-        {
-                VectorSubtract( g_bspdata->dvertexes[vnum11].point, g_bspdata->dvertexes[vnum].point, vec1 );
-                VectorSubtract( g_bspdata->dvertexes[vnum22].point, g_bspdata->dvertexes[vnum].point, vec2 );
-                edgeabsnext = abs( edgenext );
-                edgeendnext = edgenext>0 ? 0 : 1;
-        }
-        else if ( vnum == vnum11 && vnum == vnum22 && vnum != vnum12 && vnum != vnum21 )
-        {
-                VectorSubtract( g_bspdata->dvertexes[vnum12].point, g_bspdata->dvertexes[vnum].point, vec1 );
-                VectorSubtract( g_bspdata->dvertexes[vnum21].point, g_bspdata->dvertexes[vnum].point, vec2 );
-                edgeabsnext = abs( edgenext );
-                edgeendnext = edgenext>0 ? 1 : 0;
-        }
-        else
-        {
-                AddFaceForVertexNormal_printerror( edgeabs, edgeend, f );
-                return -1;
-        }
-        VectorNormalize( vec1 );
-        VectorNormalize( vec2 );
-        dot = DotProduct( vec1, vec2 );
-        dot = dot>1 ? 1 : dot<-1 ? -1 : dot;
-        angle = acos( dot );
-        edgeshare_t *es = &g_edgeshare[edgeabsnext];
-        if ( !( es->faces[0] && es->faces[1] ) )
-                return 1;
-        if ( es->faces[0] == f && es->faces[1] != f )
-                fnext = es->faces[1];
-        else if ( es->faces[1] == f && es->faces[0] != f )
-                fnext = es->faces[0];
-        else
-        {
-                AddFaceForVertexNormal_printerror( edgeabs, edgeend, f );
-                return -1;
-        }
-        return 0;
-}
-
-static bool TranslateTexToTex( int facenum, int edgenum, int facenum2, matrix_t &m, matrix_t &m_inverse )
-// This function creates a matrix that can translate texture coords in face1 into texture coords in face2.
-// It keeps all points in the common edge invariant. For example, if there is a point in the edge, and in the texture of face1, its (s,t)=(16,0), and in face2, its (s,t)=(128,64), then we must let matrix*(16,0,0)=(128,64,0)
-{
-        matrix_t worldtotex;
-        matrix_t worldtotex2;
-        dedge_t *e;
-        int i;
-        dvertex_t *vert[2];
-        vec3_t face_vert[2];
-        vec3_t face2_vert[2];
-        vec3_t face_axis[2];
-        vec3_t face2_axis[2];
-        const vec3_t v_up = { 0, 0, 1 };
-        vec_t len;
-        vec_t len2;
-        matrix_t edgetotex, edgetotex2;
-        matrix_t inv, inv2;
-
-        TranslateWorldToTex( facenum, worldtotex );
-        TranslateWorldToTex( facenum2, worldtotex2 );
-
-        e = &g_bspdata->dedges[edgenum];
-        for ( i = 0; i < 2; i++ )
-        {
-                vert[i] = &g_bspdata->dvertexes[e->v[i]];
-                ApplyMatrix( worldtotex, vert[i]->point, face_vert[i] );
-                face_vert[i][2] = 0; // this value is naturally close to 0 assuming that the edge is on the face plane, but let's make this more explicit.
-                ApplyMatrix( worldtotex2, vert[i]->point, face2_vert[i] );
-                face2_vert[i][2] = 0;
-        }
-
-        VectorSubtract( face_vert[1], face_vert[0], face_axis[0] );
-        len = VectorLength( face_axis[0] );
-        CrossProduct( v_up, face_axis[0], face_axis[1] );
-        if ( CalcMatrixSign( worldtotex ) < 0.0 ) // the three vectors s, t, facenormal are in reverse order
-        {
-                VectorInverse( face_axis[1] );
-        }
-
-        VectorSubtract( face2_vert[1], face2_vert[0], face2_axis[0] );
-        len2 = VectorLength( face2_axis[0] );
-        CrossProduct( v_up, face2_axis[0], face2_axis[1] );
-        if ( CalcMatrixSign( worldtotex2 ) < 0.0 )
-        {
-                VectorInverse( face2_axis[1] );
-        }
-
-        VectorCopy( face_axis[0], edgetotex.v[0] ); // / v[0][0] v[1][0] \ is a rotation (possibly with a reflection by the edge)
-        VectorCopy( face_axis[1], edgetotex.v[1] ); // \ v[0][1] v[1][1] / 
-        VectorScale( v_up, len, edgetotex.v[2] ); // encode the length into the 3rd value of the matrix
-        VectorCopy( face_vert[0], edgetotex.v[3] ); // map (0,0) into the origin point
-
-        VectorCopy( face2_axis[0], edgetotex2.v[0] );
-        VectorCopy( face2_axis[1], edgetotex2.v[1] );
-        VectorScale( v_up, len2, edgetotex2.v[2] );
-        VectorCopy( face2_vert[0], edgetotex2.v[3] );
-
-        if ( !InvertMatrix( edgetotex, inv ) || !InvertMatrix( edgetotex2, inv2 ) )
-        {
-                return false;
-        }
-        MultiplyMatrix( edgetotex2, inv, m );
-        MultiplyMatrix( edgetotex, inv2, m_inverse );
-
-        return true;
-}
 
 int EdgeVertex( dface_t *f, int edge )
 {
@@ -286,7 +36,7 @@ int EdgeVertex( dface_t *f, int edge )
         }
 }
 
-void PairEdges_New()
+void PairEdges()
 {
         int     i, j, k, n, m;
         dface_t *f;
@@ -295,7 +45,7 @@ void PairEdges_New()
         faceneighbor_t  *fn;
 
         // count number of faces that reference each vertex
-        for ( i = 0, f = g_bspdata->dfaces; i < g_bspdata->numfaces; i++; f++ )
+        for ( i = 0, f = g_bspdata->dfaces; i < g_bspdata->numfaces; i++, f++ )
         {
                 for ( j = 0; j < f->numedges; j++ )
                 {
@@ -419,281 +169,6 @@ void PairEdges_New()
         }
 }
 
-void            PairEdges()
-{
-        int             i, j, k;
-        dface_t*        f;
-        edgeshare_t*    e;
-
-        memset( &g_faceneighbor, 0, sizeof( g_faceneighbor ) );
-        memset( &g_edgeshare, 0, sizeof( g_edgeshare ) );
-
-        f = g_bspdata->dfaces;
-        for ( i = 0; i < g_bspdata->numfaces; i++, f++ )
-        {
-                faceneighbor_t fn;
-                if ( g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL )
-                {
-                        // special textures don't have lightmaps
-                        continue;
-                }
-                for ( j = 0; j < f->numedges; j++ )
-                {
-                        k = g_bspdata->dsurfedges[f->firstedge + j];
-                        int edgeindex;
-                        if ( k < 0 )
-                        {
-                                edgeindex = -k;
-                                e = &g_edgeshare[edgeindex];
-
-                                hlassert( e->faces[1] == NULL );
-                                e->faces[1] = f;
-                        }
-                        else
-                        {
-                                edgeindex = k;
-                                e = &g_edgeshare[edgeindex];
-
-                                hlassert( e->faces[0] == NULL );
-                                e->faces[0] = f;
-                        }
-
-                        if ( e->faces[0] && e->faces[1] )
-                        {
-                                bool me = e->faces[0] == f || e->faces[1] == f;
-
-                                if ( me )
-                                {
-                                        // I'm sharing an edge with another face.
-                                        // record that sharing
-                                        // Figure out which face is my neighbor face:
-                                        for ( int en = 0; en < 2; en++ )
-                                        {
-                                                if ( e->faces[en] != f )
-                                                {
-                                                        fn.neighbors[fn.numneighbors] = e->faces[en] - g_bspdata->dfaces;
-                                                        break;
-                                                }
-                                        }
-                                        fn.edgeshare[fn.numneighbors] = edgeindex;
-                                        fn.numneighbors++;
-                                }
-                                
-                                // determine if coplanar
-                                if ( e->faces[0]->planenum == e->faces[1]->planenum
-                                     && e->faces[0]->side == e->faces[1]->side
-                                     )
-                                {
-                                        e->coplanar = true;
-                                        VectorCopy( getPlaneFromFace( e->faces[0] )->normal, e->interface_normal );
-                                        e->cos_normals_angle = 1.0;
-                                }
-                                else
-                                {
-                                        // see if they fall into a "smoothing group" based on angle of the normals
-                                        vec3_t          normals[2];
-
-                                        VectorCopy( getPlaneFromFace( e->faces[0] )->normal, normals[0] );
-                                        VectorCopy( getPlaneFromFace( e->faces[1] )->normal, normals[1] );
-
-                                        e->cos_normals_angle = DotProduct( normals[0], normals[1] );
-
-                                        vec_t smoothvalue;
-                                        int m0 = g_bspdata->texinfo[e->faces[0]->texinfo].texref;
-                                        int m1 = g_bspdata->texinfo[e->faces[1]->texinfo].texref;
-                                        smoothvalue = qmax( g_smoothvalues[m0], g_smoothvalues[m1] );
-                                        if ( m0 != m1 )
-                                        {
-                                                smoothvalue = qmax( smoothvalue, g_smoothing_threshold_2 );
-                                        }
-                                        if ( smoothvalue >= 1.0 - NORMAL_EPSILON )
-                                        {
-                                                smoothvalue = 2.0;
-                                        }
-                                        if ( e->cos_normals_angle > ( 1.0 - NORMAL_EPSILON ) )
-                                        {
-                                                e->coplanar = true;
-                                                VectorCopy( getPlaneFromFace( e->faces[0] )->normal, e->interface_normal );
-                                                e->cos_normals_angle = 1.0;
-                                        }
-                                        else if ( e->cos_normals_angle >= qmax( smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON ) )
-                                        {
-                                                {
-                                                        VectorAdd( normals[0], normals[1], e->interface_normal );
-                                                        VectorNormalize( e->interface_normal );
-                                                }
-                                        }
-                                }
-                                if ( !VectorCompare( g_translucenttextures[g_bspdata->texinfo[e->faces[0]->texinfo].texref], g_translucenttextures[g_bspdata->texinfo[e->faces[1]->texinfo].texref] ) )
-                                {
-                                        e->coplanar = false;
-                                        VectorClear( e->interface_normal );
-                                }
-                                {
-                                        int miptex0, miptex1;
-                                        miptex0 = g_bspdata->texinfo[e->faces[0]->texinfo].texref;
-                                        miptex1 = g_bspdata->texinfo[e->faces[1]->texinfo].texref;
-                                        if ( fabs( g_lightingconeinfo[miptex0][0] - g_lightingconeinfo[miptex1][0] ) > NORMAL_EPSILON ||
-                                             fabs( g_lightingconeinfo[miptex0][1] - g_lightingconeinfo[miptex1][1] ) > NORMAL_EPSILON )
-                                        {
-                                                e->coplanar = false;
-                                                VectorClear( e->interface_normal );
-                                        }
-                                }
-                                if ( !VectorCompare( e->interface_normal, vec3_origin ) )
-                                {
-                                        e->smooth = true;
-                                }
-                                if ( e->smooth )
-                                {
-                                        // compute the matrix in advance
-                                        if ( !TranslateTexToTex( e->faces[0] - g_bspdata->dfaces, abs( k ), e->faces[1] - g_bspdata->dfaces, e->textotex[0], e->textotex[1] ) )
-                                        {
-                                                e->smooth = false;
-                                                e->coplanar = false;
-                                                VectorClear( e->interface_normal );
-
-                                                dvertex_t *dv = &g_bspdata->dvertexes[g_bspdata->dedges[abs( k )].v[0]];
-                                                Developer( DEVELOPER_LEVEL_MEGASPAM, "TranslateTexToTex failed on face %d and %d @(%f,%f,%f)", (int)( e->faces[0] - g_bspdata->dfaces ), (int)( e->faces[1] - g_bspdata->dfaces ), dv->point[0], dv->point[1], dv->point[2] );
-                                        }
-                                }
-                        }
-                }
-                g_faceneighbor[i] = fn;
-        }
-        {
-                int edgeabs, edgeabsnext;
-                int edgeend, edgeendnext;
-                int d;
-                dface_t *f, *fcurrent, *fnext;
-                vec_t angle, angles;
-                vec3_t normal, normals;
-                vec3_t edgenormal;
-                int r, count;
-                for ( edgeabs = 0; edgeabs < MAX_MAP_EDGES; edgeabs++ )
-                {
-                        e = &g_edgeshare[edgeabs];
-                        if ( !e->smooth )
-                                continue;
-                        VectorCopy( e->interface_normal, edgenormal );
-                        if ( g_bspdata->dedges[edgeabs].v[0] == g_bspdata->dedges[edgeabs].v[1] )
-                        {
-                                vec3_t errorpos;
-                                VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[edgeabs].v[0]].point, errorpos );
-                                VectorAdd( errorpos, g_face_offset[e->faces[0] - g_bspdata->dfaces], errorpos );
-                                Developer( DEVELOPER_LEVEL_WARNING, "PairEdges: invalid edge at (%f,%f,%f)", errorpos[0], errorpos[1], errorpos[2] );
-                                VectorCopy( edgenormal, e->vertex_normal[0] );
-                                VectorCopy( edgenormal, e->vertex_normal[1] );
-                        }
-                        else
-                        {
-                                const dplane_t *p0 = getPlaneFromFace( e->faces[0] );
-                                const dplane_t *p1 = getPlaneFromFace( e->faces[1] );
-                                intersecttest_t *test0 = CreateIntersectTest( p0, e->faces[0] - g_bspdata->dfaces );
-                                intersecttest_t *test1 = CreateIntersectTest( p1, e->faces[1] - g_bspdata->dfaces );
-                                for ( edgeend = 0; edgeend < 2; edgeend++ )
-                                {
-                                        vec3_t errorpos;
-                                        VectorCopy( g_bspdata->dvertexes[g_bspdata->dedges[edgeabs].v[edgeend]].point, errorpos );
-                                        VectorAdd( errorpos, g_face_offset[e->faces[0] - g_bspdata->dfaces], errorpos );
-                                        angles = 0;
-                                        VectorClear( normals );
-
-                                        for ( d = 0; d < 2; d++ )
-                                        {
-                                                f = e->faces[d];
-                                                count = 0, fnext = f, edgeabsnext = edgeabs, edgeendnext = edgeend;
-                                                while ( 1 )
-                                                {
-                                                        fcurrent = fnext;
-                                                        r = AddFaceForVertexNormal( edgeabsnext, edgeabsnext, edgeendnext, edgeendnext, fcurrent, fnext, angle, normal );
-                                                        count++;
-                                                        if ( r == -1 )
-                                                        {
-                                                                Developer( DEVELOPER_LEVEL_WARNING, "PairEdges: face edges mislink at (%f,%f,%f)", errorpos[0], errorpos[1], errorpos[2] );
-                                                                break;
-                                                        }
-                                                        if ( count >= 100 )
-                                                        {
-                                                                Developer( DEVELOPER_LEVEL_WARNING, "PairEdges: faces mislink at (%f,%f,%f)", errorpos[0], errorpos[1], errorpos[2] );
-                                                                break;
-                                                        }
-                                                        if ( DotProduct( normal, p0->normal ) <= NORMAL_EPSILON || DotProduct( normal, p1->normal ) <= NORMAL_EPSILON )
-                                                                break;
-                                                        vec_t smoothvalue;
-                                                        int m0 = g_bspdata->texinfo[f->texinfo].texref;
-                                                        int m1 = g_bspdata->texinfo[fcurrent->texinfo].texref;
-                                                        smoothvalue = qmax( g_smoothvalues[m0], g_smoothvalues[m1] );
-                                                        if ( m0 != m1 )
-                                                        {
-                                                                smoothvalue = qmax( smoothvalue, g_smoothing_threshold_2 );
-                                                        }
-                                                        if ( smoothvalue >= 1.0 - NORMAL_EPSILON )
-                                                        {
-                                                                smoothvalue = 2.0;
-                                                        }
-                                                        if ( DotProduct( edgenormal, normal ) < qmax( smoothvalue - NORMAL_EPSILON, NORMAL_EPSILON ) )
-                                                                break;
-                                                        if ( fcurrent != e->faces[0] && fcurrent != e->faces[1] &&
-                                                                ( TestFaceIntersect( test0, fcurrent - g_bspdata->dfaces ) || TestFaceIntersect( test1, fcurrent - g_bspdata->dfaces ) ) )
-                                                        {
-                                                                Developer( DEVELOPER_LEVEL_WARNING, "Overlapping faces around corner (%f,%f,%f)\n", errorpos[0], errorpos[1], errorpos[2] );
-                                                                break;
-                                                        }
-                                                        angles += angle;
-                                                        VectorMA( normals, angle, normal, normals );
-                                                        {
-                                                                bool in = false;
-                                                                if ( fcurrent == e->faces[0] || fcurrent == e->faces[1] )
-                                                                {
-                                                                        in = true;
-                                                                }
-                                                                for ( facelist_t *l = e->vertex_facelist[edgeend]; l; l = l->next )
-                                                                {
-                                                                        if ( fcurrent == l->face )
-                                                                        {
-                                                                                in = true;
-                                                                        }
-                                                                }
-                                                                if ( !in )
-                                                                {
-                                                                        facelist_t *l = (facelist_t *)malloc( sizeof( facelist_t ) );
-                                                                        hlassume( l != NULL, assume_NoMemory );
-                                                                        l->face = fcurrent;
-                                                                        l->next = e->vertex_facelist[edgeend];
-                                                                        e->vertex_facelist[edgeend] = l;
-                                                                }
-                                                        }
-                                                        if ( r != 0 || fnext == f )
-                                                                break;
-                                                }
-                                        }
-
-                                        if ( angles < NORMAL_EPSILON )
-                                        {
-                                                VectorCopy( edgenormal, e->vertex_normal[edgeend] );
-                                                Developer( DEVELOPER_LEVEL_WARNING, "PairEdges: no valid faces at (%f,%f,%f)", errorpos[0], errorpos[1], errorpos[2] );
-                                        }
-                                        else
-                                        {
-                                                VectorNormalize( normals );
-                                                VectorCopy( normals, e->vertex_normal[edgeend] );
-                                        }
-                                }
-                                FreeIntersectTest( test0 );
-                                FreeIntersectTest( test1 );
-                        }
-                        if ( e->coplanar )
-                        {
-                                if ( !VectorCompare( e->vertex_normal[0], e->interface_normal ) || !VectorCompare( e->vertex_normal[1], e->interface_normal ) )
-                                {
-                                        e->coplanar = false;
-                                }
-                        }
-                }
-        }
-}
-
 // =====================================================================================
 //  TextureNameFromFace
 // =====================================================================================
@@ -808,35 +283,6 @@ static void     CalcFaceExtents( lightinfo_t* l )
                         Error( "Bad surface extents (%d x %d)\nCheck the file ZHLTProblems.html for a detailed explanation of this problem", l->texsize[0], l->texsize[1] );
                 }
         }
-        // allocate sample light cache
-        {
-                if ( g_extra
-                     && !g_fastmode
-                     )
-                {
-                        l->lmcache_density = 9;
-                }
-                else
-                {
-                        l->lmcache_density = 1;
-                }
-                l->lmcache_side = (int)ceil( ( 0.5 * g_blur * l->lmcache_density - 0.5 ) * ( 1 - NORMAL_EPSILON ) );
-                l->lmcache_offset = l->lmcache_side;
-                l->lmcachewidth = l->texsize[0] * l->lmcache_density + 1 + 2 * l->lmcache_side;
-                l->lmcacheheight = l->texsize[1] * l->lmcache_density + 1 + 2 * l->lmcache_side;
-
-                //l->lmcache = new bumpsample_t[ALLSTYLES][l->lmcachewidth * l->lmcacheheight];
-                l->lmcache = ( bumpsample_t (*)[ALLSTYLES] )malloc( l->lmcachewidth * l->lmcacheheight * sizeof( bumpsample_t[ALLSTYLES] ) );
-                memset( l->lmcache, 0, sizeof( l->lmcache ) );
-
-                l->lmcache_normal = (bumpnormal_t *)malloc( l->lmcachewidth * l->lmcacheheight * sizeof( bumpnormal_t ) );
-                hlassume( l->lmcache_normal != NULL, assume_NoMemory );
-                l->lmcache_wallflags = (int *)malloc( l->lmcachewidth * l->lmcacheheight * sizeof( int ) );
-                hlassume( l->lmcache_wallflags != NULL, assume_NoMemory );
-                l->surfpt_position = (vec3_t *)malloc( MAX_SINGLEMAP * sizeof( vec3_t ) );
-                l->surfpt_surface = (int *)malloc( MAX_SINGLEMAP * sizeof( int ) );
-                hlassume( l->surfpt_position != NULL && l->surfpt_surface != NULL, assume_NoMemory );
-        }
 }
 
 // =====================================================================================
@@ -891,2331 +337,15 @@ static void     CalcFaceVectors( lightinfo_t* l )
 }
 
 // =====================================================================================
-//  SetSurfFromST
-// =====================================================================================
-static void     SetSurfFromST( const lightinfo_t* const l, vec_t* surf, const vec_t s, const vec_t t )
-{
-        const int       facenum = l->surfnum;
-        int             j;
-
-        for ( j = 0; j < 3; j++ )
-        {
-                surf[j] = l->texorg[j] + l->textoworld[0][j] * s + l->textoworld[1][j] * t;
-        }
-
-        // Adjust for origin-based models
-        VectorAdd( surf, g_face_offset[facenum], surf );
-}
-
-
-typedef enum
-{
-        LightOutside,                                          // Not lit
-        LightShifted,                                          // used HuntForWorld on 100% dark face
-        LightShiftedInside,                                    // moved to neighbhor on 2nd cleanup pass
-        LightNormal,                                           // Normally lit with no movement
-        LightPulledInside,                                     // Pulled inside by bleed code adjustments
-        LightSimpleNudge,                                      // A simple nudge 1/3 or 2/3 towards center along S or T axist
-}
-light_flag_t;
-
-// =====================================================================================
 //  CalcPoints
 //      For each texture aligned grid point, back project onto the plane
 //      to get the world xyz value of the sample point
 // =====================================================================================
-static void		SetSTFromSurf( const lightinfo_t* const l, const vec_t* surf, vec_t& s, vec_t& t )
-{
-        const int       facenum = l->surfnum;
-        int             j;
-
-        s = t = 0;
-        for ( j = 0; j < 3; j++ )
-        {
-                s += ( surf[j] - g_face_offset[facenum][j] - l->texorg[j] ) * l->worldtotex[0][j];
-                t += ( surf[j] - g_face_offset[facenum][j] - l->texorg[j] ) * l->worldtotex[1][j];
-        }
-}
-
-typedef struct
-{
-        int edgenum; // g_bspdata->dedges index
-        int edgeside;
-        int nextfacenum; // where to grow
-        bool tried;
-
-        vec3_t point1; // start point
-        vec3_t point2; // end point
-        vec3_t direction; // normalized; from point1 to point2
-
-        bool noseam;
-        vec_t distance; // distance from origin
-        vec_t distancereduction;
-        vec_t flippedangle;
-
-        vec_t ratio; // if ratio != 1, seam is unavoidable
-        matrix_t prevtonext;
-        matrix_t nexttoprev;
-}
-samplefragedge_t;
-
-typedef struct
-{
-        dplane_t planes[4];
-}
-samplefragrect_t;
-
-typedef struct samplefrag_s
-{
-        samplefrag_s *next; // since this is a node in a list
-        samplefrag_s *parentfrag; // where it grew from
-        samplefragedge_t *parentedge;
-        int facenum; // facenum
-
-        vec_t flippedangle; // copied from parent edge
-        bool noseam; // copied from parent edge
-
-        matrix_t coordtomycoord; // v[2][2] > 0, v[2][0] = v[2][1] = v[0][2] = v[1][2] = 0.0
-        matrix_t mycoordtocoord;
-
-        vec3_t origin; // original s,t
-        vec3_t myorigin; // relative to the texture coordinate on that face
-        samplefragrect_t rect; // original rectangle that forms the boundary
-        samplefragrect_t myrect; // relative to the texture coordinate on that face
-
-        Winding *winding; // a fragment of the original rectangle in the texture coordinate plane; windings of different frags should not overlap
-        dplane_t windingplane; // normal = (0,0,1) or (0,0,-1); if this normal is wrong, point_in_winding() will never return true
-        Winding *mywinding; // relative to the texture coordinate on that face
-        dplane_t mywindingplane;
-
-        int numedges; // # of candicates for the next growth
-        samplefragedge_t *edges; // candicates for the next growth
-}
-samplefrag_t;
-
-typedef struct
-{
-        int maxsize;
-        int size;
-        samplefrag_t *head;
-}
-samplefraginfo_t;
-
-void ChopFrag( samplefrag_t *frag )
-// fill winding, windingplane, mywinding, mywindingplane, numedges, edges
-{
-        // get the shape of the fragment by clipping the face using the boundaries
-        dface_t *f;
-        Winding *facewinding;
-        matrix_t worldtotex;
-        const vec3_t v_up = { 0, 0, 1 };
-
-        f = &g_bspdata->dfaces[frag->facenum];
-        facewinding = new Winding( *f, g_bspdata );
-
-        TranslateWorldToTex( frag->facenum, worldtotex );
-        frag->mywinding = new Winding( facewinding->m_NumPoints );
-        for ( int x = 0; x < facewinding->m_NumPoints; x++ )
-        {
-                ApplyMatrix( worldtotex, facewinding->m_Points[x], frag->mywinding->m_Points[x] );
-                frag->mywinding->m_Points[x][2] = 0.0;
-        }
-        frag->mywinding->RemoveColinearPoints();
-        VectorCopy( v_up, frag->mywindingplane.normal ); // this is the same as applying the worldtotex matrix to the faceplane
-        if ( CalcMatrixSign( worldtotex ) < 0.0 )
-        {
-                frag->mywindingplane.normal[2] *= -1;
-        }
-        frag->mywindingplane.dist = 0.0;
-
-        for ( int x = 0; x < 4 && frag->mywinding->m_NumPoints > 0; x++ )
-        {
-                frag->mywinding->Clip( frag->myrect.planes[x], false, ON_EPSILON / 16.0f );
-        }
-
-        frag->winding = new Winding( frag->mywinding->m_NumPoints );
-        for ( int x = 0; x < frag->mywinding->m_NumPoints; x++ )
-        {
-                ApplyMatrix( frag->mycoordtocoord, frag->mywinding->m_Points[x], frag->winding->m_Points[x] );
-        }
-        frag->winding->RemoveColinearPoints();
-        VectorCopy( frag->mywindingplane.normal, frag->windingplane.normal );
-        if ( CalcMatrixSign( frag->mycoordtocoord ) < 0.0 )
-        {
-                frag->windingplane.normal[2] *= -1;
-        }
-        frag->windingplane.dist = 0.0;
-
-        delete facewinding;
-
-        // find the edges where the fragment can grow in the future
-        frag->numedges = 0;
-        frag->edges = (samplefragedge_t *)malloc( f->numedges * sizeof( samplefragedge_t ) );
-        hlassume( frag->edges != NULL, assume_NoMemory );
-        for ( int i = 0; i < f->numedges; i++ )
-        {
-                samplefragedge_t *e;
-                edgeshare_t *es;
-                dedge_t *de;
-                dvertex_t *dv1;
-                dvertex_t *dv2;
-                vec_t frac1, frac2;
-                vec_t edgelen;
-                vec_t dot, dot1, dot2;
-                vec3_t tmp, v, normal;
-                const matrix_t *m;
-                const matrix_t *m_inverse;
-
-                e = &frag->edges[frag->numedges];
-
-                // some basic info
-                e->edgenum = abs( g_bspdata->dsurfedges[f->firstedge + i] );
-                e->edgeside = ( g_bspdata->dsurfedges[f->firstedge + i] < 0 ? 1 : 0 );
-                es = &g_edgeshare[e->edgenum];
-                if ( !es->smooth )
-                {
-                        continue;
-                }
-                if ( es->faces[e->edgeside] - g_bspdata->dfaces != frag->facenum )
-                {
-                        Error( "internal error 1 in GrowSingleSampleFrag" );
-                }
-                m = &es->textotex[e->edgeside];
-                m_inverse = &es->textotex[1 - e->edgeside];
-                e->nextfacenum = es->faces[1 - e->edgeside] - g_bspdata->dfaces;
-                if ( e->nextfacenum == frag->facenum )
-                {
-                        continue; // an invalid edge (usually very short)
-                }
-                e->tried = false; // because the frag hasn't been linked into the list yet
-
-                                  // translate the edge points from world to the texture plane of the original frag
-                                  //   so the distances are able to be compared among edges from different frags
-                de = &g_bspdata->dedges[e->edgenum];
-                dv1 = &g_bspdata->dvertexes[de->v[e->edgeside]];
-                dv2 = &g_bspdata->dvertexes[de->v[1 - e->edgeside]];
-                ApplyMatrix( worldtotex, dv1->point, tmp );
-                ApplyMatrix( frag->mycoordtocoord, tmp, e->point1 );
-                e->point1[2] = 0.0;
-                ApplyMatrix( worldtotex, dv2->point, tmp );
-                ApplyMatrix( frag->mycoordtocoord, tmp, e->point2 );
-                e->point2[2] = 0.0;
-                VectorSubtract( e->point2, e->point1, e->direction );
-                edgelen = VectorNormalize( e->direction );
-                if ( edgelen <= ON_EPSILON )
-                {
-                        continue;
-                }
-
-                // clip the edge
-                frac1 = 0;
-                frac2 = 1;
-                for ( int x = 0; x < 4; x++ )
-                {
-                        vec_t dot1;
-                        vec_t dot2;
-
-                        dot1 = DotProduct( e->point1, frag->rect.planes[x].normal ) - frag->rect.planes[x].dist;
-                        dot2 = DotProduct( e->point2, frag->rect.planes[x].normal ) - frag->rect.planes[x].dist;
-                        if ( dot1 <= ON_EPSILON && dot2 <= ON_EPSILON )
-                        {
-                                frac1 = 1;
-                                frac2 = 0;
-                        }
-                        else if ( dot1 < 0 )
-                        {
-                                frac1 = qmax( frac1, dot1 / ( dot1 - dot2 ) );
-                        }
-                        else if ( dot2 < 0 )
-                        {
-                                frac2 = qmin( frac2, dot1 / ( dot1 - dot2 ) );
-                        }
-                }
-                if ( edgelen * ( frac2 - frac1 ) <= ON_EPSILON )
-                {
-                        continue;
-                }
-                VectorMA( e->point1, edgelen * frac2, e->direction, e->point2 );
-                VectorMA( e->point1, edgelen * frac1, e->direction, e->point1 );
-
-                // calculate the distance, etc., which are used to determine its priority
-                e->noseam = frag->noseam;
-                dot = DotProduct( frag->origin, e->direction );
-                dot1 = DotProduct( e->point1, e->direction );
-                dot2 = DotProduct( e->point2, e->direction );
-                dot = qmax( dot1, qmin( dot, dot2 ) );
-                VectorMA( e->point1, dot - dot1, e->direction, v );
-                VectorSubtract( v, frag->origin, v );
-                e->distance = VectorLength( v );
-                CrossProduct( e->direction, frag->windingplane.normal, normal );
-                VectorNormalize( normal ); // points inward
-                e->distancereduction = DotProduct( v, normal );
-                e->flippedangle = frag->flippedangle + acos( qmin( es->cos_normals_angle, 1.0 ) );
-
-                // calculate the matrix
-                e->ratio = ( *m_inverse ).v[2][2];
-                if ( e->ratio <= NORMAL_EPSILON || ( 1 / e->ratio ) <= NORMAL_EPSILON )
-                {
-                        Developer( DEVELOPER_LEVEL_SPAM, "TranslateTexToTex failed on face %d and %d @(%f,%f,%f)", frag->facenum, e->nextfacenum, dv1->point[0], dv1->point[1], dv1->point[2] );
-                        continue;
-                }
-
-                if ( fabs( e->ratio - 1 ) < 0.005 )
-                {
-                        e->prevtonext = *m;
-                        e->nexttoprev = *m_inverse;
-                }
-                else
-                {
-                        e->noseam = false;
-                        e->prevtonext = *m;
-                        e->nexttoprev = *m_inverse;
-                }
-
-                frag->numedges++;
-        }
-}
-
-static samplefrag_t *GrowSingleFrag( const samplefraginfo_t *info, samplefrag_t *parent, samplefragedge_t *edge )
-{
-        samplefrag_t *frag;
-        bool overlap;
-        int numclipplanes;
-        dplane_t *clipplanes;
-
-        frag = (samplefrag_t *)malloc( sizeof( samplefrag_t ) );
-        hlassume( frag != NULL, assume_NoMemory );
-
-        // some basic info
-        frag->next = NULL;
-        frag->parentfrag = parent;
-        frag->parentedge = edge;
-        frag->facenum = edge->nextfacenum;
-
-        frag->flippedangle = edge->flippedangle;
-        frag->noseam = edge->noseam;
-
-        // calculate the matrix
-        MultiplyMatrix( edge->prevtonext, parent->coordtomycoord, frag->coordtomycoord );
-        MultiplyMatrix( parent->mycoordtocoord, edge->nexttoprev, frag->mycoordtocoord );
-
-        // fill in origin
-        VectorCopy( parent->origin, frag->origin );
-        ApplyMatrix( frag->coordtomycoord, frag->origin, frag->myorigin );
-
-        // fill in boundaries
-        frag->rect = parent->rect;
-        for ( int x = 0; x < 4; x++ )
-        {
-                // since a plane's parameters are in the dual coordinate space, we translate the original absolute plane into this relative plane by multiplying the inverse matrix
-                ApplyMatrixOnPlane( frag->mycoordtocoord, frag->rect.planes[x].normal, frag->rect.planes[x].dist, frag->myrect.planes[x].normal, frag->myrect.planes[x].dist );
-                double len = VectorLength( frag->myrect.planes[x].normal );
-                if ( !len )
-                {
-                        Developer( DEVELOPER_LEVEL_MEGASPAM, "couldn't translate sample boundaries on face %d", frag->facenum );
-                        free( frag );
-                        return NULL;
-                }
-                VectorScale( frag->myrect.planes[x].normal, 1 / len, frag->myrect.planes[x].normal );
-                frag->myrect.planes[x].dist /= len;
-        }
-
-        // chop windings and edges
-        ChopFrag( frag );
-
-        if ( frag->winding->m_NumPoints == 0 || frag->mywinding->m_NumPoints == 0 )
-        {
-                // empty
-                delete frag->mywinding;
-                delete frag->winding;
-                free( frag->edges );
-                free( frag );
-                return NULL;
-        }
-
-        // do overlap test
-
-        overlap = false;
-        clipplanes = (dplane_t *)malloc( frag->winding->m_NumPoints * sizeof( dplane_t ) );
-        hlassume( clipplanes != NULL, assume_NoMemory );
-        numclipplanes = 0;
-        for ( int x = 0; x < frag->winding->m_NumPoints; x++ )
-        {
-                vec3_t v;
-                VectorSubtract( frag->winding->m_Points[( x + 1 ) % frag->winding->m_NumPoints], frag->winding->m_Points[x], v );
-                CrossProduct( v, frag->windingplane.normal, clipplanes[numclipplanes].normal );
-                if ( !VectorNormalize( clipplanes[numclipplanes].normal ) )
-                {
-                        continue;
-                }
-                clipplanes[numclipplanes].dist = DotProduct( frag->winding->m_Points[x], clipplanes[numclipplanes].normal );
-                numclipplanes++;
-        }
-        for ( samplefrag_t *f2 = info->head; f2 && !overlap; f2 = f2->next )
-        {
-                Winding *w = new Winding( *f2->winding );
-                for ( int x = 0; x < numclipplanes && w->m_NumPoints > 0; x++ )
-                {
-                        w->Clip( clipplanes[x], false
-                                 , ON_EPSILON / 16.0f
-                        );
-                }
-                if ( w->m_NumPoints > 0 )
-                {
-                        overlap = true;
-                }
-                delete w;
-        }
-        free( clipplanes );
-        if ( overlap )
-        {
-                // in the original texture plane, this fragment overlaps with some existing fragments
-                delete frag->mywinding;
-                delete frag->winding;
-                free( frag->edges );
-                free( frag );
-                return NULL;
-        }
-
-        return frag;
-}
-
-static bool FindBestEdge( samplefraginfo_t *info, samplefrag_t *&bestfrag, samplefragedge_t *&bestedge )
-{
-        samplefrag_t *f;
-        samplefragedge_t *e;
-        bool found;
-
-        found = false;
-
-        for ( f = info->head; f; f = f->next )
-        {
-                for ( e = f->edges; e < f->edges + f->numedges; e++ )
-                {
-                        if ( e->tried )
-                        {
-                                continue;
-                        }
-
-                        bool better;
-
-                        if ( !found )
-                        {
-                                better = true;
-                        }
-                        else if ( ( e->flippedangle < Q_PI + NORMAL_EPSILON ) != ( bestedge->flippedangle < Q_PI + NORMAL_EPSILON ) )
-                        {
-                                better = ( ( e->flippedangle < Q_PI + NORMAL_EPSILON ) && !( bestedge->flippedangle < Q_PI + NORMAL_EPSILON ) );
-                        }
-                        else if ( e->noseam != bestedge->noseam )
-                        {
-                                better = ( e->noseam && !bestedge->noseam );
-                        }
-                        else if ( fabs( e->distance - bestedge->distance ) > ON_EPSILON )
-                        {
-                                better = ( e->distance < bestedge->distance );
-                        }
-                        else if ( fabs( e->distancereduction - bestedge->distancereduction ) > ON_EPSILON )
-                        {
-                                better = ( e->distancereduction > bestedge->distancereduction );
-                        }
-                        else
-                        {
-                                better = e->edgenum < bestedge->edgenum;
-                        }
-
-                        if ( better )
-                        {
-                                found = true;
-                                bestfrag = f;
-                                bestedge = e;
-                        }
-                }
-        }
-
-        return found;
-}
-
-static samplefraginfo_t *CreateSampleFrag( int facenum, vec_t s, vec_t t,
-                                           const vec_t square[2][2],
-                                           int maxsize )
-{
-        samplefraginfo_t *info;
-        const vec3_t v_s = { 1, 0, 0 };
-        const vec3_t v_t = { 0, 1, 0 };
-
-        info = (samplefraginfo_t *)malloc( sizeof( samplefraginfo_t ) );
-        hlassume( info != NULL, assume_NoMemory );
-        info->maxsize = maxsize;
-        info->size = 1;
-        info->head = (samplefrag_t *)malloc( sizeof( samplefrag_t ) );
-        hlassume( info->head != NULL, assume_NoMemory );
-
-        info->head->next = NULL;
-        info->head->parentfrag = NULL;
-        info->head->parentedge = NULL;
-        info->head->facenum = facenum;
-
-        info->head->flippedangle = 0.0;
-        info->head->noseam = true;
-
-        MatrixForScale( vec3_origin, 1.0, info->head->coordtomycoord );
-        MatrixForScale( vec3_origin, 1.0, info->head->mycoordtocoord );
-
-        info->head->origin[0] = s;
-        info->head->origin[1] = t;
-        info->head->origin[2] = 0.0;
-        VectorCopy( info->head->origin, info->head->myorigin );
-
-        VectorScale( v_s, 1, info->head->rect.planes[0].normal ); info->head->rect.planes[0].dist = square[0][0]; // smin
-        VectorScale( v_s, -1, info->head->rect.planes[1].normal ); info->head->rect.planes[1].dist = -square[1][0]; // smax
-        VectorScale( v_t, 1, info->head->rect.planes[2].normal ); info->head->rect.planes[2].dist = square[0][1]; // tmin
-        VectorScale( v_t, -1, info->head->rect.planes[3].normal ); info->head->rect.planes[3].dist = -square[1][1]; // tmax
-        info->head->myrect = info->head->rect;
-
-        ChopFrag( info->head );
-
-        if ( info->head->winding->m_NumPoints == 0 || info->head->mywinding->m_NumPoints == 0 )
-        {
-                // empty
-                delete info->head->mywinding;
-                delete info->head->winding;
-                free( info->head->edges );
-                free( info->head );
-                info->head = NULL;
-                info->size = 0;
-        }
-        else
-        {
-                // prune edges
-                for ( samplefragedge_t *e = info->head->edges; e < info->head->edges + info->head->numedges; e++ )
-                {
-                        if ( e->nextfacenum == info->head->facenum )
-                        {
-                                e->tried = true;
-                        }
-                }
-        }
-
-        while ( info->size < info->maxsize )
-        {
-                samplefrag_t *bestfrag;
-                samplefragedge_t *bestedge;
-                samplefrag_t *newfrag;
-
-                if ( !FindBestEdge( info, bestfrag, bestedge ) )
-                {
-                        break;
-                }
-
-                newfrag = GrowSingleFrag( info, bestfrag, bestedge );
-                bestedge->tried = true;
-
-                if ( newfrag )
-                {
-                        newfrag->next = info->head;
-                        info->head = newfrag;
-                        info->size++;
-
-                        for ( samplefrag_t *f = info->head; f; f = f->next )
-                        {
-                                for ( samplefragedge_t *e = newfrag->edges; e < newfrag->edges + newfrag->numedges; e++ )
-                                {
-                                        if ( e->nextfacenum == f->facenum )
-                                        {
-                                                e->tried = true;
-                                        }
-                                }
-                        }
-                        for ( samplefrag_t *f = info->head; f; f = f->next )
-                        {
-                                for ( samplefragedge_t *e = f->edges; e < f->edges + f->numedges; e++ )
-                                {
-                                        if ( e->nextfacenum == newfrag->facenum )
-                                        {
-                                                e->tried = true;
-                                        }
-                                }
-                        }
-                }
-        }
-
-        return info;
-}
-
-static bool IsFragEmpty( samplefraginfo_t *fraginfo )
-{
-        return ( fraginfo->size == 0 );
-}
-
-static void DeleteSampleFrag( samplefraginfo_t *fraginfo )
-{
-        while ( fraginfo->head )
-        {
-                samplefrag_t *f;
-
-                f = fraginfo->head;
-                fraginfo->head = f->next;
-                delete f->mywinding;
-                delete f->winding;
-                free( f->edges );
-                free( f );
-        }
-        free( fraginfo );
-}
-
-static light_flag_t SetSampleFromST( vec_t* const point,
-                                     vec_t* const position, // a valid world position for light tracing
-                                     int* const surface, // the face used for phong normal and patch interpolation
-                                     bool *nudged,
-                                     const lightinfo_t* const l, const vec_t original_s, const vec_t original_t,
-                                     const vec_t square[2][2], // {smin, tmin}, {smax, tmax}
-                                     eModelLightmodes lightmode,
-                                     Winding *&winding )
-{
-        light_flag_t LuxelFlag;
-        int facenum;
-        dface_t *face;
-        const dplane_t*	faceplane;
-        samplefraginfo_t *fraginfo;
-        samplefrag_t *f;
-
-        facenum = l->surfnum;
-        face = l->face;
-        faceplane = getPlaneFromFace( face );
-
-        fraginfo = CreateSampleFrag( facenum, original_s, original_t,
-                                     square,
-                                     100 );
-
-        bool found;
-        samplefrag_t *bestfrag;
-        vec3_t bestpos;
-        vec_t bests, bestt;
-        vec_t best_dist;
-        bool best_nudged;
-
-        found = false;
-        for ( f = fraginfo->head; f; f = f->next )
-        {
-                vec3_t pos;
-                vec_t s, t;
-                vec_t dist;
-
-                bool nudged_one;
-                if ( !FindNearestPosition( f->facenum, f->mywinding, f->mywindingplane, f->myorigin[0], f->myorigin[1], pos, &s, &t, &dist
-                                           , &nudged_one
-                ) )
-                {
-                        continue;
-                }
-
-                bool better;
-
-                if ( !found )
-                {
-                        better = true;
-                }
-                else if ( nudged_one != best_nudged )
-                {
-                        better = !nudged_one;
-                }
-                else if ( fabs( dist - best_dist ) > 2 * ON_EPSILON )
-                {
-                        better = ( dist < best_dist );
-                }
-                else if ( f->noseam != bestfrag->noseam )
-                {
-                        better = ( f->noseam && !bestfrag->noseam );
-                }
-                else
-                {
-                        better = ( f->facenum < bestfrag->facenum );
-                }
-
-                if ( better )
-                {
-                        found = true;
-                        bestfrag = f;
-                        VectorCopy( pos, bestpos );
-                        bests = s;
-                        bestt = t;
-                        best_dist = dist;
-                        best_nudged = nudged_one;
-                }
-        }
-
-        if ( found )
-        {
-                matrix_t worldtotex, textoworld;
-                vec3_t tex;
-
-                TranslateWorldToTex( bestfrag->facenum, worldtotex );
-                if ( !InvertMatrix( worldtotex, textoworld ) )
-                {
-                        const unsigned facenum = bestfrag->facenum;
-                        ThreadLock();
-                        Log( "Malformed face (%d) normal @ \n", facenum );
-                        Winding* w = new Winding( g_bspdata->dfaces[facenum], g_bspdata );
-                        for ( int x = 0; x < w->m_NumPoints; x++ )
-                        {
-                                VectorAdd( w->m_Points[x], g_face_offset[facenum], w->m_Points[x] );
-                        }
-                        w->Print();
-                        delete w;
-                        ThreadUnlock();
-                        hlassume( false, assume_MalformedTextureFace );
-                }
-
-                // point
-                tex[0] = bests;
-                tex[1] = bestt;
-                tex[2] = 0.0;
-                { vec3_t v; ApplyMatrix( textoworld, tex, v ); VectorCopy( v, point ); }
-                VectorAdd( point, g_face_offset[bestfrag->facenum], point );
-                // position
-                VectorCopy( bestpos, position );
-                // surface
-                *surface = bestfrag->facenum;
-                winding = bestfrag->mywinding;
-                // whether nudged to fit
-                *nudged = best_nudged;
-                // returned value
-                LuxelFlag = LightNormal;
-        }
-        else
-        {
-                SetSurfFromST( l, point, original_s, original_t );
-                VectorMA( point, DEFAULT_HUNT_OFFSET, faceplane->normal, position );
-                *surface = facenum;
-                *nudged = true;
-                if ( fraginfo->head )
-                        winding = fraginfo->head->mywinding;
-                else
-                        winding = nullptr;
-                LuxelFlag = LightOutside;
-        }
-
-        DeleteSampleFrag( fraginfo );
-
-        return LuxelFlag;
-
-}
-static void		CalcPoints( lightinfo_t* l )
-{
-        const int       facenum = l->surfnum;
-        const dface_t*  f = g_bspdata->dfaces + facenum;
-        const texinfo_t *tex = &g_bspdata->texinfo[f->texinfo];
-        const dplane_t* p = getPlaneFromFace( f );
-        const vec_t*    face_delta = g_face_offset[facenum];
-        const eModelLightmodes lightmode = g_face_lightmode[facenum];
-        const int       h = l->texsize[1] + 1;
-        const int       w = l->texsize[0] + 1;
-        const vec_t     starts = l->texmins[0] * tex->lightmap_scale;
-        const vec_t     startt = l->texmins[1] * tex->lightmap_scale;
-        light_flag_t    LuxelFlags[MAX_SINGLEMAP];
-        light_flag_t*   pLuxelFlags;
-        vec_t           us, ut;
-        vec_t*          surf;
-        int             s, t;
-        l->numsurfpt = w * h;
-        for ( t = 0; t < h; t++ )
-        {
-                for ( s = 0; s < w; s++ )
-                {
-                        int idx = s + w * t;
-                        if ( idx >= MAX_SINGLEMAP )
-                        {
-                                Error( "CalcPoints: Lightmap size is too big for face %i\n"
-                                       "MAX_SINGLEMAP: %i, current luxel: %i\n", facenum, MAX_SINGLEMAP, s + w * t );
-                                continue;
-                        }
-                        surf = l->surfpt[idx];
-                        pLuxelFlags = &LuxelFlags[idx];
-                        us = starts + s * tex->lightmap_scale;
-                        ut = startt + t * tex->lightmap_scale;
-                        vec_t square[2][2];
-                        square[0][0] = us - tex->lightmap_scale;
-                        square[0][1] = ut - tex->lightmap_scale;
-                        square[1][0] = us + tex->lightmap_scale;
-                        square[1][1] = ut + tex->lightmap_scale;
-                        Winding *samp_winding = nullptr;
-                        l->surfpt_bounds[idx][0][0] = s - 0.5;
-                        l->surfpt_bounds[idx][0][1] = t - 0.5;
-                        l->surfpt_bounds[idx][1][0] = s + 0.5;
-                        l->surfpt_bounds[idx][1][1] = t + 0.5;
-                        bool nudged;
-                        *pLuxelFlags = SetSampleFromST( surf,
-                                                        l->surfpt_position[idx], &l->surfpt_surface[idx],
-                                                        &nudged,
-                                                        l, us, ut,
-                                                        square,
-                                                        lightmode,
-                                                        samp_winding );
-                        
-                        if ( samp_winding != nullptr )
-                        {
-                                vec3_t bounds[2];
-                                samp_winding->getBounds( bounds[0], bounds[1] );
-                                l->surfpt_bounds[idx][0][0] = (bounds[0][0] - starts) / tex->lightmap_scale;
-                                l->surfpt_bounds[idx][0][1] = (bounds[0][1] - startt) / tex->lightmap_scale;
-                                l->surfpt_bounds[idx][1][0] = (bounds[1][0] - starts) / tex->lightmap_scale;
-                                l->surfpt_bounds[idx][1][1] = (bounds[1][1] - startt) / tex->lightmap_scale;
-                        }
-                        
-                }
-        }
-        {
-                int i, n;
-                int s_other, t_other;
-                light_flag_t* pLuxelFlags_other;
-                vec_t* surf_other;
-                bool adjusted;
-                for ( i = 0; i < h + w; i++ )
-                { // propagate valid light samples
-                        adjusted = false;
-                        for ( t = 0; t < h; t++ )
-                        {
-                                for ( s = 0; s < w; s++ )
-                                {
-                                        surf = l->surfpt[s + w * t];
-                                        pLuxelFlags = &LuxelFlags[s + w * t];
-                                        if ( *pLuxelFlags != LightOutside )
-                                                continue;
-                                        for ( n = 0; n < 4; n++ )
-                                        {
-                                                switch ( n )
-                                                {
-                                                case 0: s_other = s + 1; t_other = t; break;
-                                                case 1: s_other = s - 1; t_other = t; break;
-                                                case 2: s_other = s; t_other = t + 1; break;
-                                                case 3: s_other = s; t_other = t - 1; break;
-                                                }
-                                                if ( t_other < 0 || t_other >= h || s_other < 0 || s_other >= w )
-                                                        continue;
-                                                surf_other = l->surfpt[s_other + w * t_other];
-                                                pLuxelFlags_other = &LuxelFlags[s_other + w * t_other];
-                                                if ( *pLuxelFlags_other != LightOutside && *pLuxelFlags_other != LightShifted )
-                                                {
-                                                        *pLuxelFlags = LightShifted;
-                                                        VectorCopy( surf_other, surf );
-                                                        VectorCopy( l->surfpt_position[s_other + w * t_other], l->surfpt_position[s + w * t] );
-                                                        l->surfpt_surface[s + w * t] = l->surfpt_surface[s_other + w * t_other];
-                                                        adjusted = true;
-                                                        break;
-                                                }
-                                        }
-                                }
-                        }
-                        for ( t = 0; t < h; t++ )
-                        {
-                                for ( s = 0; s < w; s++ )
-                                {
-                                        pLuxelFlags = &LuxelFlags[s + w * t];
-                                        if ( *pLuxelFlags == LightShifted )
-                                        {
-                                                *pLuxelFlags = LightShiftedInside;
-                                        }
-                                }
-                        }
-                        if ( !adjusted )
-                                break;
-                }
-        }
-        for ( int i = 0; i < MAX_SINGLEMAP; i++ )
-        {
-                l->surfpt_lightoutside[i] = ( LuxelFlags[i] == LightOutside );
-        }
-}
 
 //==============================================================
 
-int GetVisCache( int lastoffset, int cluster, byte *pvs )
-{
-        if ( !g_bspdata->visdatasize )
-        {
-                memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                lastoffset = -1;
-        }
-        else
-        {
-                if ( cluster < 0 )
-                {
-                        // erorr point embedded in wall
-                        memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                        lastoffset = -1;
-                }
-                else
-                {
-                        int thisoffset = g_bspdata->dleafs[cluster].visofs;
-                        if ( thisoffset != lastoffset )
-                        {
-                                if ( thisoffset == -1 )
-                                {
-                                        Error( "visofs == -1" );
-                                }
-
-                                DecompressVis( g_bspdata, &g_bspdata->dvisdata[thisoffset], pvs, sizeof( pvs ) );
-                        }
-                        lastoffset = thisoffset;
-                }
-        }
-
-        return lastoffset;
-}
-
-directlight_t *activelights;
-directlight_t* directlights[MAX_MAP_LEAFS];
 facelight_t facelight[MAX_MAP_FACES];
 lightinfo_t *lightinfo;
-int      numdlights;
-
-directlight_t *AllocDLight( LVector3 &origin, bool add_to_list )
-{
-        directlight_t *dl = (directlight_t *)calloc( 1, sizeof( directlight_t ) );
-        dl->index = numdlights++;
-
-        VectorCopy( origin, dl->origin );
-        dl->leaf = PointInLeaf( dl->origin ) - g_bspdata->dleafs;
-
-        dl->facenum = -1;
-
-        if ( add_to_list )
-        {
-                dl->next = activelights;
-                activelights = dl;
-        }
-
-        return dl;
-}
-
-void ParseLightGeneric( entity_t *e, directlight_t *dl )
-{
-        entity_t *e2;
-        char *target;
-        LVector3 dest;
-
-        dl->style = (int)FloatForKey( e, "style" );
-
-        // get intensity
-
-}
-
-void ParseLightSpot( entity_t *e, directlight_t *dl )
-{
-
-}
-
-// =====================================================================================
-//  CreateDirectLights
-// =====================================================================================
-void            CreateDirectLights()
-{
-        unsigned        i;
-        patch_t*        p;
-        directlight_t*  dl;
-        dleaf_t*        leaf;
-        int             leafnum;
-        entity_t*       e;
-        entity_t*       e2;
-        const char*     name;
-        const char*     target;
-        float           angle;
-        vec3_t          dest;
-
-
-        numdlights = 0;
-        int styleused[ALLSTYLES];
-        memset( styleused, 0, ALLSTYLES * sizeof( styleused[0] ) );
-        styleused[0] = 1;
-        int numstyles = 1;
-
-        //
-        // surfaces
-        //
-        for ( i = 0, p = g_patches; i < g_num_patches; i++, p++ )
-        {
-                if ( p->emitstyle >= 0 && p->emitstyle < ALLSTYLES )
-                {
-                        if ( styleused[p->emitstyle] == 0 )
-                        {
-                                styleused[p->emitstyle] = 1;
-                                numstyles++;
-                        }
-                }
-                if ( VectorAvg(p->baselight) >= g_dlight_threshold )
-                {
-                        dl = AllocDLight( GetLVector3( p->origin ), true );
-                        hlassume( dl != NULL, assume_NoMemory );
-                        dl->type = emit_surface;
-
-                        // TODO!
-                        // scale intensity by number of texture instances
-                        //VectorCopy(p->normal, dl->normal);
-                        //VectorScale( p->baselight, g_lightscale * p->area * p->scale[0] * p->scale[1] / p->basearea, dl->intensity );
-
-                        // scale to a range that results in actual lights
-                        VectorScale( dl->intensity, g_direct_scale, dl->intensity );
-                }
-        }
-
-        //
-        // entities
-        //
-        for ( i = 0; i < (size_t)g_bspdata->numentities; i++ )
-        {
-                e = &g_bspdata->entities[i];
-                name = ValueForKey( e, "classname" );
-                if ( strncmp( name, "light", 5 ) )
-                        continue;
-
-                // Light_dynamic is actually a real entity; not to be included here...
-                if ( !strcmp( name, "light_dynamic" ) )
-                        continue;
-
-                if ( !strcmp( name, "light_spot" ) )
-                {
-                        ParseLightSpot( e, dl );
-                }
-                else if ( !strcmp( name, "light_environment" ) )
-                {
-                        ParseLightEnvironment( e, dl );
-                }
-                else if ( !strcmp( name, "light" ) )
-                {
-                        ParseLightPoint( e, dl );
-                }
-                else
-                {
-                        qprintf( "unsupported light entity: \"%s\"\n", name );
-                }
-        }
-
-        for ( i = 0; i < (unsigned)g_bspdata->numentities; i++ )
-        {
-                const char*     pLight;
-                double          r, g, b, scaler;
-                float           l1;
-                int             argCnt;
-
-                e = &g_bspdata->entities[i];
-                name = ValueForKey( e, "classname" );
-                if ( strncmp( name, "light", 5 ) )
-                        continue;
-                {
-                        int style = IntForKey( e, "style" );
-                        if ( style < 0 )
-                        {
-                                style = -style;
-                        }
-                        style = (unsigned char)style;
-                        if ( style > 0 && style < ALLSTYLES && *ValueForKey( e, "zhlt_stylecoring" ) )
-                        {
-                                g_corings[style] = FloatForKey( e, "zhlt_stylecoring" );
-                        }
-                }
-                if ( !strcmp( name, "light_shadow" )
-                     || !strcmp( name, "light_bounce" )
-                     )
-                {
-                        int style = IntForKey( e, "style" );
-                        if ( style < 0 )
-                        {
-                                style = -style;
-                        }
-                        style = (unsigned char)style;
-                        if ( style >= 0 && style < ALLSTYLES )
-                        {
-                                if ( styleused[style] == false )
-                                {
-                                        styleused[style] = true;
-                                        numstyles++;
-                                }
-                        }
-                        continue;
-                }
-                if ( !strcmp( name, "light_surface" ) )
-                {
-                        continue;
-                }
-
-                numdlights++;
-                dl = (directlight_t*)calloc( 1, sizeof( directlight_t ) );
-                hlassume( dl != NULL, assume_NoMemory );
-
-                GetVectorForKey( e, "origin", dl->origin );
-
-                leaf = PointInLeaf( dl->origin );
-                leafnum = leaf - g_bspdata->dleafs;
-
-                dl->next = directlights[leafnum];
-                directlights[leafnum] = dl;
-
-                dl->style = IntForKey( e, "style" );
-                if ( dl->style < 0 )
-                        dl->style = -dl->style; //LRC
-                dl->style = (unsigned char)dl->style;
-                if ( dl->style >= ALLSTYLES )
-                {
-                        Error( "invalid light style: style (%d) >= ALLSTYLES (%d)", dl->style, ALLSTYLES );
-                }
-                if ( dl->style >= 0 && dl->style < ALLSTYLES )
-                {
-                        if ( styleused[dl->style] == false )
-                        {
-                                styleused[dl->style] = true;
-                                numstyles++;
-                        }
-                }
-                dl->topatch = false;
-                if ( IntForKey( e, "_fast" ) == 1 )
-                {
-                        dl->topatch = true;
-                }
-                if ( g_fastmode )
-                {
-                        dl->topatch = true;
-                }
-                pLight = ValueForKey( e, "_light" );
-                // scanf into doubles, then assign, so it is vec_t size independent
-                r = g = b = scaler = 0;
-                argCnt = sscanf( pLight, "%lf %lf %lf %lf", &r, &g, &b, &scaler );
-                dl->intensity[0] = (float)r;
-                if ( argCnt == 1 )
-                {
-                        // The R,G,B values are all equal.
-                        dl->intensity[1] = dl->intensity[2] = (float)r;
-                }
-                else if ( argCnt == 3 || argCnt == 4 )
-                {
-                        // Save the other two G,B values.
-                        dl->intensity[1] = (float)g;
-                        dl->intensity[2] = (float)b;
-
-                        // Did we also get an "intensity" scaler value too?
-                        if ( argCnt == 4 )
-                        {
-                                // Scale the normalized 0-255 R,G,B values by the intensity scaler
-                                dl->intensity[0] = dl->intensity[0] / 255 * (float)scaler;
-                                dl->intensity[1] = dl->intensity[1] / 255 * (float)scaler;
-                                dl->intensity[2] = dl->intensity[2] / 255 * (float)scaler;
-                        }
-                }
-                else
-                {
-                        Log( "light at (%f,%f,%f) has bad or missing '_light' value : '%s'\n",
-                             dl->origin[0], dl->origin[1], dl->origin[2], pLight );
-                        continue;
-                }
-
-                dl->fade = FloatForKey( e, "_fade" );
-                if ( dl->fade == 0.0 )
-                {
-                        dl->fade = g_fade;
-                }
-
-
-                target = ValueForKey( e, "target" );
-
-                if ( !strcmp( name, "light_spot" ) || !strcmp( name, "light_environment" ) || target[0] )
-                {
-                        if ( !VectorAvg( dl->intensity ) )
-                        {
-                        }
-                        dl->type = emit_spotlight;
-                        dl->stopdot = FloatForKey( e, "_cone" );
-                        if ( !dl->stopdot )
-                        {
-                                dl->stopdot = 10;
-                        }
-                        dl->stopdot2 = FloatForKey( e, "_cone2" );
-                        if ( !dl->stopdot2 )
-                        {
-                                dl->stopdot2 = dl->stopdot;
-                        }
-                        if ( dl->stopdot2 < dl->stopdot )
-                        {
-                                dl->stopdot2 = dl->stopdot;
-                        }
-                        dl->stopdot2 = (float)cos( dl->stopdot2 / 180 * Q_PI );
-                        dl->stopdot = (float)cos( dl->stopdot / 180 * Q_PI );
-
-                        if ( !FindTargetEntity( g_bspdata, target ) ) //--vluzacn
-                        {
-                                Warning( "light at (%i %i %i) has missing target",
-                                        (int)dl->origin[0], (int)dl->origin[1], (int)dl->origin[2] );
-                                target = "";
-                        }
-                        if ( target[0] )
-                        {                                              // point towards target
-                                e2 = FindTargetEntity( g_bspdata, target );
-                                if ( !e2 )
-                                {
-                                        Warning( "light at (%i %i %i) has missing target",
-                                                (int)dl->origin[0], (int)dl->origin[1], (int)dl->origin[2] );
-                                }
-                                else
-                                {
-                                        GetVectorForKey( e2, "origin", dest );
-                                        VectorSubtract( dest, dl->origin, dl->normal );
-                                        VectorNormalize( dl->normal );
-                                }
-                        }
-                        else
-                        {                                              // point down angle
-                                vec3_t          vAngles;
-
-                                GetVectorForKey( e, "angles", vAngles );
-
-                                angle = (float)FloatForKey( e, "angle" );
-                                if ( angle == ANGLE_UP )
-                                {
-                                        dl->normal[0] = dl->normal[1] = 0;
-                                        dl->normal[2] = 1;
-                                }
-                                else if ( angle == ANGLE_DOWN )
-                                {
-                                        dl->normal[0] = dl->normal[1] = 0;
-                                        dl->normal[2] = -1;
-                                }
-                                else
-                                {
-                                        // if we don't have a specific "angle" use the "angles" YAW
-                                        if ( !angle )
-                                        {
-                                                angle = vAngles[1];
-                                        }
-
-                                        dl->normal[2] = 0;
-                                        dl->normal[0] = (float)cos( angle / 180 * Q_PI );
-                                        dl->normal[1] = (float)sin( angle / 180 * Q_PI );
-                                }
-
-                                angle = FloatForKey( e, "pitch" );
-                                if ( !angle )
-                                {
-                                        // if we don't have a specific "pitch" use the "angles" PITCH
-                                        angle = vAngles[0];
-                                }
-
-                                dl->normal[2] = (float)sin( angle / 180 * Q_PI );
-                                dl->normal[0] *= (float)cos( angle / 180 * Q_PI );
-                                dl->normal[1] *= (float)cos( angle / 180 * Q_PI );
-                        }
-
-                        if ( FloatForKey( e, "_sky" ) || !strcmp( name, "light_environment" ) )
-                        {
-                                // -----------------------------------------------------------------------------------
-                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                                // diffuse lighting hack - most of the following code nicked from earlier
-                                // need to get diffuse intensity from new _diffuse_light key
-                                //
-                                // What does _sky do for spotlights, anyway?
-                                // -----------------------------------------------------------------------------------
-                                pLight = ValueForKey( e, "_diffuse_light" );
-                                r = g = b = scaler = 0;
-                                argCnt = sscanf( pLight, "%lf %lf %lf %lf", &r, &g, &b, &scaler );
-                                dl->diffuse_intensity[0] = (float)r;
-                                if ( argCnt == 1 )
-                                {
-                                        // The R,G,B values are all equal.
-                                        dl->diffuse_intensity[1] = dl->diffuse_intensity[2] = (float)r;
-                                }
-                                else if ( argCnt == 3 || argCnt == 4 )
-                                {
-                                        // Save the other two G,B values.
-                                        dl->diffuse_intensity[1] = (float)g;
-                                        dl->diffuse_intensity[2] = (float)b;
-
-                                        // Did we also get an "intensity" scaler value too?
-                                        if ( argCnt == 4 )
-                                        {
-                                                // Scale the normalized 0-255 R,G,B values by the intensity scaler
-                                                dl->diffuse_intensity[0] = dl->diffuse_intensity[0] / 255 * (float)scaler;
-                                                dl->diffuse_intensity[1] = dl->diffuse_intensity[1] / 255 * (float)scaler;
-                                                dl->diffuse_intensity[2] = dl->diffuse_intensity[2] / 255 * (float)scaler;
-                                        }
-                                }
-                                else
-                                {
-                                        // backwards compatibility with maps without _diffuse_light
-
-                                        dl->diffuse_intensity[0] = dl->intensity[0];
-                                        dl->diffuse_intensity[1] = dl->intensity[1];
-                                        dl->diffuse_intensity[2] = dl->intensity[2];
-                                }
-                                // -----------------------------------------------------------------------------------
-                                pLight = ValueForKey( e, "_diffuse_light2" );
-                                r = g = b = scaler = 0;
-                                argCnt = sscanf( pLight, "%lf %lf %lf %lf", &r, &g, &b, &scaler );
-                                dl->diffuse_intensity2[0] = (float)r;
-                                if ( argCnt == 1 )
-                                {
-                                        // The R,G,B values are all equal.
-                                        dl->diffuse_intensity2[1] = dl->diffuse_intensity2[2] = (float)r;
-                                }
-                                else if ( argCnt == 3 || argCnt == 4 )
-                                {
-                                        // Save the other two G,B values.
-                                        dl->diffuse_intensity2[1] = (float)g;
-                                        dl->diffuse_intensity2[2] = (float)b;
-
-                                        // Did we also get an "intensity" scaler value too?
-                                        if ( argCnt == 4 )
-                                        {
-                                                // Scale the normalized 0-255 R,G,B values by the intensity scaler
-                                                dl->diffuse_intensity2[0] = dl->diffuse_intensity2[0] / 255 * (float)scaler;
-                                                dl->diffuse_intensity2[1] = dl->diffuse_intensity2[1] / 255 * (float)scaler;
-                                                dl->diffuse_intensity2[2] = dl->diffuse_intensity2[2] / 255 * (float)scaler;
-                                        }
-                                }
-                                else
-                                {
-                                        dl->diffuse_intensity2[0] = dl->diffuse_intensity[0];
-                                        dl->diffuse_intensity2[1] = dl->diffuse_intensity[1];
-                                        dl->diffuse_intensity2[2] = dl->diffuse_intensity[2];
-                                }
-
-                                dl->type = emit_skylight;
-                                dl->stopdot2 = FloatForKey( e, "_sky" );     // hack stopdot2 to a sky key number
-                                dl->sunspreadangle = FloatForKey( e, "_spread" );
-                                if ( !g_allow_spread )
-                                {
-                                        dl->sunspreadangle = 0;
-                                }
-                                if ( dl->sunspreadangle < 0.0 || dl->sunspreadangle > 180 )
-                                {
-                                        Error( "Invalid spread angle '%s'. Please use a number between 0 and 180.\n", ValueForKey( e, "_spread" ) );
-                                }
-                                if ( dl->sunspreadangle > 0.0 )
-                                {
-                                        int i;
-                                        vec_t testangle = dl->sunspreadangle;
-                                        if ( dl->sunspreadangle < SUNSPREAD_THRESHOLD )
-                                        {
-                                                testangle = SUNSPREAD_THRESHOLD; // We will later centralize all the normals we have collected.
-                                        }
-                                        {
-                                                vec_t totalweight = 0;
-                                                int count;
-                                                vec_t testdot = cos( testangle * ( Q_PI / 180.0 ) );
-                                                for ( count = 0, i = 0; i < g_numskynormals[SUNSPREAD_SKYLEVEL]; i++ )
-                                                {
-                                                        vec3_t &testnormal = g_skynormals[SUNSPREAD_SKYLEVEL][i];
-                                                        vec_t dot = DotProduct( dl->normal, testnormal );
-                                                        if ( dot >= testdot - NORMAL_EPSILON )
-                                                        {
-                                                                totalweight += qmax( 0, dot - testdot ) * g_skynormalsizes[SUNSPREAD_SKYLEVEL][i]; // This is not the right formula when dl->sunspreadangle < SUNSPREAD_THRESHOLD, but it gives almost the same result as the right one.
-                                                                count++;
-                                                        }
-                                                }
-                                                if ( count <= 10 || totalweight <= NORMAL_EPSILON )
-                                                {
-                                                        Error( "collect spread normals: internal error: can not collect enough normals." );
-                                                }
-                                                dl->numsunnormals = count;
-                                                dl->sunnormals = (vec3_t *)malloc( count * sizeof( vec3_t ) );
-                                                dl->sunnormalweights = (vec_t *)malloc( count * sizeof( vec_t ) );
-                                                hlassume( dl->sunnormals != NULL, assume_NoMemory );
-                                                hlassume( dl->sunnormalweights != NULL, assume_NoMemory );
-                                                for ( count = 0, i = 0; i < g_numskynormals[SUNSPREAD_SKYLEVEL]; i++ )
-                                                {
-                                                        vec3_t &testnormal = g_skynormals[SUNSPREAD_SKYLEVEL][i];
-                                                        vec_t dot = DotProduct( dl->normal, testnormal );
-                                                        if ( dot >= testdot - NORMAL_EPSILON )
-                                                        {
-                                                                if ( count >= dl->numsunnormals )
-                                                                {
-                                                                        Error( "collect spread normals: internal error." );
-                                                                }
-                                                                VectorCopy( testnormal, dl->sunnormals[count] );
-                                                                dl->sunnormalweights[count] = qmax( 0, dot - testdot ) * g_skynormalsizes[SUNSPREAD_SKYLEVEL][i] / totalweight;
-                                                                count++;
-                                                        }
-                                                }
-                                                if ( count != dl->numsunnormals )
-                                                {
-                                                        Error( "collect spread normals: internal error." );
-                                                }
-                                        }
-                                        if ( dl->sunspreadangle < SUNSPREAD_THRESHOLD )
-                                        {
-                                                for ( i = 0; i < dl->numsunnormals; i++ )
-                                                {
-                                                        vec3_t tmp;
-                                                        VectorScale( dl->sunnormals[i], 1 / DotProduct( dl->sunnormals[i], dl->normal ), tmp );
-                                                        VectorSubtract( tmp, dl->normal, tmp );
-                                                        VectorMA( dl->normal, dl->sunspreadangle / SUNSPREAD_THRESHOLD, tmp, dl->sunnormals[i] );
-                                                        VectorNormalize( dl->sunnormals[i] );
-                                                }
-                                        }
-                                }
-                                else
-                                {
-                                        dl->numsunnormals = 1;
-                                        dl->sunnormals = (vec3_t *)malloc( sizeof( vec3_t ) );
-                                        dl->sunnormalweights = (vec_t *)malloc( sizeof( vec_t ) );
-                                        hlassume( dl->sunnormals != NULL, assume_NoMemory );
-                                        hlassume( dl->sunnormalweights != NULL, assume_NoMemory );
-                                        VectorCopy( dl->normal, dl->sunnormals[0] );
-                                        dl->sunnormalweights[0] = 1.0;
-                                }
-                        }
-                }
-                else
-                {
-                        if ( !VectorAvg( dl->intensity ) )
-                        {
-                        }
-                        dl->type = emit_point;
-                }
-
-                if ( dl->type != emit_skylight )
-                {
-                        //why? --vluzacn
-                        l1 = qmax( dl->intensity[0], qmax( dl->intensity[1], dl->intensity[2] ) );
-                        l1 = l1 * l1 / 10;
-
-                        dl->intensity[0] *= l1;
-                        dl->intensity[1] *= l1;
-                        dl->intensity[2] *= l1;
-                }
-        }
-
-        int countnormallights = 0, countfastlights = 0;
-        {
-                int l;
-                for ( l = 0; l < 1 + g_bspdata->dmodels[0].visleafs; l++ )
-                {
-                        for ( dl = directlights[l]; dl; dl = dl->next )
-                        {
-                                switch ( dl->type )
-                                {
-                                case emit_surface:
-                                case emit_point:
-                                case emit_spotlight:
-                                        if ( !VectorCompare( dl->intensity, vec3_origin ) )
-                                        {
-                                                if ( dl->topatch )
-                                                {
-                                                        countfastlights++;
-                                                }
-                                                else
-                                                {
-                                                        countnormallights++;
-                                                }
-                                        }
-                                        break;
-                                case emit_skylight:
-                                        if ( !VectorCompare( dl->intensity, vec3_origin ) )
-                                        {
-                                                if ( dl->topatch )
-                                                {
-                                                        countfastlights++;
-                                                        if ( dl->sunspreadangle > 0.0 )
-                                                        {
-                                                                countfastlights--;
-                                                                countfastlights += dl->numsunnormals;
-                                                        }
-                                                }
-                                                else
-                                                {
-                                                        countnormallights++;
-                                                        if ( dl->sunspreadangle > 0.0 )
-                                                        {
-                                                                countnormallights--;
-                                                                countnormallights += dl->numsunnormals;
-                                                        }
-                                                }
-                                        }
-                                        if ( g_indirect_sun > 0 && !VectorCompare( dl->diffuse_intensity, vec3_origin ) )
-                                        {
-                                                if ( g_softsky )
-                                                {
-                                                        countfastlights += g_numskynormals[SKYLEVEL_SOFTSKYON];
-                                                }
-                                                else
-                                                {
-                                                        countfastlights += g_numskynormals[SKYLEVEL_SOFTSKYOFF];
-                                                }
-                                        }
-                                        break;
-                                default:
-                                        hlassume( false, assume_BadLightType );
-                                        break;
-                                }
-                        }
-                }
-        }
-        Log( "%i direct lights and %i fast direct lights\n", countnormallights, countfastlights );
-        Log( "%i light styles\n", numstyles );
-        // move all emit_skylight to leaf 0 (the solid leaf)
-        if ( g_sky_lighting_fix )
-        {
-                directlight_t *skylights = NULL;
-                int l;
-                for ( l = 0; l < 1 + g_bspdata->dmodels[0].visleafs; l++ )
-                {
-                        directlight_t **pdl;
-                        for ( dl = directlights[l], pdl = &directlights[l]; dl; dl = *pdl )
-                        {
-                                if ( dl->type == emit_skylight )
-                                {
-                                        *pdl = dl->next;
-                                        dl->next = skylights;
-                                        skylights = dl;
-                                }
-                                else
-                                {
-                                        pdl = &dl->next;
-                                }
-                        }
-                }
-                while ( ( dl = directlights[0] ) != NULL )
-                {
-                        // since they are in leaf 0, they won't emit a light anyway
-                        directlights[0] = dl->next;
-                        free( dl );
-                }
-                directlights[0] = skylights;
-        }
-        if ( g_sky_lighting_fix )
-        {
-                int countlightenvironment = 0;
-                int countinfosunlight = 0;
-                for ( int i = 0; i < g_bspdata->numentities; i++ )
-                {
-                        entity_t *e = &g_bspdata->entities[i];
-                        const char *classname = ValueForKey( e, "classname" );
-                        if ( !strcmp( classname, "light_environment" ) )
-                        {
-                                countlightenvironment++;
-                        }
-                        if ( !strcmp( classname, "info_sunlight" ) )
-                        {
-                                countinfosunlight++;
-                        }
-                }
-                if ( countlightenvironment > 1 && countinfosunlight == 0 )
-                {
-                        // because the map is lit by more than one light_environments, but the game can only recognize one of them when setting sv_skycolor and sv_skyvec.
-                        Warning( "More than one light_environments are in use. Add entity info_sunlight to clarify the sunlight's brightness for in-game model(.mdl) rendering." );
-                }
-        }
-}
-
-// =====================================================================================
-//  DeleteDirectLights
-// =====================================================================================
-void            DeleteDirectLights()
-{
-        int             l;
-        directlight_t*  dl;
-
-        for ( l = 0; l < 1 + g_bspdata->dmodels[0].visleafs; l++ )
-        {
-                dl = directlights[l];
-                while ( dl )
-                {
-                        directlights[l] = dl->next;
-                        free( dl );
-                        dl = directlights[l];
-                }
-        }
-
-        // AJM: todo: strip light entities out at this point
-        // vluzacn: hlvis and hlrad must not modify entity data, because the following procedures are supposed to produce the same bsp file:
-        //  1> hlcsg -> hlbsp -> hlvis -> hlrad  (a normal compile)
-        //  2) hlcsg -> hlbsp -> hlvis -> hlrad -> hlcsg -onlyents
-        //  3) hlcsg -> hlbsp -> hlvis -> hlrad -> hlcsg -onlyents -> hlrad
-}
-
-// =====================================================================================
-//  GatherSampleLight
-// =====================================================================================
-int		g_numskynormals[SKYLEVELMAX + 1];
-vec3_t	*g_skynormals[SKYLEVELMAX + 1];
-vec_t	*g_skynormalsizes[SKYLEVELMAX + 1];
-typedef double point_t[3];
-typedef struct { int point[2]; bool divided; int child[2]; } edge_t;
-typedef struct { int edge[3]; int dir[3]; } triangle_t;
-void CopyToSkynormals( int skylevel, int numpoints, point_t *points, int numedges, edge_t *edges, int numtriangles, triangle_t *triangles )
-{
-        hlassume( numpoints == ( 1 << ( 2 * skylevel ) ) + 2, assume_first );
-        hlassume( numedges == ( 1 << ( 2 * skylevel ) ) * 4 - 4, assume_first );
-        hlassume( numtriangles == ( 1 << ( 2 * skylevel ) ) * 2, assume_first );
-        g_numskynormals[skylevel] = numpoints;
-        g_skynormals[skylevel] = (vec3_t *)malloc( numpoints * sizeof( vec3_t ) );
-        g_skynormalsizes[skylevel] = (vec_t *)malloc( numpoints * sizeof( vec_t ) );
-        hlassume( g_skynormals[skylevel] != NULL, assume_NoMemory );
-        hlassume( g_skynormalsizes[skylevel] != NULL, assume_NoMemory );
-        int j, k;
-        for ( j = 0; j < numpoints; j++ )
-        {
-                VectorCopy( points[j], g_skynormals[skylevel][j] );
-                g_skynormalsizes[skylevel][j] = 0;
-        }
-        double totalsize = 0;
-        for ( j = 0; j < numtriangles; j++ )
-        {
-                int pt[3];
-                for ( k = 0; k < 3; k++ )
-                {
-                        pt[k] = edges[triangles[j].edge[k]].point[triangles[j].dir[k]];
-                }
-                double currentsize;
-                double tmp[3];
-                CrossProduct( points[pt[0]], points[pt[1]], tmp );
-                currentsize = DotProduct( tmp, points[pt[2]] );
-                hlassume( currentsize > 0, assume_first );
-                g_skynormalsizes[skylevel][pt[0]] += currentsize / 3.0;
-                g_skynormalsizes[skylevel][pt[1]] += currentsize / 3.0;
-                g_skynormalsizes[skylevel][pt[2]] += currentsize / 3.0;
-                totalsize += currentsize;
-        }
-        for ( j = 0; j < numpoints; j++ )
-        {
-                g_skynormalsizes[skylevel][j] /= totalsize;
-        }
-#if 0
-        printf( "g_numskynormals[%i]=%i\n", skylevel, g_numskynormals[skylevel] );
-        for ( j = 0; j < numpoints; j += ( numpoints / 20 + 1 ) )
-        {
-                printf( "g_skynormals[%i][%i]=%1.3f,%1.3f,%1.3f g_skynormalsizes[%i][%i]=%f\n",
-                        skylevel, j, g_skynormals[skylevel][j][0], g_skynormals[skylevel][j][1], g_skynormals[skylevel][j][2],
-                        skylevel, j, g_skynormalsizes[skylevel][j] );
-        }
-#endif
-}
-void BuildDiffuseNormals()
-{
-        int i, j, k;
-        g_numskynormals[0] = 0;
-        g_skynormals[0] = NULL; //don't use this
-        g_skynormalsizes[0] = NULL;
-        int numpoints = 6;
-        point_t *points = (point_t *)malloc( ( ( 1 << ( 2 * SKYLEVELMAX ) ) + 2 ) * sizeof( point_t ) );
-        hlassume( points != NULL, assume_NoMemory );
-        points[0][0] = 1, points[0][1] = 0, points[0][2] = 0;
-        points[1][0] = -1, points[1][1] = 0, points[1][2] = 0;
-        points[2][0] = 0, points[2][1] = 1, points[2][2] = 0;
-        points[3][0] = 0, points[3][1] = -1, points[3][2] = 0;
-        points[4][0] = 0, points[4][1] = 0, points[4][2] = 1;
-        points[5][0] = 0, points[5][1] = 0, points[5][2] = -1;
-        int numedges = 12;
-        edge_t *edges = (edge_t *)malloc( ( ( 1 << ( 2 * SKYLEVELMAX ) ) * 4 - 4 ) * sizeof( edge_t ) );
-        hlassume( edges != NULL, assume_NoMemory );
-        edges[0].point[0] = 0, edges[0].point[1] = 2, edges[0].divided = false;
-        edges[1].point[0] = 2, edges[1].point[1] = 1, edges[1].divided = false;
-        edges[2].point[0] = 1, edges[2].point[1] = 3, edges[2].divided = false;
-        edges[3].point[0] = 3, edges[3].point[1] = 0, edges[3].divided = false;
-        edges[4].point[0] = 2, edges[4].point[1] = 4, edges[4].divided = false;
-        edges[5].point[0] = 4, edges[5].point[1] = 3, edges[5].divided = false;
-        edges[6].point[0] = 3, edges[6].point[1] = 5, edges[6].divided = false;
-        edges[7].point[0] = 5, edges[7].point[1] = 2, edges[7].divided = false;
-        edges[8].point[0] = 4, edges[8].point[1] = 0, edges[8].divided = false;
-        edges[9].point[0] = 0, edges[9].point[1] = 5, edges[9].divided = false;
-        edges[10].point[0] = 5, edges[10].point[1] = 1, edges[10].divided = false;
-        edges[11].point[0] = 1, edges[11].point[1] = 4, edges[11].divided = false;
-        int numtriangles = 8;
-        triangle_t *triangles = (triangle_t *)malloc( ( ( 1 << ( 2 * SKYLEVELMAX ) ) * 2 ) * sizeof( triangle_t ) );
-        hlassume( triangles != NULL, assume_NoMemory );
-        triangles[0].edge[0] = 0, triangles[0].dir[0] = 0, triangles[0].edge[1] = 4, triangles[0].dir[1] = 0, triangles[0].edge[2] = 8, triangles[0].dir[2] = 0;
-        triangles[1].edge[0] = 1, triangles[1].dir[0] = 0, triangles[1].edge[1] = 11, triangles[1].dir[1] = 0, triangles[1].edge[2] = 4, triangles[1].dir[2] = 1;
-        triangles[2].edge[0] = 2, triangles[2].dir[0] = 0, triangles[2].edge[1] = 5, triangles[2].dir[1] = 1, triangles[2].edge[2] = 11, triangles[2].dir[2] = 1;
-        triangles[3].edge[0] = 3, triangles[3].dir[0] = 0, triangles[3].edge[1] = 8, triangles[3].dir[1] = 1, triangles[3].edge[2] = 5, triangles[3].dir[2] = 0;
-        triangles[4].edge[0] = 0, triangles[4].dir[0] = 1, triangles[4].edge[1] = 9, triangles[4].dir[1] = 0, triangles[4].edge[2] = 7, triangles[4].dir[2] = 0;
-        triangles[5].edge[0] = 1, triangles[5].dir[0] = 1, triangles[5].edge[1] = 7, triangles[5].dir[1] = 1, triangles[5].edge[2] = 10, triangles[5].dir[2] = 0;
-        triangles[6].edge[0] = 2, triangles[6].dir[0] = 1, triangles[6].edge[1] = 10, triangles[6].dir[1] = 1, triangles[6].edge[2] = 6, triangles[6].dir[2] = 1;
-        triangles[7].edge[0] = 3, triangles[7].dir[0] = 1, triangles[7].edge[1] = 6, triangles[7].dir[1] = 0, triangles[7].edge[2] = 9, triangles[7].dir[2] = 1;
-        CopyToSkynormals( 1, numpoints, points, numedges, edges, numtriangles, triangles );
-        for ( i = 1; i < SKYLEVELMAX; i++ )
-        {
-                int oldnumedges = numedges;
-                for ( j = 0; j < oldnumedges; j++ )
-                {
-                        if ( !edges[j].divided )
-                        {
-                                hlassume( numpoints < ( 1 << ( 2 * SKYLEVELMAX ) ) + 2, assume_first );
-                                point_t mid;
-                                double len;
-                                VectorAdd( points[edges[j].point[0]], points[edges[j].point[1]], mid );
-                                len = sqrt( DotProduct( mid, mid ) );
-                                hlassume( len > 0.2, assume_first );
-                                VectorScale( mid, 1 / len, mid );
-                                int p2 = numpoints;
-                                VectorCopy( mid, points[numpoints] );
-                                numpoints++;
-                                hlassume( numedges < ( 1 << ( 2 * SKYLEVELMAX ) ) * 4 - 4, assume_first );
-                                edges[j].child[0] = numedges;
-                                edges[numedges].divided = false;
-                                edges[numedges].point[0] = edges[j].point[0];
-                                edges[numedges].point[1] = p2;
-                                numedges++;
-                                hlassume( numedges < ( 1 << ( 2 * SKYLEVELMAX ) ) * 4 - 4, assume_first );
-                                edges[j].child[1] = numedges;
-                                edges[numedges].divided = false;
-                                edges[numedges].point[0] = p2;
-                                edges[numedges].point[1] = edges[j].point[1];
-                                numedges++;
-                                edges[j].divided = true;
-                        }
-                }
-                int oldnumtriangles = numtriangles;
-                for ( j = 0; j < oldnumtriangles; j++ )
-                {
-                        int mid[3];
-                        for ( k = 0; k < 3; k++ )
-                        {
-                                hlassume( numtriangles < ( 1 << ( 2 * SKYLEVELMAX ) ) * 2, assume_first );
-                                mid[k] = edges[edges[triangles[j].edge[k]].child[0]].point[1];
-                                triangles[numtriangles].edge[0] = edges[triangles[j].edge[k]].child[1 - triangles[j].dir[k]];
-                                triangles[numtriangles].dir[0] = triangles[j].dir[k];
-                                triangles[numtriangles].edge[1] = edges[triangles[j].edge[( k + 1 ) % 3]].child[triangles[j].dir[( k + 1 ) % 3]];
-                                triangles[numtriangles].dir[1] = triangles[j].dir[( k + 1 ) % 3];
-                                triangles[numtriangles].edge[2] = numedges + k;
-                                triangles[numtriangles].dir[2] = 1;
-                                numtriangles++;
-                        }
-                        for ( k = 0; k < 3; k++ )
-                        {
-                                hlassume( numedges < ( 1 << ( 2 * SKYLEVELMAX ) ) * 4 - 4, assume_first );
-                                triangles[j].edge[k] = numedges;
-                                triangles[j].dir[k] = 0;
-                                edges[numedges].divided = false;
-                                edges[numedges].point[0] = mid[k];
-                                edges[numedges].point[1] = mid[( k + 1 ) % 3];
-                                numedges++;
-                        }
-                }
-                CopyToSkynormals( i + 1, numpoints, points, numedges, edges, numtriangles, triangles );
-        }
-        free( points );
-        free( edges );
-        free( triangles );
-}
-void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
-                                   , byte* styles
-                                   , int step
-                                   , int texref
-                                   , int texlightgap_surfacenum
-)
-{
-        int             i;
-        directlight_t*  l;
-        vec3_t          delta;
-        float           dot, dot2;
-        float           dist;
-        float           ratio;
-#ifdef HLRAD_OPACITY // AJM
-        float           l_opacity;
-#endif
-        int             style_index;
-        int				step_match;
-        bool			sky_used = false;
-        vec3_t			testline_origin;
-        vec3_t			adds[ALLSTYLES];
-        int				style = 0;
-        memset( adds, 0, ALLSTYLES * sizeof( vec3_t ) );
-        bool			lighting_diversify = false;
-        vec_t			lighting_power = 1.0;
-        vec_t			lighting_scale = 1.0;
-        if ( texref != -1 )
-        {
-                lighting_power = g_lightingconeinfo[texref][0];
-                lighting_scale = g_lightingconeinfo[texref][1];
-                lighting_diversify = ( lighting_power != 1.0 || lighting_scale != 1.0 );
-        }
-        vec3_t			texlightgap_textoworld[2];
-        // calculates textoworld
-        if ( texlightgap_surfacenum != -1 )
-        {
-                dface_t *f = &g_bspdata->dfaces[texlightgap_surfacenum];
-                const dplane_t *dp = getPlaneFromFace( f );
-                texinfo_t *tex = &g_bspdata->texinfo[f->texinfo];
-                int x;
-                vec_t len;
-
-                for ( x = 0; x < 2; x++ )
-                {
-                        vec3_t temp1;
-                        vec3_t temp2;
-                        VectorScale( tex->lightmap_vecs[1 - x], tex->lightmap_scale, temp1 );
-                        VectorScale( tex->lightmap_vecs[x], tex->lightmap_scale, temp2 );
-
-                        CrossProduct( temp1, dp->normal, texlightgap_textoworld[x] );
-                        len = DotProduct( texlightgap_textoworld[x], temp2 );
-                        if ( fabs( len ) < NORMAL_EPSILON )
-                        {
-                                VectorClear( texlightgap_textoworld[x] );
-                        }
-                        else
-                        {
-                                VectorScale( texlightgap_textoworld[x], 1 / len, texlightgap_textoworld[x] );
-                        }
-                }
-        }
-
-        for ( i = 0; i < 1 + g_bspdata->dmodels[0].visleafs; i++ )
-        {
-                l = directlights[i];
-                if ( l )
-                {
-                        if ( i == 0 ? g_sky_lighting_fix : pvs[( i - 1 ) >> 3] & ( 1 << ( ( i - 1 ) & 7 ) ) )
-                        {
-                                for ( ; l; l = l->next )
-                                {
-                                        // skylights work fundamentally differently than normal lights
-                                        if ( l->type == emit_skylight )
-                                        {
-                                                if ( !g_sky_lighting_fix )
-                                                {
-                                                        if ( sky_used )
-                                                        {
-                                                                continue;
-                                                        }
-                                                        sky_used = true;
-                                                }
-                                                do // add sun light
-                                                {
-                                                        // check step
-                                                        step_match = (int)l->topatch;
-                                                        if ( step != step_match )
-                                                                continue;
-                                                        // check intensity
-                                                        if ( !( l->intensity[0] || l->intensity[1] || l->intensity[2] ) )
-                                                                continue;
-                                                        // loop over the normals
-                                                        for ( int j = 0; j < l->numsunnormals; j++ )
-                                                        {
-                                                                // make sure the angle is okay
-                                                                dot = -DotProduct( normal, l->sunnormals[j] );
-                                                                if ( dot <= NORMAL_EPSILON ) //ON_EPSILON / 10 //--vluzacn
-                                                                {
-                                                                        continue;
-                                                                }
-
-                                                                // search back to see if we can hit a sky brush
-                                                                VectorScale( l->sunnormals[j], -BOGUS_RANGE, delta );
-                                                                VectorAdd( pos, delta, delta );
-                                                                vec3_t skyhit;
-                                                                VectorCopy( delta, skyhit );
-                                                                if ( TestLine( pos, delta
-                                                                               , skyhit
-                                                                ) != CONTENTS_SKY )
-                                                                {
-                                                                        continue;                      // occluded
-                                                                }
-
-                                                                vec3_t transparency;
-                                                                int opaquestyle;
-                                                                if ( TestSegmentAgainstOpaqueList( pos,
-                                                                                                   skyhit
-                                                                                                   , transparency
-                                                                                                   , opaquestyle
-                                                                ) )
-                                                                {
-                                                                        continue;
-                                                                }
-
-                                                                vec3_t add_one;
-                                                                if ( lighting_diversify )
-                                                                {
-                                                                        dot = lighting_scale * pow( dot, lighting_power );
-                                                                }
-                                                                VectorScale( l->intensity, dot * l->sunnormalweights[j], add_one );
-                                                                VectorMultiply( add_one, transparency, add_one );
-                                                                // add to the total brightness of this sample
-                                                                style = l->style;
-                                                                if ( opaquestyle != -1 )
-                                                                {
-                                                                        if ( style == 0 || style == opaquestyle )
-                                                                                style = opaquestyle;
-                                                                        else
-                                                                                continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-                                                                }
-                                                                VectorAdd( adds[style], add_one, adds[style] );
-                                                        } // (loop over the normals)
-                                                } while ( 0 );
-                                                do // add sky light
-                                                {
-                                                        // check step
-                                                        step_match = 0;
-                                                        if ( g_softsky )
-                                                                step_match = 1;
-                                                        if ( g_fastmode )
-                                                                step_match = 1;
-                                                        if ( step != step_match )
-                                                                continue;
-                                                        // check intensity
-                                                        if ( g_indirect_sun <= 0.0 ||
-                                                             VectorCompare(
-                                                                     l->diffuse_intensity,
-                                                                     vec3_origin )
-                                                             && VectorCompare( l->diffuse_intensity2, vec3_origin )
-                                                             )
-                                                                continue;
-
-                                                        vec3_t sky_intensity;
-
-                                                        // loop over the normals
-                                                        vec3_t *skynormals = g_skynormals[g_softsky ? SKYLEVEL_SOFTSKYON : SKYLEVEL_SOFTSKYOFF];
-                                                        vec_t *skyweights = g_skynormalsizes[g_softsky ? SKYLEVEL_SOFTSKYON : SKYLEVEL_SOFTSKYOFF];
-                                                        for ( int j = 0; j < g_numskynormals[g_softsky ? SKYLEVEL_SOFTSKYON : SKYLEVEL_SOFTSKYOFF]; j++ )
-                                                        {
-                                                                // make sure the angle is okay
-                                                                dot = -DotProduct( normal, skynormals[j] );
-                                                                if ( dot <= NORMAL_EPSILON ) //ON_EPSILON / 10 //--vluzacn
-                                                                {
-                                                                        continue;
-                                                                }
-
-                                                                // search back to see if we can hit a sky brush
-                                                                VectorScale( skynormals[j], -BOGUS_RANGE, delta );
-                                                                VectorAdd( pos, delta, delta );
-                                                                vec3_t skyhit;
-                                                                VectorCopy( delta, skyhit );
-                                                                if ( TestLine( pos, delta
-                                                                               , skyhit
-                                                                ) != CONTENTS_SKY )
-                                                                {
-                                                                        continue;                                  // occluded
-                                                                }
-
-                                                                vec3_t transparency;
-                                                                int opaquestyle;
-                                                                if ( TestSegmentAgainstOpaqueList( pos,
-                                                                                                   skyhit
-                                                                                                   , transparency
-                                                                                                   , opaquestyle
-                                                                ) )
-                                                                {
-                                                                        continue;
-                                                                }
-
-                                                                vec_t factor = qmin( qmax( 0.0, ( 1 - DotProduct( l->normal, skynormals[j] ) ) / 2 ), 1.0 ); // how far this piece of sky has deviated from the sun
-                                                                VectorScale( l->diffuse_intensity, 1 - factor, sky_intensity );
-                                                                VectorMA( sky_intensity, factor, l->diffuse_intensity2, sky_intensity );
-                                                                VectorScale( sky_intensity, skyweights[j] * g_indirect_sun / 2, sky_intensity );
-                                                                vec3_t add_one;
-                                                                if ( lighting_diversify )
-                                                                {
-                                                                        dot = lighting_scale * pow( dot, lighting_power );
-                                                                }
-                                                                VectorScale( sky_intensity, dot, add_one );
-                                                                VectorMultiply( add_one, transparency, add_one );
-                                                                // add to the total brightness of this sample
-                                                                style = l->style;
-                                                                if ( opaquestyle != -1 )
-                                                                {
-                                                                        if ( style == 0 || style == opaquestyle )
-                                                                                style = opaquestyle;
-                                                                        else
-                                                                                continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-                                                                }
-                                                                VectorAdd( adds[style], add_one, adds[style] );
-                                                        } // (loop over the normals)
-
-                                                } while ( 0 );
-
-                                        }
-                                        else // not emit_skylight
-                                        {
-                                                step_match = (int)l->topatch;
-                                                if ( step != step_match )
-                                                        continue;
-                                                if ( !( l->intensity[0] || l->intensity[1] || l->intensity[2] ) )
-                                                        continue;
-                                                VectorCopy( l->origin, testline_origin );
-                                                float           denominator;
-
-                                                VectorSubtract( l->origin, pos, delta );
-                                                if ( l->type == emit_surface )
-                                                {
-                                                        // move emitter back to its plane
-                                                        VectorMA( delta, -PATCH_HUNT_OFFSET, l->normal, delta );
-                                                }
-                                                dist = VectorNormalize( delta );
-                                                dot = DotProduct( delta, normal );
-                                                //if ( dot <= NORMAL_EPSILON )
-                                                //{
-                                                //        continue;
-                                                //}
-
-                                                if ( dist < 1.0 )
-                                                {
-                                                        dist = 1.0;
-                                                }
-
-                                                denominator = dist * dist * l->fade;
-
-                                                vec3_t add;
-                                                switch ( l->type )
-                                                {
-                                                case emit_point:
-                                                {
-                                                        if ( dot <= NORMAL_EPSILON )
-                                                        {
-                                                                continue;
-                                                        }
-                                                        vec_t denominator = dist * dist * l->fade;
-                                                        if ( lighting_diversify )
-                                                        {
-                                                                dot = lighting_scale * pow( dot, lighting_power );
-                                                        }
-                                                        ratio = dot / denominator;
-                                                        VectorScale( l->intensity, ratio, add );
-                                                        break;
-                                                }
-
-                                                case emit_surface:
-                                                {
-                                                        bool light_behind_surface = false;
-                                                        if ( dot <= NORMAL_EPSILON )
-                                                        {
-                                                                light_behind_surface = true;
-                                                        }
-                                                        if ( lighting_diversify
-                                                             && !light_behind_surface
-                                                             )
-                                                        {
-                                                                dot = lighting_scale * pow( dot, lighting_power );
-                                                        }
-                                                        dot2 = -DotProduct( delta, l->normal );
-                                                        // discard the texlight if the spot is too close to the texlight plane
-                                                        if ( l->texlightgap > 0 && texlightgap_surfacenum != -1 )
-                                                        {
-                                                                vec_t test;
-
-                                                                test = dot2 * dist; // distance from spot to texlight plane;
-                                                                test -= l->texlightgap * fabs( DotProduct( l->normal, texlightgap_textoworld[0] ) ); // maximum distance reduction if the spot is allowed to shift l->texlightgap pixels along s axis
-                                                                test -= l->texlightgap * fabs( DotProduct( l->normal, texlightgap_textoworld[1] ) ); // maximum distance reduction if the spot is allowed to shift l->texlightgap pixels along t axis
-                                                                if ( test < -ON_EPSILON )
-                                                                {
-                                                                        continue;
-                                                                }
-                                                        }
-                                                        if ( dot2 * dist <= MINIMUM_PATCH_DISTANCE )
-                                                        {
-                                                                continue;
-                                                        }
-                                                        vec_t range = l->patch_emitter_range;
-                                                        if ( l->stopdot > 0.0 ) // stopdot2 > 0.0 or stopdot > 0.0
-                                                        {
-                                                                vec_t range_scale;
-                                                                range_scale = 1 - l->stopdot2 * l->stopdot2;
-                                                                range_scale = 1 / sqrt( qmax( NORMAL_EPSILON, range_scale ) );
-                                                                // range_scale = 1 / sin (cone2)
-                                                                range_scale = qmin( range_scale, 2 ); // restrict this to 2, because skylevel has limit.
-                                                                range *= range_scale; // because smaller cones are more likely to create the ugly grid effect.
-
-                                                                if ( dot2 <= l->stopdot2 + NORMAL_EPSILON )
-                                                                {
-                                                                        if ( dist >= range ) // use the old method, which will merely give 0 in this case
-                                                                        {
-                                                                                continue;
-                                                                        }
-                                                                        ratio = 0.0;
-                                                                }
-                                                                else if ( dot2 <= l->stopdot )
-                                                                {
-                                                                        ratio = dot * dot2 * ( dot2 - l->stopdot2 ) / ( dist * dist * ( l->stopdot - l->stopdot2 ) );
-                                                                }
-                                                                else
-                                                                {
-                                                                        ratio = dot * dot2 / ( dist * dist );
-                                                                }
-                                                        }
-                                                        else
-                                                        {
-                                                                ratio = dot * dot2 / ( dist * dist );
-                                                        }
-
-                                                        // analogous to the one in MakeScales
-                                                        // 0.4f is tested to be able to fully eliminate bright spots
-                                                        if ( ratio * l->patch_area > 0.4f )
-                                                        {
-                                                                ratio = 0.4f / l->patch_area;
-                                                        }
-                                                        if ( dist < range - ON_EPSILON )
-                                                        { // do things slow
-                                                                if ( light_behind_surface )
-                                                                {
-                                                                        dot = 0.0;
-                                                                        ratio = 0.0;
-                                                                }
-                                                                GetAlternateOrigin( pos, normal, l->patch, testline_origin );
-                                                                vec_t sightarea;
-                                                                int skylevel = l->patch->emitter_skylevel;
-                                                                if ( l->stopdot > 0.0 ) // stopdot2 > 0.0 or stopdot > 0.0
-                                                                {
-                                                                        const vec_t *emitnormal = getPlaneFromFaceNumber( l->patch->faceNumber )->normal;
-                                                                        if ( l->stopdot2 >= 0.8 ) // about 37deg
-                                                                        {
-                                                                                skylevel += 1; // because the range is larger
-                                                                        }
-                                                                        sightarea = CalcSightArea_SpotLight( pos, normal, l->patch->winding, emitnormal, l->stopdot, l->stopdot2, skylevel
-                                                                                                             , lighting_power, lighting_scale
-                                                                        ); // because we have doubled the range
-                                                                }
-                                                                else
-                                                                {
-                                                                        sightarea = CalcSightArea( pos, normal, l->patch->winding, skylevel
-                                                                                                   , lighting_power, lighting_scale
-                                                                        );
-                                                                }
-
-                                                                vec_t frac = dist / range;
-                                                                frac = ( frac - 0.5 ) * 2; // make a smooth transition between the two methods
-                                                                frac = qmax( 0, qmin( frac, 1 ) );
-
-                                                                vec_t ratio2 = ( sightarea / l->patch_area ); // because l->patch->area has been multiplied into l->intensity
-                                                                ratio = frac * ratio + ( 1 - frac ) * ratio2;
-                                                        }
-                                                        else
-                                                        {
-                                                                if ( light_behind_surface )
-                                                                {
-                                                                        continue;
-                                                                }
-                                                        }
-                                                        VectorScale( l->intensity, ratio, add );
-                                                        break;
-                                                }
-
-                                                case emit_spotlight:
-                                                {
-                                                        if ( dot <= NORMAL_EPSILON )
-                                                        {
-                                                                continue;
-                                                        }
-                                                        dot2 = -DotProduct( delta, l->normal );
-                                                        if ( dot2 <= l->stopdot2 )
-                                                        {
-                                                                continue;                  // outside light cone
-                                                        }
-
-                                                        // Variable power falloff (1 = inverse linear, 2 = inverse square
-                                                        vec_t           denominator = dist * l->fade;
-                                                        {
-                                                                denominator *= dist;
-                                                        }
-                                                        if ( lighting_diversify )
-                                                        {
-                                                                dot = lighting_scale * pow( dot, lighting_power );
-                                                        }
-                                                        ratio = dot * dot2 / denominator;
-
-                                                        if ( dot2 <= l->stopdot )
-                                                        {
-                                                                ratio *= ( dot2 - l->stopdot2 ) / ( l->stopdot - l->stopdot2 );
-                                                        }
-                                                        VectorScale( l->intensity, ratio, add );
-                                                        break;
-                                                }
-
-                                                default:
-                                                {
-                                                        hlassume( false, assume_BadLightType );
-                                                        break;
-                                                }
-                                                }
-                                                if ( TestLine( pos,
-                                                               testline_origin
-                                                ) != CONTENTS_EMPTY )
-                                                {
-                                                        continue;
-                                                }
-                                                vec3_t transparency;
-                                                int opaquestyle;
-                                                if ( TestSegmentAgainstOpaqueList( pos,
-                                                                                   testline_origin
-                                                                                   , transparency
-                                                                                   , opaquestyle ) )
-                                                {
-                                                        continue;
-                                                }
-                                                VectorMultiply( add, transparency, add );
-                                                // add to the total brightness of this sample
-                                                style = l->style;
-                                                if ( opaquestyle != -1 )
-                                                {
-                                                        if ( style == 0 || style == opaquestyle )
-                                                                style = opaquestyle;
-                                                        else
-                                                                continue; // dynamic light of other styles hits this toggleable opaque entity, then it completely vanishes.
-                                                }
-                                                VectorAdd( adds[style], add, adds[style] );
-                                        } // end emit_skylight
-
-                                }
-                        }
-                }
-        }
-
-        for ( style = 0; style < ALLSTYLES; ++style )
-        {
-                if ( VectorMaximum( adds[style] ) > g_corings[style] * 0.1 )
-                {
-                        for ( style_index = 0; style_index < ALLSTYLES; style_index++ )
-                        {
-                                if ( styles[style_index] == style || styles[style_index] == 255 )
-                                {
-                                        break;
-                                }
-                        }
-
-                        if ( style_index == ALLSTYLES ) // shouldn't happen
-                        {
-                                if ( ++stylewarningcount >= stylewarningnext )
-                                {
-                                        stylewarningnext = stylewarningcount * 2;
-                                        Warning( "Too many direct light styles on a face(%f,%f,%f)", pos[0], pos[1], pos[2] );
-                                        Warning( " total %d warnings for too many styles", stylewarningcount );
-                                }
-                                return;
-                        }
-
-                        if ( styles[style_index] == 255 )
-                        {
-                                styles[style_index] = style;
-                        }
-                        VectorAdd( sample[style_index], adds[style], sample[style_index] );
-                }
-                else
-                {
-                        if ( VectorMaximum( adds[style] ) > g_maxdiscardedlight + NORMAL_EPSILON )
-                        {
-                                ThreadLock();
-                                if ( VectorMaximum( adds[style] ) > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = VectorMaximum( adds[style] );
-                                        VectorCopy( pos, g_maxdiscardedpos );
-                                }
-                                ThreadUnlock();
-                        }
-                }
-        }
-}
-
-// =====================================================================================
-//  AddSampleToPatch
-//      Take the sample's collected light and add it back into the apropriate patch for the radiosity pass.
-// =====================================================================================
-static void AddSamplesToPatches( sample_t *(samples)[ALLSTYLES], const unsigned char *styles, int facenum, const lightinfo_t *l )
-{
-        patch_t *patch;
-        int i, j, m, k;
-        int numtexwindings;
-        Winding **texwindings;
-        const texinfo_t *tex = &g_bspdata->texinfo[l->face->texinfo];
-
-        numtexwindings = 0;
-        for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
-        {
-                numtexwindings++;
-        }
-        texwindings = (Winding **)malloc( numtexwindings * sizeof( Winding * ) );
-        hlassume( texwindings != NULL, assume_NoMemory );
-
-        // translate world winding into winding in s,t plane
-        for ( j = 0, patch = g_face_patches[facenum]; j < numtexwindings; j++, patch = patch->next )
-        {
-                Winding *w = new Winding( patch->winding->m_NumPoints );
-                for ( int x = 0; x < w->m_NumPoints; x++ )
-                {
-                        vec_t s, t;
-                        SetSTFromSurf( l, patch->winding->m_Points[x], s, t );
-                        w->m_Points[x][0] = s;
-                        w->m_Points[x][1] = t;
-                        w->m_Points[x][2] = 0.0;
-                }
-                w->RemoveColinearPoints();
-                texwindings[j] = w;
-        }
-
-        for ( i = 0; i < l->numsurfpt; i++ )
-        {
-                // prepare clip planes
-                vec_t s_vec, t_vec;
-                s_vec = l->texmins[0] * tex->lightmap_scale + ( i % ( l->texsize[0] + 1 ) ) * tex->lightmap_scale;
-                t_vec = l->texmins[1] * tex->lightmap_scale + ( i / ( l->texsize[0] + 1 ) ) * tex->lightmap_scale;
-
-                dplane_t clipplanes[4];
-                VectorClear( clipplanes[0].normal );
-                clipplanes[0].normal[0] = 1;
-                clipplanes[0].dist = s_vec - 0.5 * tex->lightmap_scale;
-                VectorClear( clipplanes[1].normal );
-                clipplanes[1].normal[0] = -1;
-                clipplanes[1].dist = -( s_vec + 0.5 * tex->lightmap_scale );
-                VectorClear( clipplanes[2].normal );
-                clipplanes[2].normal[1] = 1;
-                clipplanes[2].dist = t_vec - 0.5 * tex->lightmap_scale;
-                VectorClear( clipplanes[3].normal );
-                clipplanes[3].normal[1] = -1;
-                clipplanes[3].dist = -( t_vec + 0.5 * tex->lightmap_scale );
-
-                // clip each patch
-                for ( j = 0, patch = g_face_patches[facenum]; j < numtexwindings; j++, patch = patch->next )
-                {
-                        Winding *w = new Winding( *texwindings[j] );
-                        for ( k = 0; k < 4; k++ )
-                        {
-                                if ( w->m_NumPoints )
-                                {
-                                        w->Clip( clipplanes[k], false, ON_EPSILON / 16.0f );
-                                }
-                        }
-                        if ( w->m_NumPoints )
-                        {
-                                // add sample to patch
-                                vec_t area = w->getArea() / ( tex->lightmap_scale * tex->lightmap_scale );
-                                patch->samples += area;
-                                
-                                for ( m = 0; m < ALLSTYLES && styles[m] != 255; m++ )
-                                {
-                                        int style = styles[m];
-                                        const sample_t *s = &samples[m][i];
-                                        for ( k = 0; k < ALLSTYLES && patch->totalstyle_all[k] != 255; k++ )
-                                        {
-                                                if ( patch->totalstyle_all[k] == style )
-                                                {
-                                                        break;
-                                                }
-                                        }
-                                        if ( k == ALLSTYLES )
-                                        {
-                                                if ( ++stylewarningcount >= stylewarningnext )
-                                                {
-                                                        stylewarningnext = stylewarningcount * 2;
-                                                        Warning( "Too many direct light styles on a face(?,?,?)\n" );
-                                                        Warning( " total %d warnings for too many styles", stylewarningcount );
-                                                }
-                                        }
-                                        else
-                                        {
-                                                if ( patch->totalstyle_all[k] == 255 )
-                                                {
-                                                        patch->totalstyle_all[k] = style;
-                                                }
-                                                for ( int n = 0; n < l->normal_count; n++ )
-                                                {
-                                                        VectorMA( patch->samplelight_all[k].light[n], area, s->light.light[n].light, patch->samplelight_all[k].light[n] );
-                                                }
-                                        }
-                                }
-                                
-                        }
-                        delete w;
-                }
-        }
-
-        for ( j = 0; j < numtexwindings; j++ )
-        {
-                delete texwindings[j];
-        }
-        free( texwindings );
-}
 
 // =====================================================================================
 //  GetPhongNormal
@@ -3252,7 +382,7 @@ void            GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &pho
                         vert2 = EdgeVertex( f, j + 1 );
 
                         LVector3 p1 = GetLVector3( g_bspdata->dvertexes[vert1].point );
-                        LVector3 p2 = GetLVector3( g_bspdata->[vert2].point );
+                        LVector3 p2 = GetLVector3( g_bspdata->dvertexes[vert2].point );
 
                         // Build vectors from the middle of the face to the edge vertexes and the sample pos.
                         VectorSubtract( p1, g_face_centroids[facenum], v1 );
@@ -3294,322 +424,9 @@ void GetBumpNormals( const texinfo_t *texinfo, const LVector3 &face_normal,
         GetBumpNormals( stmp, ttmp, face_normal, phong_normal, bump_vecs );
 }
 
-const vec3_t    s_circuscolors[] = {
-        { 100000.0,  100000.0,   100000.0 },                              // white
-{ 100000.0,  0.0,        0.0 },                              // red
-{ 0.0,       100000.0,   0.0 },                              // green
-{ 0.0,       0.0,        100000.0 },                              // blue
-{ 0.0,       100000.0,   100000.0 },                              // cyan
-{ 100000.0,  0.0,        100000.0 },                              // magenta
-{ 100000.0,  100000.0,   0.0 }                               // yellow
-};
-
 // =====================================================================================
 //  BuildFacelights
 // =====================================================================================
-void CalcLightmap( lightinfo_t *l, byte *styles )
-{
-        int facenum;
-        int i, j;
-        byte pvs[( MAX_MAP_LEAFS + 7 ) / 8];
-        int lastoffset;
-        byte pvs2[( MAX_MAP_LEAFS + 7 ) / 8];
-        int lastoffset2;
-
-        facenum = l->surfnum;
-        const texinfo_t *tex = &g_bspdata->texinfo[l->face->texinfo];
-        memset( l->lmcache, 0, l->lmcachewidth * l->lmcacheheight * sizeof( vec3_t[ALLSTYLES] ) );
-
-        // for each sample whose light we need to calculate
-        for ( i = 0; i < l->lmcachewidth * l->lmcacheheight; i++ )
-        {
-                vec_t s, t;
-                vec_t s_vec, t_vec;
-                int nearest_s, nearest_t;
-                vec3_t spot;
-                vec_t square[2][2];  // the max possible range in which this sample point affects the lighting on a face
-                vec3_t surfpt; // the point on the surface (with no HUNT_OFFSET applied), used for getting phong normal and doing patch interpolation
-                int surface;
-                vec3_t pointnormal[NUM_BUMP_VECTS + 1];
-                memset( pointnormal, 0, sizeof( vec3_t ) * 4 );
-                bool blocked;
-                vec3_t spot2;
-                vec3_t pointnormal2[NUM_BUMP_VECTS + 1];
-                memset( pointnormal2, 0, sizeof( vec3_t ) * 4 );
-                bumpsample_t *sampled;
-                bumpnormal_t *normal_out;
-                bool nudged;
-                int *wallflags_out;
-
-                // prepare input parameter and output parameter
-                {
-                        s = ( ( i % l->lmcachewidth ) - l->lmcache_offset ) / (vec_t)l->lmcache_density;
-                        t = ( ( i / l->lmcachewidth ) - l->lmcache_offset ) / (vec_t)l->lmcache_density;
-                        s_vec = l->texmins[0] * tex->lightmap_scale + s * tex->lightmap_scale;
-                        t_vec = l->texmins[1] * tex->lightmap_scale + t * tex->lightmap_scale;
-                        nearest_s = qmax( 0, qmin( (int)floor( s + 0.5 ), l->texsize[0] ) );
-                        nearest_t = qmax( 0, qmin( (int)floor( t + 0.5 ), l->texsize[1] ) );
-                        sampled = l->lmcache[i];
-                        normal_out = &l->lmcache_normal[i];
-                        wallflags_out = &l->lmcache_wallflags[i];
-                        //
-                        // The following graph illustrates the range in which a sample point can affect the lighting of a face when g_blur = 1.5 and g_extra = on
-                        //              X : the sample point. They are placed on every tex->lightmap_scale/lmcache_density (=16.0/3) texture pixels. We calculate light for each sample point, which is the main time sink.
-                        //              + : the lightmap pixel. They are placed on every tex->lightmap_scale (=16.0) texture pixels, which is hard coded inside the GoldSrc engine. Their brightness are averaged from the sample points in a square with size g_blur*TEXTURE_STEP.
-                        //              o : indicates that this lightmap pixel is affected by the sample point 'X'. The higher g_blur, the more 'o'.
-                        //       |/ / / | : indicates that the brightness of this area is affected by the lightmap pixels 'o' and hence by the sample point 'X'. This is because the engine uses bilinear interpolation to display the lightmap.
-                        //
-                        //    ==============================================================================================================================================
-                        //    || +     +     +     +     +     + || +     +     +     +     +     + || +     +     +     +     +     + || +     +     +     +     +     + ||
-                        //    ||                                 ||                                 ||                                 ||                                 ||
-                        //    ||                                 ||                                 ||                                 ||                                 ||
-                        //    || +     +-----+-----+     +     + || +     +-----+-----+-----+     + || +     +-----+-----+-----+     + || +     +     +-----+-----+     + ||
-                        //    ||       | / / / / / |             ||       | / / / / / / / / |       ||       | / / / / / / / / |       ||             | / / / / / |       ||
-                        //    ||       |/ / / / / /|             ||       |/ / / / / / / / /|       ||       |/ / / / / / / / /|       ||             |/ / / / / /|       ||
-                        //    || +     + / / X / / +     +     + || +     + / / o X / o / / +     + || +     + / / o / X o / / +     + || +     +     + / / X / / +     + ||
-                        //    ||       |/ / / / / /|             ||       |/ / / / / / / / /|       ||       |/ / / / / / / / /|       ||             |/ / / / / /|       ||
-                        //    ||       | / / / / / |             ||       | / / / / / / / / |       ||       | / / / / / / / / |       ||             | / / / / / |       ||
-                        //    || +     +-----+-----+     +     + || +     +-----+-----+-----+     + || +     +-----+-----+-----+     + || +     +     +-----+-----+     + ||
-                        //    ||                                 ||                                 ||                                 ||                                 ||
-                        //    ||                                 ||                                 ||                                 ||                                 ||
-                        //    || +     +     +     +     +     + || +     +     +     +     +     + || +     +     +     +     +     + || +     +     +     +     +     + ||
-                        //    ==============================================================================================================================================
-                        //    || +     +     +     +     +     + || +     +     +     +     +     + || +     +     +     +     +     + || +     +     +     +     +     + ||
-                        //    ||                                 ||                                 ||                                 ||                                 ||
-                        //    ||                                 ||                                 ||                                 ||                                 ||
-                        //    || +     +-----+-----+     +     + || +     +-----+-----+-----+     + || +     +-----+-----+-----+     + || +     +     +-----+-----+     + ||
-                        //    ||       | / / / / / |             ||       | / / / / / / / / |       ||       | / / / / / / / / |       ||             | / / / / / |       ||
-                        //    ||       |/ / / / / /|             ||       |/ / / / / / / / /|       ||       |/ / / / / / / / /|       ||             |/ / / / / /|       ||
-                        //    || +     + / / o / / +     +     + || +     + / / o / / o / / +     + || +     + / / o / / o / / +     + || +     +     + / / o / / +     + ||
-                        //    ||       |/ / /X/ / /|             ||       |/ / / /X/ / / / /|       ||       |/ / / / /X/ / / /|       ||             |/ / /X/ / /|       ||
-                        //    ||       | / / / / / |             ||       | / / / / / / / / |       ||       | / / / / / / / / |       ||             | / / / / / |       ||
-                        //    || +     +/ / /o/ / /+     +     + || +     +/ / /o/ / /o/ / /+     + || +     +/ / /o/ / /o/ / /+     + || +     +     +/ / /o/ / /+     + ||
-                        //    ||       | / / / / / |             ||       | / / / / / / / / |       ||       | / / / / / / / / |       ||             | / / / / / |       ||
-                        //    ||       |/ / / / / /|             ||       |/ / / / / / / / /|       ||       |/ / / / / / / / /|       ||             |/ / / / / /|       ||
-                        //    || +     +-----+-----+     +     + || +     +-----+-----+-----+     + || +     +-----+-----+-----+     + || +     +     +-----+-----+     + ||
-                        //    ==============================================================================================================================================
-                        //
-                        square[0][0] = l->texmins[0] * tex->lightmap_scale + ceil( s - ( l->lmcache_side + 0.5 ) / (vec_t)l->lmcache_density ) * tex->lightmap_scale - tex->lightmap_scale;
-                        square[0][1] = l->texmins[1] * tex->lightmap_scale + ceil( t - ( l->lmcache_side + 0.5 ) / (vec_t)l->lmcache_density ) * tex->lightmap_scale - tex->lightmap_scale;
-                        square[1][0] = l->texmins[0] * tex->lightmap_scale + floor( s + ( l->lmcache_side + 0.5 ) / (vec_t)l->lmcache_density ) * tex->lightmap_scale + tex->lightmap_scale;
-                        square[1][1] = l->texmins[1] * tex->lightmap_scale + floor( t + ( l->lmcache_side + 0.5 ) / (vec_t)l->lmcache_density ) * tex->lightmap_scale + tex->lightmap_scale;
-                }
-                // find world's position for the sample
-                {
-                        {
-                                blocked = false;
-                                Winding *samp_wind;
-                                if ( SetSampleFromST(
-                                        surfpt, spot, &surface,
-                                        &nudged,
-                                        l, s_vec, t_vec,
-                                        square,
-                                        g_face_lightmode[facenum], samp_wind ) == LightOutside )
-                                {
-                                        j = nearest_s + ( l->texsize[0] + 1 ) * nearest_t;
-                                        if ( l->surfpt_lightoutside[j] )
-                                        {
-                                                blocked = true;
-                                        }
-                                        else
-                                        {
-                                                // the area this light sample has effect on is completely covered by solid, so take whatever valid position.
-                                                VectorCopy( l->surfpt[j], surfpt );
-                                                VectorCopy( l->surfpt_position[j], spot );
-                                                surface = l->surfpt_surface[j];
-                                        }
-                                }
-                        }
-                        if ( l->translucent_b )
-                        {
-                                const dplane_t *surfaceplane = getPlaneFromFaceNumber( surface );
-                                Winding *surfacewinding = new Winding( g_bspdata->dfaces[surface], g_bspdata );
-
-                                VectorCopy( spot, spot2 );
-                                for ( int x = 0; x < surfacewinding->m_NumPoints; x++ )
-                                {
-                                        VectorAdd( surfacewinding->m_Points[x], g_face_offset[surface], surfacewinding->m_Points[x] );
-                                }
-                                if ( !point_in_winding_noedge( *surfacewinding, *surfaceplane, spot2, 0.2 ) )
-                                {
-                                        snap_to_winding_noedge( *surfacewinding, *surfaceplane, spot2, 0.2, 4 * 0.2 );
-                                }
-                                VectorMA( spot2, -( g_translucentdepth + 2 * DEFAULT_HUNT_OFFSET ), surfaceplane->normal, spot2 );
-
-                                delete surfacewinding;
-                        }
-                        *wallflags_out = WALLFLAG_NONE;
-                        if ( blocked )
-                        {
-                                *wallflags_out |= ( WALLFLAG_BLOCKED | WALLFLAG_NUDGED );
-                        }
-                        if ( nudged )
-                        {
-                                *wallflags_out |= WALLFLAG_NUDGED;
-                        }
-                }
-                // calculate normal for the sample
-
-                LVector3 bumpnormals[NUM_BUMP_VECTS];
-                vec3_t phongnorm;
-                if ( l->bumped )
-                {
-                        GetPhongNormal( surface, surfpt, phongnorm );
-                        LVector3 vfacenorm( l->normals[0][0], l->normals[0][1], l->normals[0][2] );
-                        LVector3 vphongnorm( phongnorm[0], phongnorm[1], phongnorm[2] );
-#if 0
-                        if ( vfacenorm != vphongnorm )
-                        {
-                                std::stringstream ss;
-                                ss << "Face normal: " << vfacenorm << ", Phong normal: " << vphongnorm << "\n";
-                                Log( ss.str().c_str() );
-                        }
-#endif
-                        GetBumpNormals( g_bspdata->texinfo + l->face->texinfo,
-                                        vfacenorm,
-                                        vphongnorm, bumpnormals );
-                }
-
-                for (int n = 0; n < l->normal_count; n++ )
-                {
-                        if ( n == 0 )
-                        {
-                                // flat bump map use face phong normal
-                                GetPhongNormal( surface, surfpt, pointnormal[n], l, n );
-                                if ( l->translucent_b )
-                                {
-                                        VectorSubtract( vec3_origin, pointnormal[n], pointnormal2[n] );
-                                }
-                                VectorCopy( pointnormal[n], normal_out->norm[n] );
-                        }
-                        else
-                        {
-                                // this is a bumped sample, use the bump normals
-                                VectorCopy( bumpnormals[n - 1], pointnormal[n] );
-                                VectorCopy( pointnormal[n], normal_out->norm[n] );
-                                if ( l->translucent_b )
-                                {
-                                        VectorSubtract( vec3_origin, pointnormal[n], pointnormal2[n] );
-                                }
-                        }
-                                
-                }
-                // calculate visibility for the sample
-                {
-                        if ( !g_bspdata->visdatasize )
-                        {
-                                if ( i == 0 )
-                                {
-                                        memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                }
-                        }
-                        else
-                        {
-                                dleaf_t *leaf = PointInLeaf( spot );
-                                int thisoffset = leaf->visofs;
-                                if ( i == 0 || thisoffset != lastoffset )
-                                {
-                                        if ( thisoffset == -1 )
-                                        {
-                                                memset( pvs, 0, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                        }
-                                        else
-                                        {
-                                                DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf->visofs], pvs, sizeof( pvs ) );
-                                        }
-                                }
-                                lastoffset = thisoffset;
-                        }
-                        if ( l->translucent_b )
-                        {
-                                if ( !g_bspdata->visdatasize )
-                                {
-                                        if ( i == 0 )
-                                        {
-                                                memset( pvs2, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                        }
-                                }
-                                else
-                                {
-                                        dleaf_t *leaf2 = PointInLeaf( spot2 );
-                                        int thisoffset2 = leaf2->visofs;
-                                        if ( i == 0 || thisoffset2 != lastoffset2 )
-                                        {
-                                                if ( thisoffset2 == -1 )
-                                                {
-                                                        memset( pvs2, 0, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                                }
-                                                else
-                                                {
-                                                        DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf2->visofs], pvs2, sizeof( pvs2 ) );
-                                                }
-                                        }
-                                        lastoffset2 = thisoffset2;
-                                }
-                        }
-                }
-                // gather light
-                for (int n = 0; n < l->normal_count; n++ )
-                {
-                        if ( !blocked )
-                        {
-                                vec3_t vsamples[ALLSTYLES];
-                                memset( vsamples, 0, ALLSTYLES * sizeof( vec3_t ) );
-                                GatherSampleLight( spot, pvs, pointnormal[n], vsamples
-                                                        , styles
-                                                        , 0
-                                                        , l->texref
-                                                        , surface
-                                );
-                                for ( j = 0; j < ALLSTYLES && styles[j] != 255; j++ )
-                                {
-                                        VectorCopy( vsamples[j], sampled[j].light[n] );
-                                }
-                        }
-                        if ( l->translucent_b )
-                        {
-                                vec3_t sampled2[ALLSTYLES];
-                                memset( sampled2, 0, ALLSTYLES * sizeof( vec3_t ) );
-                                if ( !blocked )
-                                {
-                                        GatherSampleLight( spot2, pvs2, pointnormal2[n], sampled2
-                                                                , styles
-                                                                , 0
-                                                                , l->texref
-                                                                , surface
-                                        );
-                                }
-                                for ( j = 0; j < ALLSTYLES && styles[j] != 255; j++ )
-                                {
-                                        for ( int x = 0; x < 3; x++ )
-                                        {
-                                                sampled[j].light[n][x] = ( 1.0 - l->translucent_v[x] ) * sampled[j].light[n][x] + l->translucent_v[x] * sampled2[j][x];
-                                        }
-                                }
-                        }
-                        if ( g_drawnudge )
-                        {
-                                for ( j = 0; j < ALLSTYLES && styles[j] != 255; j++ )
-                                {
-                                        if ( blocked && styles[j] == 0 )
-                                        {
-                                                sampled[j].light[n][0] = 200;
-                                                sampled[j].light[n][1] = 0;
-                                                sampled[j].light[n][2] = 0;
-                                        }
-                                        else if ( nudged && styles[j] == 0 ) // we assume style 0 is always present
-                                        {
-                                                VectorFill( sampled[j].light[n], 100 );
-                                        }
-                                        else
-                                        {
-                                                VectorClear( sampled[j].light[n] );
-                                        }
-                                }
-                        }
-                }
-        }
-}
 
 void InitLightInfo( lightinfo_t &l, int facenum )
 {
@@ -3620,13 +437,13 @@ void InitLightInfo( lightinfo_t &l, int facenum )
 
         facelight_t *fl = &facelight[facenum];
         
-        l.bumped = g_face_patches[facenum]->needs_bumpmap;
+        l.bumped = g_patches[g_face_patches[facenum]].bumped;
         fl->bumped = l.bumped;
         l.surfnum = facenum;
         l.face = f;
 
-        VectorCopy( g_translucenttextures[g_bspdata->texinfo[f->texinfo].texref], l.translucent_v );
-        l.translucent_b = !VectorCompare( l.translucent_v, vec3_origin );
+        //VectorCopy( g_translucenttextures[g_bspdata->texinfo[f->texinfo].texref], l.translucent_v );
+        //l.translucent_b = !VectorCompare( l.translucent_v, vec3_origin );
         l.texref = g_bspdata->texinfo[f->texinfo].texref;
 
         VectorCopy( plane->normal, l.facenormal );
@@ -3660,10 +477,6 @@ void InitLightInfo( lightinfo_t &l, int facenum )
 
         }
 
-        for ( patch_t * patch = g_face_patches[facenum]; patch; patch = patch->next )
-        {
-                patch->normal_count = l.normal_count;
-        }
         l.facedist = plane->dist;
 
         CalcFaceVectors( &l );
@@ -3926,7 +739,7 @@ bool BuildLuxels( lightinfo_t *l, facelight_t *fl, int facenum )
         return true;
 }
 
-void CalcPoints_New( lightinfo_t *l, facelight_t *fl, int facenum )
+void CalcPoints( lightinfo_t *l, facelight_t *fl, int facenum )
 {
         // quick and dirty
         if ( g_fastmode )
@@ -4100,9 +913,7 @@ void ComputeIlluminationPointAndNormalsSSE( const lightinfo_t &l, const FourVect
 /**
  * Gathers light from sun (emit_skylight)
  */
-void GatherSampleSkyLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int facenum,
-                              const FourVectors &pos, FourVectors *normals, int normal_count,
-                              int thread, int lightflags = 0, int epsilon = 0 )
+void GatherSampleSkyLightSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutput_t &out )
 {
         bool ignore_normals = false;//lightflags & light_flag_t
         bool force_fast = false;// todo
@@ -4112,7 +923,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, i
         if ( ignore_normals )
                 dot = ReplicateX4( CONSTANT_DOT );
         else
-                dot = NegSIMD( normals[0] * GetLVector3( dl->normal ) );
+                dot = NegSIMD( input.normals[0] * input.dl->normal );
 
         dot = MaxSIMD( dot, Four_Zeros );
         int zero_mask = TestSignSIMD( CmpEqSIMD( dot, Four_Zeros ) );
@@ -4120,12 +931,327 @@ void GatherSampleSkyLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, i
                 return;
 
         int nsamples = 1;
-        if (g_ )
+        if ( Lights::sun_angular_extent > 0.0 )
+        {
+                nsamples = NSAMPLES_SUN_AREA_LIGHT;
+                if ( g_fastmode || force_fast )
+                        nsamples /= 4;
+        }
+
+        fltx4 total_frac_vis = Four_Zeros;
+        fltx4 frac_vis = Four_Zeros;
+
+        DirectionalSampler_t sampler;
+
+        for ( int d = 0; d < nsamples; d++ )
+        {
+                // determine visibility of skylight
+                // search back to see if we can hit a sky brush
+                LVector3 delta;
+                VectorScale( input.dl->normal, -MAX_TRACE_LENGTH, delta );
+                if ( d )
+                {
+                        // jitter light source location
+                        LVector3 ofs = sampler.NextValue();
+                        ofs *= MAX_TRACE_LENGTH * Lights::sun_angular_extent;
+                        delta += ofs;
+                }
+                
+
+                //FourVectors delta4;
+                //delta4.DuplicateVector( delta );
+                delta += input.pos.Vec( 0 );
+
+                vec3_t skyhit;
+                VectorCopy( delta, skyhit );
+                vec3_t vdelta;
+                vec3_t vpos;
+                VectorCopy( input.pos.Vec( 0 ), vpos );
+                VectorCopy( delta, vdelta );
+                float total_fraction_visible = 1.0;
+                // can we see a sky brush?
+                if ( TestLine( vpos, vdelta, total_fraction_visible ) != CONTENTS_SKY )
+                        total_fraction_visible = 0.0;
+
+                total_frac_vis = AddSIMD( total_frac_vis, ReplicateX4( total_fraction_visible ) );
+        }
+
+        fltx4 see_amount = MulSIMD( total_frac_vis, ReplicateX4( 1.0f / nsamples ) );
+        out.dot[0] = MulSIMD( dot, see_amount );
+        out.falloff = Four_Ones;
+        out.sun_amount = MulSIMD( see_amount, ReplicateX4( 10000.0f ) );
+        for ( int i = 0; i < input.normal_count; i++ )
+        {
+                if ( ignore_normals )
+                        out.dot[i] = ReplicateX4( CONSTANT_DOT );
+                else
+                {
+                        out.dot[i] = NegSIMD( input.normals[i] * input.dl->normal );
+                        out.dot[i] = MulSIMD( out.dot[i], see_amount );
+                }
+        }
+}
+
+/**
+ * Gathers light from ambient sky light (emit_skyambient)
+ */
+void GatherSampleAmbientSkySSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutput_t &out )
+{
+        bool ignore_normals = false;//lightflags & light_flag_t todo
+        bool force_fast = false;// todo
+
+        fltx4 sumdot = Four_Zeros;
+        fltx4 ambient_intensity[NUM_BUMP_VECTS + 1];
+        fltx4 possible_hit_count[NUM_BUMP_VECTS + 1];
+        fltx4 dots[NUM_BUMP_VECTS + 1];
+
+        for ( int i = 0; i < input.normal_count; i++ )
+        {
+                ambient_intensity[i] = Four_Zeros;
+                possible_hit_count[i] = Four_Zeros;
+        }
+
+        DirectionalSampler_t sampler;
+        int sky_samples = NUMVERTEXNORMALS;
+        if ( g_fastmode || force_fast )
+                sky_samples /= 4;
+        else
+                sky_samples *= g_skysamplescale;
+
+        for ( int j = 0; j < sky_samples; j++ )
+        {
+                FourVectors anorm;
+                anorm.DuplicateVector( sampler.NextValue() );
+                if ( ignore_normals )
+                        dots[0] = ReplicateX4( CONSTANT_DOT );
+                else
+                        dots[0] = NegSIMD( input.normals[0] * anorm );
+
+                fltx4 validity = CmpGtSIMD( dots[0], ReplicateX4( EQUAL_EPSILON ) );
+
+                // no possibility of anybody getting lit
+                if ( !TestSignSIMD( validity ) )
+                        continue;
+
+                dots[0] = AndSIMD( validity, dots[0] );
+                sumdot = AddSIMD( dots[0], sumdot );
+                possible_hit_count[0] = AddSIMD( AndSIMD( validity, Four_Ones ), possible_hit_count[0] );
+
+                for ( int i = 1; i < input.normal_count; i++ )
+                {
+                        if ( ignore_normals )
+                                dots[i] = ReplicateX4( CONSTANT_DOT );
+                        else
+                                dots[i] = NegSIMD( input.normals[i] * anorm );
+                        fltx4 validity2 = CmpGtSIMD( dots[i], ReplicateX4( EQUAL_EPSILON ) );
+                        dots[i] = AndSIMD( validity2, dots[i] );
+                        possible_hit_count[i] = AddSIMD(
+                                AndSIMD( AndSIMD( validity, validity2 ), Four_Ones ),
+                                possible_hit_count[i] );
+                }
+
+                // search back to see if we can hit a sky brush
+                FourVectors delta = anorm;
+                delta *= -MAX_TRACE_LENGTH;
+                delta += input.pos;
+                FourVectors surface_pos = input.pos;
+                FourVectors offset = anorm;
+                offset *= input.epsilon;
+                surface_pos -= offset;
+
+                fltx4 fraction_visible4;
+                float fraction_visible = 1.0;
+                vec3_t vpos;
+                vec3_t vdelta;
+                VectorCopy( surface_pos.Vec( 0 ), vpos );
+                VectorCopy( delta.Vec( 0 ), vdelta );
+                int contents = TestLine( vpos, vdelta, fraction_visible );
+                if ( contents != CONTENTS_SKY )
+                        fraction_visible = 0.0;
+                fraction_visible4 = ReplicateX4( fraction_visible );
+                for ( int i = 0; i < input.normal_count; i++ )
+                {
+                        fltx4 added_amt = MulSIMD( fraction_visible4, dots[i] );
+                        ambient_intensity[i] = AddSIMD( ambient_intensity[i], added_amt );
+                }
+        }
+
+        out.falloff = Four_Ones;
+        for ( int i = 0; i < input.normal_count; i++ )
+        {
+                // now scale out the missing parts of the hemisphere of this bump basis vector
+                fltx4 factor = ReciprocalSIMD( possible_hit_count[0] );
+                factor = MulSIMD( factor, possible_hit_count[i] );
+                out.dot[i] = MulSIMD( factor, sumdot );
+                out.dot[i] = ReciprocalSIMD( out.dot[i] );
+                out.dot[i] = MulSIMD( ambient_intensity[i], out.dot[i] );
+        }
+}
+
+void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutput_t &out )
+{
+        bool ignore_normals = false; // todo
+
+        FourVectors src;
+        src.DuplicateVector( vec3_origin );
+
+        if ( input.dl->facenum == -1 )
+        {
+                src.DuplicateVector( input.dl->origin );
+        }
+        
+        // Find light vector
+        FourVectors delta;
+        delta = src;
+        delta -= input.pos;
+        fltx4 dist2 = delta.length2();
+        fltx4 rpcdist = ReciprocalSqrtSIMD( dist2 );
+        delta *= rpcdist;
+        fltx4 dist = SqrtEstSIMD( dist2 );
+
+        // Compute dot
+        fltx4 dot = ReplicateX4( (float)CONSTANT_DOT );
+        if ( !ignore_normals )
+                dot = delta * input.normals[0];
+        dot = MaxSIMD( Four_Zeros, dot );
+
+        // Affix dot to zero if past fade distz
+        bool has_hard_falloff = ( input.dl->end_fade_distance > input.dl->start_fade_distance );
+        if ( has_hard_falloff )
+        {
+                fltx4 notpastfadedist = CmpLeSIMD( dist, ReplicateX4( input.dl->end_fade_distance ) );
+                dot = AndSIMD( dot, notpastfadedist );
+                if ( !TestSignSIMD( notpastfadedist ) )
+                        return;
+        }
+
+        dist = MaxSIMD( dist, Four_Ones );
+        fltx4 falloffevaldist = MinSIMD( dist, ReplicateX4( input.dl->cap_distance ) );
+
+        fltx4 constant, linear, quadratic;
+        fltx4 dot2, incone, infringe, mult;
+        FourVectors offset;
+
+        switch ( input.dl->type )
+        {
+        case emit_point:
+                constant = ReplicateX4( input.dl->constant_atten );
+                linear = ReplicateX4( input.dl->linear_atten );
+                quadratic = ReplicateX4( input.dl->quadratic_atten );
+
+                out.falloff = MulSIMD( falloffevaldist, falloffevaldist );
+                out.falloff = MulSIMD( out.falloff, quadratic );
+                out.falloff = AddSIMD( out.falloff, MulSIMD( linear, falloffevaldist ) );
+                out.falloff = AddSIMD( out.falloff, constant );
+                out.falloff = ReciprocalSIMD( out.falloff );
+                break;
+
+        case emit_surface:
+                dot2 = delta * input.dl->normal;
+                dot2 = NegSIMD( dot2 );
+                // light behind surface yields zero dot
+                dot2 = MaxSIMD( Four_Zeros, dot2 );
+                if ( TestSignSIMD( CmpEqSIMD( Four_Zeros, dot ) ) == 0xF )
+                        return;
+
+                out.falloff = ReciprocalSIMD( dist2 );
+                out.falloff = MulSIMD( out.falloff, dot2 );
+
+                // move the endpoint away from the surface by epsilon to prevent hittng the surface with trace
+                offset.DuplicateVector( input.dl->normal );
+                offset *= DIST_EPSILON;
+                src += offset;
+                break;
+
+        case emit_spotlight:
+                dot2 = delta * input.dl->normal;
+                dot2 = NegSIMD( dot2 );
+
+                // affix dot2 to zero if outside light cone
+                incone = CmpGtSIMD( dot2, ReplicateX4( input.dl->stopdot2 ) );
+                if ( !TestSignSIMD( incone ) )
+                        return;
+                dot = AndSIMD( incone, dot );
+
+                constant = ReplicateX4( input.dl->constant_atten );
+                linear = ReplicateX4( input.dl->linear_atten );
+                quadratic = ReplicateX4( input.dl->quadratic_atten );
+
+                out.falloff = MulSIMD( falloffevaldist, falloffevaldist );
+                out.falloff = MulSIMD( out.falloff, quadratic );
+                out.falloff = AddSIMD( out.falloff, MulSIMD( linear, falloffevaldist ) );
+                out.falloff = AddSIMD( out.falloff, constant );
+                out.falloff = ReciprocalSIMD( out.falloff );
+                out.falloff = MulSIMD( out.falloff, dot2 );
+
+                // outside the inner cone
+                infringe = CmpLeSIMD( dot2, ReplicateX4( input.dl->stopdot ) );
+                mult = ReplicateX4( input.dl->stopdot - input.dl->stopdot2 );
+                mult = ReciprocalSIMD( mult );
+                mult = MulSIMD( mult, SubSIMD( dot2, ReplicateX4( input.dl->stopdot2 ) ) );
+                mult = MinSIMD( mult, Four_Ones );
+                mult = MaxSIMD( mult, Four_Zeros );
+
+                // pow is fixed point, so this isn't the most accurate, but it doesn't need to be
+                if ( input.dl->exponent != 0.0 && input.dl->exponent != 1.0 )
+                        mult = PowSIMD( mult, input.dl->exponent );
+
+                mult = AndSIMD( infringe, mult );
+                mult = AddSIMD( mult, AndNotSIMD( infringe, Four_Ones ) );
+                out.falloff = MulSIMD( mult, out.falloff );
+                break;
+        }
+
+        // we may be in the fade region - modulate lighting by the fade curve
+        if ( has_hard_falloff )
+        {
+                fltx4 t = ReplicateX4( input.dl->end_fade_distance - input.dl->start_fade_distance );
+                t = ReciprocalSIMD( t );
+                t = MulSIMD( t, SubSIMD( dist, ReplicateX4( input.dl->start_fade_distance ) ) );
+
+                // clamp t to [0...1]
+                t = MinSIMD( t, Four_Ones );
+                t = MaxSIMD( t, Four_Zeros );
+                t = SubSIMD( Four_Ones, t );
+
+                // Using QuinticInterpolatingPolynomial, SSE-ified
+                // t * t * t *( t * ( t* 6.0 - 15.0 ) + 10.0 )
+                mult = SubSIMD( MulSIMD( ReplicateX4( 6.0f ), t ), ReplicateX4( 15.0f ) );
+                mult = AddSIMD( MulSIMD( mult, t ), ReplicateX4( 10.0f ) );
+                mult = MulSIMD( MulSIMD( t, t ), mult );
+                mult = MulSIMD( t, mult );
+                out.falloff = MulSIMD( mult, out.falloff );
+        }
+
+        // ray trace for visibility
+        fltx4 fraction_visible4 = Four_Ones;
+        float frac_vis = 1.0;
+        vec3_t vstart, vsrc;
+        VectorCopy( input.pos.Vec( 0 ), vstart );
+        VectorCopy( src.Vec( 0 ), vsrc );
+        int contents = TestLine( vstart, vsrc, frac_vis );
+        if ( contents == CONTENTS_SOLID )
+                // hit something, light occluded
+                frac_vis = 0.0;
+        fraction_visible4 = ReplicateX4( frac_vis );
+        dot = MulSIMD( fraction_visible4, dot );
+        out.dot[0] = dot;
+
+        for ( int i = 0; i < input.normal_count; i++ )
+        {
+                if ( ignore_normals )
+                        out.dot[i] = ReplicateX4( (float)CONSTANT_DOT );
+                else
+                {
+                        out.dot[i] = input.normals[i] * delta;
+                        out.dot[i] = MaxSIMD( Four_Zeros, out.dot[i] );
+                }
+        }
 }
 
 void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int facenum,
                            const FourVectors &pos, FourVectors *normals, int normal_count,
-                           int thread, int lightflags = 0, int epsilon = 0 )
+                           int thread, int lightflags, float epsilon )
 {
         for ( int b = 0; b < normal_count; b++ )
         {
@@ -4136,14 +1262,72 @@ void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int 
         out.sun_amount = Four_Zeros;
         nassertv( normal_count <= ( NUM_BUMP_VECTS + 1 ) );
 
+        SSE_sampleLightInput_t inp;
+        inp.dl = dl;
+        inp.facenum = facenum;
+        inp.pos = pos;
+        inp.normals = normals;
+        inp.normal_count = normal_count;
+        inp.thread = thread;
+        inp.lightflags = lightflags;
+        inp.epsilon = epsilon;
+
         // skylights work fundamentally different than normal lights
         switch ( dl->type )
         {
         case emit_skylight:
-                GatherSampleSkyLightSSE( out, dl, facenum, pos, normals, normal_count,
-                                         thread, lightflags, epsilon );
+                GatherSampleSkyLightSSE( inp, out );
+                break;
+        case emit_skyambient:
+                GatherSampleAmbientSkySSE( inp, out );
+                break;
+        case emit_point:
+        case emit_surface:
+        case emit_spotlight:
+                GatherSampleLightStandardSSE( inp, out );
+                break;
+        default:
+                Error( "Bad dl->type %i in GatherSampleLightSSE", dl->type );
                 break;
         }
+
+        // NOTE: Notice here that if the light is on the back side of the face
+        // (tested by checking the dot product of the face normal and the light position)
+        // we don't want it to contribute to *any* of the bumped lightmaps. It glows
+        // in disturbing ways if we don't do this.
+        out.dot[0] = MaxSIMD( out.dot[0], Four_Zeros );
+        fltx4 notZero = CmpGtSIMD( out.dot[0], Four_Zeros );
+        for ( int n = 1; n < normal_count; n++ )
+        {
+                out.dot[n] = MaxSIMD( out.dot[n], Four_Zeros );
+                out.dot[n] = AndSIMD( out.dot[n], notZero );
+        }
+
+}
+
+static int FindOrAllocateLightstyleSamples( dface_t *f, facelight_t *fl, int style, int normals )
+{
+        // Search the lightstyles associated with the face for a match
+        int k;
+        for ( k = 0; k < MAXLIGHTMAPS; k++ )
+        {
+                if ( f->styles[k] == style )
+                        break;
+
+                // Found an empty entry, we can use it for a new lightstyle
+                if ( f->styles[k] == 255 )
+                {
+                        AllocateLightstyleSamples( fl, k, normals );
+                        f->styles[k] = style;
+                        break;
+                }
+        }
+
+        // check for overflow
+        if ( k >= MAXLIGHTMAPS )
+                return -1;
+
+        return k;
 }
 
 void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num_samples )
@@ -4151,7 +1335,7 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
         SSE_sampleLightOutput_t out;
 
         // iterate over all direct lights and add them to the particular sapmle
-        for ( directlight_t *dl = directlights[0]; dl; dl = dl->next )
+        for ( directlight_t *dl = Lights::activelights; dl != nullptr; dl = dl->next )
         {
                 // is this light in the pvs?
                 fltx4 dot_mask = Four_Zeros;
@@ -4170,62 +1354,624 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
 
                 GatherSampleLightSSE( out, dl, info.facenum, info.points,
                                       info.point_normals, info.normal_count, info.thread );
+
+                // Apply the pvs check filter and compute falloff X dot
+                fltx4 fxdot[NUM_BUMP_VECTS + 1];
+                skip = true;
+                for ( int b = 0; b < info.normal_count; b++ )
+                {
+                        fxdot[b] = MulSIMD( out.dot[b], dot_mask );
+                        fxdot[b] = MulSIMD( fxdot[b], out.falloff );
+                        if ( !IsAllZeros( fxdot[b] ) )
+                                skip = false;
+                }
+
+                if ( skip )
+                        continue;
+
+                // figure out the lightstyle for this particular sample
+                int lightstyleidx = FindOrAllocateLightstyleSamples( info.face, info.facelight, dl->style, info.normal_count );
+                if ( lightstyleidx < 0 )
+                {
+                        Warning( "Too many lightstyles on face %d", info.facenum );
+                        continue;
+                }
+
+                bumpsample_t *samples = info.facelight->light[lightstyleidx];
+                for ( int n = 0; n < info.normal_count; n++ )
+                {
+                        for ( int i = 0; i < num_samples; i++ )
+                        {
+                                // record the lighting contribution for this sample
+                                samples[sample_idx + i].light[n].AddLight( SubFloat( fxdot[n], i ),
+                                                                           dl->intensity,
+                                                                           SubFloat( out.sun_amount, i ) );
+                        }
+                }
         }
 }
 
-void            BuildFacelights( const int facenum )
+void ComputeLuxelIntensity( SSE_SampleInfo_t &info, int sampleidx, bumpsample_t *samples, float *sample_intensity )
 {
-        dface_t*        f;
-        unsigned char	f_styles[ALLSTYLES];
-        sample_t		*fl_samples[ALLSTYLES];
-        lightinfo_t     l;
-        int             i;
-        int             j;
-        int             k;
-        sample_t*       s;
-        vec_t*          spot;
-        patch_t*        patch;
-        const dplane_t* plane;
-        byte            pvs[( MAX_MAP_LEAFS + 7 ) / 8];
-        int             thisoffset = -1, lastoffset = -1;
-        int             lightmapwidth;
-        int             lightmapheight;
-        int             size;
-        vec3_t			spot2, normal2;
-        vec3_t			delta;
-        byte			pvs2[( MAX_MAP_LEAFS + 7 ) / 8];
-        int				thisoffset2 = -1, lastoffset2 = -1;
-        LVector3 v[4], n[4];
+        // Compute a separate intensity for each
+        sample_t& sample = info.facelight->sample[sampleidx];
+        int destIdx = sample.s + sample.t * info.lightmap_width;
+        for ( int n = 0; n < info.normal_count; ++n )
+        {
+                float intensity = samples[sampleidx].light[n].Intensity();
 
-        int				*sample_wallflags;
-        SSE_SampleInfo_t sampleinfo;
+                // convert to a linear perception space
+                sample_intensity[n * info.lightmap_size + destIdx] = std::pow( intensity / 256.0, 1.0 / 2.2 );
+        }
+}
+
+void ComputeSampleIntensities( SSE_SampleInfo_t &info, bumpsample_t *samples, float *sample_intensity )
+{
+        for ( int i = 0; i < info.facelight->numsamples; i++ )
+        {
+                ComputeLuxelIntensity( info, i, samples, sample_intensity );
+        }
+}
+
+void ComputeLightmapGradients( SSE_SampleInfo_t &info, bool *has_processed_sample, float *sample_intensity, float *gradient )
+{
+        int w = info.lightmap_width;
+        int h = info.lightmap_height;
+
+        facelight_t *fl = info.facelight;
+
+        for ( int i = 0; i < fl->numsamples; i++ )
+        {
+                // don't supersample more than once
+                if ( has_processed_sample[i] )
+                        continue;
+
+                gradient[i] = 0.0f;
+                sample_t &sample = fl->sample[i];
+
+                // Choose the maximum gradient of all bumped lightmap intensities
+                for ( int n = 0; n < info.normal_count; ++n )
+                {
+                        int j = n * info.lightmap_size + sample.s + sample.t * w;
+
+                        if ( sample.t > 0 )
+                        {
+                                if ( sample.s > 0 )   gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1 - w] ) );
+                                gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - w] ) );
+                                if ( sample.s < w - 1 ) gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1 - w] ) );
+                        }
+                        if ( sample.t < h - 1 )
+                        {
+                                if ( sample.s > 0 )   gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1 + w] ) );
+                                gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + w] ) );
+                                if ( sample.s < w - 1 ) gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1 + w] ) );
+                        }
+                        if ( sample.s > 0 )   gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1] ) );
+                        if ( sample.s < w - 1 ) gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1] ) );
+                }
+        }
+}
+
+bool PointsInWinding( FourVectors const & point, Winding *w, int &invalidBits )
+{
+        FourVectors edge, toPt, cross, testCross, p0, p1;
+        fltx4 invalidMask;
+
+        //
+        // get the first normal to test
+        //
+        p0.DuplicateVector( w->m_Points[0] );
+        p1.DuplicateVector( w->m_Points[1] );
+        toPt = point;
+        toPt -= p0;
+        edge = p1;
+        edge -= p0;
+        testCross = edge ^ toPt;
+        testCross.VectorNormalizeFast();
+
+        for ( int ndxPt = 1; ndxPt < w->m_NumPoints; ndxPt++ )
+        {
+                p0.DuplicateVector( w->m_Points[ndxPt] );
+                p1.DuplicateVector( w->m_Points[( ndxPt + 1 ) % w->m_NumPoints] );
+                toPt = point;
+                toPt -= p0;
+                edge = p1;
+                edge -= p0;
+                cross = edge ^ toPt;
+                cross.VectorNormalizeFast();
+
+                fltx4 dot = cross * testCross;
+                invalidMask = OrSIMD( invalidMask, CmpLtSIMD( dot, Four_Zeros ) );
+
+                invalidBits = TestSignSIMD( invalidMask );
+                if ( invalidBits == 0xF )
+                        return false;
+        }
+
+        return true;
+}
+
+void ResampleLightAt4Points( SSE_SampleInfo_t &info, int style, bool ambient, bumpsample_t *result )
+{
+        SSE_sampleLightOutput_t out;
+
+        // clear result
+        for ( int i = 0; i < 4; i++ )
+        {
+                for ( int n = 0; n < info.normal_count; n++ )
+                {
+                        result[i].light[n].Zero();
+                }
+        }
+
+        // Iterate over all direct lights and add them to the particular sample
+        for ( directlight_t *dl = Lights::activelights; dl != nullptr; dl = dl->next )
+        {
+                if ( ambient && dl->type != emit_skyambient )
+                        continue;
+                if ( !ambient && dl->type == emit_skyambient )
+                        continue;
+
+                // only add contributions that match the lightstyle
+                nassertv( style <= MAXLIGHTMAPS );
+                nassertv( info.face->styles[style] != 0xFF );
+                if ( dl->style != info.face->styles[style] )
+                        continue;
+
+                // is this light potentially visible?
+                fltx4 dot_mask = Four_Zeros;
+                bool skip = true;
+                for ( int s = 0; s < 4; s++ )
+                {
+                        if ( PVSCheck( dl->pvs, info.clusters[s] ) )
+                        {
+                                dot_mask = SetComponentSIMD( dot_mask, s, 1.0f );
+                                skip = false;
+                        }
+                }
+
+                if ( skip )
+                        // light not potentially visible
+                        continue;
+
+                // NOTE: Notice here that if the light is on the back side of the face
+                // (tested by checking the dot product of the face normal and the light position)
+                // we don't want it to contribute to *any* of the bumped lightmaps. It glows
+                // in disturbing ways if we don't do this.
+                GatherSampleLightSSE( out, dl, info.facenum, info.points, info.point_normals, info.normal_count, info.thread );
+
+                // Apply the PVS check filter and compute falloff x dot
+                fltx4 fxdot[NUM_BUMP_VECTS + 1];
+                for ( int b = 0; b < info.normal_count; b++ )
+                {
+                        fxdot[b] = MulSIMD( out.falloff, out.dot[b] );
+                        fxdot[b] = MulSIMD( fxdot[b], dot_mask );
+                }
+
+                // Compute the contributions to each of the bumped lightmaps
+                // The first sample is for non-bumped lighting.
+                // The other sample are for bumpmapping.
+                for ( int i = 0; i < 4; ++i )
+                {
+                        for ( int n = 0; n < info.normal_count; ++n )
+                        {
+                                result[i].light[n].AddLight( SubFloat( fxdot[n], i ), dl->intensity, SubFloat( out.sun_amount, i ) );
+                        }
+                }
+        }
+}
+
+int SupersampleLightAtPoint( lightinfo_t &l, SSE_SampleInfo_t &info, int sampleidx,
+                             int style, bumpsample_t &light, bool ambient )
+{
+        sample_t &sample = info.facelight->sample[sampleidx];
+
+        // Get the position of the original sample in lightmap space
+        LVector2 temp;
+        WorldToLuxelSpace( &l, GetLVector3( sample.pos ), temp );
+        LVector3 sample_light_origin( temp[0], temp[1], 0.0 );
+
+        // some parameters related to supersampling
+        float sample_width = !ambient ? 4 : 2;
+        float cscale = 1.0 / sample_width;
+        float csshift = -( ( sample_width - 1 ) * cscale ) / 2.0;
+
+        // clear out the light values
+        for ( int i = 0; i < info.normal_count; i++ )
+        {
+                light.light[i].Zero();
+        }
+
+        int subsamplecnt = 0;
+
+        FourVectors supersamplenorm;
+        supersamplenorm.DuplicateVector( sample.normal );
+
+        FourVectors supersamplecoord;
+        FourVectors supersamplepos;
+
+        if ( !ambient )
+        {
+                float arow[4];
+                for ( int coord = 0; coord < 4; coord++ )
+                {
+                        arow[coord] = csshift + coord * cscale;
+                }
+                fltx4 sserow = LoadUnalignedSIMD( arow );
+
+                for ( int s = 0; s < 4; s++ )
+                {
+                        // make sure the coordinate is inside of the sample's winding and when normalizing
+                        // below use the number of samples used, not just numsamples and some of them
+                        // will be skipped if they are not inside of the winding
+                        supersamplecoord.DuplicateVector( sample_light_origin );
+                        supersamplecoord.x = AddSIMD( supersamplecoord.x, ReplicateX4( arow[s] ) );
+                        supersamplecoord.y = AddSIMD( supersamplecoord.y, sserow );
+
+                        // Figure out where the supersample exists in the world, and make sure
+                        // it lies within the sample winding
+                        LuxelToWorldSpace( &l, supersamplecoord[0], supersamplecoord[1], supersamplepos );
+
+                        // A winding should exist only if the sample wasn't a uniform luxel, or if g_bDumpPatches is true.
+                        int invalidBits = 0;
+                        if ( sample.winding && !PointsInWinding( supersamplepos, sample.winding, invalidBits ) )
+                                continue;
+
+                        // Compute the super-sample illumination point and normal
+                        // We're assuming the flat normal is the same for all supersamples
+                        ComputeIlluminationPointAndNormalsSSE( l, supersamplepos, supersamplenorm, &info, 4 );
+
+                        // Resample the non-ambient light at this point...
+                        bumpsample_t result[4];
+                        ResampleLightAt4Points( info, style, false, result );
+
+                        // got more subsamples
+                        for ( int i = 0; i < 4; i++ )
+                        {
+                                if ( !( ( invalidBits >> i ) & 0x1 ) )
+                                {
+                                        for ( int n = 0; n < info.normal_count; ++n )
+                                        {
+                                                light[n].AddLight( result[i][n] );
+                                        }
+                                        ++subsamplecnt;
+                                }
+                        }
+                }
+        }
+        else
+        {
+                FourVectors superSampleOffsets;
+                superSampleOffsets.LoadAndSwizzle( LVector3( csshift, csshift, 0 ), LVector3( csshift, csshift + cscale, 0 ),
+                                                   LVector3( csshift + cscale, csshift, 0 ), LVector3( csshift + cscale, csshift + cscale, 0 ) );
+                supersamplecoord.DuplicateVector( sample_light_origin );
+                supersamplecoord += superSampleOffsets;
+
+                LuxelToWorldSpace( &l, supersamplecoord[0], supersamplecoord[1], supersamplepos );
+
+                int invalidBits = 0;
+                if ( sample.winding && !PointsInWinding( supersamplepos, sample.winding, invalidBits ) )
+                        return 0;
+
+                ComputeIlluminationPointAndNormalsSSE( l, supersamplepos, supersamplenorm, &info, 4 );
+
+                bumpsample_t result[4];
+                ResampleLightAt4Points( info, style, true, result );
+
+                // Got more subsamples
+                for ( int i = 0; i < 4; i++ )
+                {
+                        if ( !( ( invalidBits >> i ) & 0x1 ) )
+                        {
+                                for ( int n = 0; n < info.normal_count; ++n )
+                                {
+                                        light[n].AddLight( result[i][n] );
+                                }
+                                ++subsamplecnt;
+                        }
+                }
+        }
+
+        return subsamplecnt;
+}
+
+void BuildSupersampleFacelights( lightinfo_t &l, SSE_SampleInfo_t &info, int style )
+{
+        bumpsample_t ambientlight;
+        bumpsample_t directlight;
+
+        // this is used to make sure we don't supersample a particular sample more than once
+        int processed_sample_size = info.lightmap_size * sizeof( bool );
+        bool *has_processed_sample = (bool *)malloc( processed_sample_size );
+        memset( has_processed_sample, 0, processed_sample_size );
+
+        // this is used to compute a simple gradiant of the light samples
+        // We're going to store the maximum intensity of all bumped samples at each sample location
+        float *gradient = (float*)malloc( info.facelight->numsamples * sizeof( float ) );
+        float *sample_intensity = (float *)malloc( info.normal_count * info.lightmap_size * sizeof( float ) );
+
+        // compute the maximum intensity of all lighting associated with this lightstyle
+        // for all bumped lighting
+        bumpsample_t *lightsamples = info.facelight->light[style];
+        ComputeSampleIntensities( info, lightsamples, sample_intensity );
+
+        // What's going on here is that we're looking for large lighting discontinuities
+        // (large light intensity gradients) as a clue that we should probably be supersampling
+        // in that area. Because the supersampling operation will cause lighting changes,
+        // we've found that it's good to re-check the gradients again and see if any other
+        // areas should be supersampled as a result of the previous pass. Keep going
+        // until all the gradients are reasonable or until we hit a max number of passes
+        bool do_anotherpass = true;
+        int pass = 1;
+        while ( do_anotherpass && pass <= g_extrapasses )
+        {
+                // Look for lighting discontinuities to see what we should be supersampling
+                ComputeLightmapGradients( info, has_processed_sample, sample_intensity, gradient );
+
+                do_anotherpass = false;
+                for ( int i = 0; i < info.facelight->numsamples; i++ )
+                {
+                        // don't supersample more than once
+                        if ( has_processed_sample[i] )
+                                continue;
+
+                        // don't supersample if the lighting is pretty uniform near the sample
+                        if ( gradient[i] < 0.0625 )
+                                continue;
+
+                        // Joy! We're supersampling now, and we therefore must do another pass
+                        // Also, we need never bother with this sample again
+                        has_processed_sample[i] = true;
+                        do_anotherpass = true;
+
+                        int ambient_supersample_count = SupersampleLightAtPoint( l, info, i, style, ambientlight, true );
+                        int direct_supersample_count = SupersampleLightAtPoint( l, info, i, style, directlight, false );
+
+                        if ( ambient_supersample_count > 0 && direct_supersample_count > 0 )
+                        {
+                                // add the ambient + directional terms together, stick it back into the lightmap
+                                for ( int n = 0; n < info.normal_count; n++ )
+                                {
+                                        lightsamples[i][n].Zero();
+                                        lightsamples[i][n].AddWeighted( directlight[n], 1.0 / direct_supersample_count );
+                                        lightsamples[i][n].AddWeighted( ambientlight[n], 1.0 / ambient_supersample_count );
+                                }
+
+                                // Recompute the luxel intensity based on the supersampling
+                                ComputeLuxelIntensity( info, i, lightsamples, sample_intensity );
+                        }
+                }
+
+                // we've finished another supersampling pass
+                pass++;
+        }
+
+        free( gradient );
+        free( sample_intensity );
+        free( has_processed_sample );
+}
+
+void AddSampleToPatch( sample_t *sample, lightvalue_t &light, int facenum )
+{
+        patch_t *patch;
+        vec3_t mins, maxs;
+        int i;
+
+        if ( g_numbounce == 0 )
+                return;
+        if ( VectorAvg( light.light ) < 1 )
+        {
+                return;
+        }
+                
+
+        //
+        // fixed the sample position and normal -- need to find the equiv pos, etc to set up
+        // patches
+        //
+        if ( g_face_patches[facenum] == -1 )
+                return;
+
+        float radius = std::sqrt( sample->area ) / 2.0;
+
+        patch_t *nextpatch = nullptr;
+        for ( patch = &g_patches[g_face_patches[facenum]]; patch; patch = nextpatch )
+        {
+                // next patch
+                nextpatch = nullptr;
+                if ( patch->next != -1 )
+                {
+                        nextpatch = &g_patches[patch->next];
+                }
+
+                if ( patch->sky )
+                        continue;
+
+                // skip patches with children
+                if ( patch->child1 != -1 )
+                        continue;
+
+                patch->winding->getBounds( mins, maxs );
+
+                bool skip = false;
+                for ( i = 0; i < 3; i++ )
+                {
+                        if ( ( mins[i] > sample->pos[i] + radius ) ||
+                                ( maxs[i] < sample->pos[i] - radius ) )
+                        {
+                                skip = true;
+                                break;
+                        }
+
+                }
+
+                if ( skip )
+                        continue;
+
+                // add the sample to the patch
+                patch->samplearea += sample->area;
+                VectorMA( patch->samplelight, sample->area, light.light, patch->samplelight );
+        }
+
+        // don't worry if some samples don't find a patch
+}
+
+void BuildPatchLights( int facenum )
+{
+        int i, k;
+        patch_t *patch;
+        dface_t *f = g_bspdata->dfaces + facenum;
+        facelight_t *fl = &facelight[facenum];
+
+        for ( k = 0; k < MAXLIGHTMAPS; k++ )
+        {
+                if ( f->styles[k] == 0 )
+                        break;
+        }
+
+        if ( k >= MAXLIGHTMAPS )
+                return;
+
+        for ( i = 0; i < fl->numsamples; i++ )
+        {
+                AddSampleToPatch( &fl->sample[i], fl->light[k][i][0], facenum );
+        }
+
+        // check for a valid face
+        if ( g_face_patches[facenum] == -1 )
+                return;
+
+        // push up sampled light to parents (children always exist first in the list)
+        patch_t *nextpatch;
+        for ( patch = &g_patches[g_face_patches[facenum]]; patch; patch = nextpatch )
+        {
+                // next patch
+                nextpatch = nullptr;
+                if ( patch->next != -1 )
+                {
+                        nextpatch = &g_patches[patch->next];
+                }
+
+                // skip patches without parents
+                if ( patch->parent == -1 )
+                        continue;
+
+                patch_t *parent = &g_patches[patch->parent];
+                parent->samplearea += patch->samplearea;
+                VectorAdd( parent->samplelight, patch->samplelight, parent->samplelight );
+        }
+
+        // average up the direct light on each patch for radiosity
+        if ( g_numbounce > 0 )
+        {
+                for ( patch = &g_patches[g_face_patches[facenum]]; patch; patch = nextpatch )
+                {
+                        // next patch
+                        nextpatch = nullptr;
+                        if ( patch->next != -1 )
+                        {
+                                nextpatch = &g_patches[patch->next];
+                        }
+
+                        if ( patch->samplearea )
+                        {
+                                ThreadLock();
+                                std::cout << "patchsample area " << patch->samplearea << std::endl;
+                                std::cout << "samplelight is " << patch->samplelight << std::endl;
+                                ThreadUnlock();
+                                float scale;
+                                LVector3 v;
+                                scale = 1.0 / patch->samplearea;
+
+                                v = patch->samplelight * scale;
+                                patch->totallight.light[0].light += v;
+                                patch->directlight += v;
+                        }
+                }
+        }
+
+        // pull totallight from all children (children always exist first in the list)
+        for ( patch = &g_patches[g_face_patches[facenum]]; patch; patch = nextpatch )
+        {
+                // next patch
+                nextpatch = nullptr;
+                if ( patch->next != -1 )
+                {
+                        nextpatch = &g_patches[patch->next];
+                }
+
+                if ( patch->child1 != -1 )
+                {
+                        float s1, s2;
+                        patch_t *child1, *child2;
+
+                        child1 = &g_patches[patch->child1];
+                        child2 = &g_patches[patch->child2];
+
+                        s1 = child1->area / ( child1->area + child2->area );
+                        s2 = child2->area / ( child1->area + child2->area );
+
+                        child1->totallight.light[0].light *= s1;
+                        VectorMA( patch->totallight.light[0].light, s2,
+                                  child2->totallight.light[0].light,
+                                  patch->totallight.light[0].light );
+
+                        patch->totallight.light[0].light = patch->directlight;
+                }
+        }
+
+        bool needsbump = fl->bumped;
+
+        // add an ambient term if desired
+        if ( g_ambient[0] || g_ambient[1] || g_ambient[2] )
+        {
+                LVector3 ambient = GetLVector3( g_ambient );
+                for ( int j = 0; j < MAXLIGHTMAPS && f->styles[j] != 255; j++ )
+                {
+                        if ( f->styles[j] == 0 )
+                        {
+                                for ( i = 0; i < fl->numsamples; i++ )
+                                {
+                                        fl->light[j][i][0].light += ambient;
+                                        if ( needsbump )
+                                        {
+                                                fl->light[j][i][1].light += ambient;
+                                                fl->light[j][i][2].light += ambient;
+                                                fl->light[j][i][3].light += ambient;
+                                        }
+                                }
+                                break;
+                        }
+                }
+        }
+}
+
+void BuildFacelights( const int facenum )
+{
+        
+        dface_t*                f;
+        lightinfo_t             l;
+        int                     i;
+        int                     j;
+        LVector3                v[4], n[4];
+        const dplane_t*         plane;
+        SSE_SampleInfo_t        sampleinfo;
 
         f = &g_bspdata->dfaces[facenum];
-
         //
         // some surfaces don't need lightmaps
         //
         f->lightofs = -1;
-        for ( j = 0; j < ALLSTYLES; j++ )
+        for ( j = 0; j < MAXLIGHTMAPS; j++ )
         {
-                f_styles[j] = 255;
+                f->styles[j] = 255;
         }
 
         if ( g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL )
         {
-                for ( j = 0; j < MAXLIGHTMAPS; j++ )
-                {
-                        f->styles[j] = 255;
-                }
                 return;                                            // non-lit texture
         }
-
-        f_styles[0] = 0;
-        if ( g_face_patches[facenum] && g_face_patches[facenum]->emitstyle )
-        {
-                f_styles[1] = g_face_patches[facenum]->emitstyle;
-        }
-
+        
         memset( &l, 0, sizeof( l ) );
 
         plane = getPlaneFromFace( f );
@@ -4234,8 +1980,7 @@ void            BuildFacelights( const int facenum )
 
         InitLightInfo( l, facenum );
         StartRadTimer( BuildFacelights, CalcPoints );
-        //CalcPoints( &l );
-        CalcPoints_New( &l, fl, facenum );
+        CalcPoints( &l, fl, facenum );
         StopRadTimer( BuildFacelights, CalcPoints );
         InitSampleInfo( l, GetCurrentThreadNumber(), sampleinfo );
 
@@ -4281,649 +2026,23 @@ void            BuildFacelights( const int facenum )
                 GatherSampleLightAt4Points( sampleinfo, nsample, num_samples );
         }
 
-        lightmapwidth = l.texsize[0] + 1;
-        lightmapheight = l.texsize[1] + 1;
-
-        size = lightmapwidth * lightmapheight;
-        hlassume( size <= MAX_SINGLEMAP, assume_MAX_SINGLEMAP );
-
-        facelight[facenum].numsamples = l.numsurfpt;
-
-        for ( k = 0; k < ALLSTYLES; k++ )
+        if ( g_extra )
         {
-                fl_samples[k] = (sample_t *)calloc( l.numsurfpt, sizeof( sample_t ) );
-                hlassume( fl_samples[k] != NULL, assume_NoMemory );
-        }
-        
-        for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
-        {
-                hlassume( patch->totalstyle_all = (unsigned char *)malloc( ALLSTYLES * sizeof( unsigned char ) ), assume_NoMemory );
-                memset( patch->totalstyle_all, 255, ALLSTYLES * sizeof( unsigned char ) );
-                hlassume( patch->samplelight_all = new bumpsample_t[ALLSTYLES], assume_NoMemory );
-                hlassume( patch->totallight_all = new bumpsample_t[ALLSTYLES], assume_NoMemory );
-                hlassume( patch->directlight_all = new bumpsample_t[ALLSTYLES], assume_NoMemory );
-                for ( j = 0; j < ALLSTYLES; j++ )
+                // for each lightstyle, perform a supersampling pass
+                for ( i = 0; i < MAXLIGHTMAPS; i++ )
                 {
-                        for ( int n = 0; n < l.normal_count; n++ )
-                        {
-                                VectorClear( patch->samplelight_all[j].light[n] );
-                                VectorClear( patch->totallight_all[j].light[n] );
-                                VectorClear( patch->directlight_all[j].light[n] );
-                        }
-                }
-                
-                patch->totalstyle_all[0] = 0;
-        }
-
-        StartRadTimer( BuildFacelights, WallFlagStuff );
-
-        sample_wallflags = (int *)malloc( ( 2 * l.lmcache_side + 1 ) * ( 2 * l.lmcache_side + 1 ) * sizeof( int ) );
-        spot = l.surfpt[0];
-        for ( i = 0; i < l.numsurfpt; i++, spot += 3 )
-        {
-
-                for ( k = 0; k < ALLSTYLES; k++ )
-                {
-                        VectorCopy( spot, fl_samples[k][i].pos );
-                        fl_samples[k][i].surface = l.surfpt_surface[i];
-                        fl_samples[k][i].mins[0] = l.surfpt_bounds[i][0][0];
-                        fl_samples[k][i].mins[1] = l.surfpt_bounds[i][0][1];
-                        fl_samples[k][i].maxs[0] = l.surfpt_bounds[i][1][0];
-                        fl_samples[k][i].maxs[1] = l.surfpt_bounds[i][1][1];
-                }
-                
-
-                int s, t, pos;
-                int s_center, t_center;
-                vec_t sizehalf;
-                vec_t weighting, subsamples;
-                vec3_t centernormal;
-                vec_t weighting_correction;
-                int pass;
-                s_center = ( i % lightmapwidth ) * l.lmcache_density + l.lmcache_offset;
-                t_center = ( i / lightmapwidth ) * l.lmcache_density + l.lmcache_offset;
-                sizehalf = 0.5 * g_blur * l.lmcache_density;
-                subsamples = 0.0;
-                VectorCopy( l.lmcache_normal[s_center + l.lmcachewidth * t_center].norm[0], centernormal );
-                if ( g_bleedfix && !g_drawnudge )
-                {
-                        int s_origin = s_center;
-                        int t_origin = t_center;
-                        for ( s = s_center - l.lmcache_side; s <= s_center + l.lmcache_side; s++ )
-                        {
-                                for ( t = t_center - l.lmcache_side; t <= t_center + l.lmcache_side; t++ )
-                                {
-                                        int *pwallflags = &sample_wallflags[( s - s_center + l.lmcache_side ) + ( 2 * l.lmcache_side + 1 ) * ( t - t_center + l.lmcache_side )];
-                                        *pwallflags = l.lmcache_wallflags[s + l.lmcachewidth * t];
-                                }
-                        }
-                        // project the "shadow" from the origin point
-                        for ( s = s_center - l.lmcache_side; s <= s_center + l.lmcache_side; s++ )
-                        {
-                                for ( t = t_center - l.lmcache_side; t <= t_center + l.lmcache_side; t++ )
-                                {
-                                        int *pwallflags = &sample_wallflags[( s - s_center + l.lmcache_side ) + ( 2 * l.lmcache_side + 1 ) * ( t - t_center + l.lmcache_side )];
-                                        int coord[2] = { s - s_origin, t - t_origin };
-                                        int axis = abs( coord[0] ) >= abs( coord[1] ) ? 0 : 1;
-                                        int sign = coord[axis] >= 0 ? 1 : -1;
-                                        bool blocked1 = false;
-                                        bool blocked2 = false;
-                                        for ( int dist = 1; dist < abs( coord[axis] ); dist++ )
-                                        {
-                                                int test1[2];
-                                                int test2[2];
-                                                test1[axis] = test2[axis] = sign * dist;
-                                                double intercept = (double)coord[1 - axis] * (double)test1[axis] / (double)coord[axis];
-                                                test1[1 - axis] = (int)floor( intercept + 0.01 );
-                                                test2[1 - axis] = (int)ceil( intercept - 0.01 );
-                                                if ( abs( test1[0] + s_origin - s_center ) > l.lmcache_side || abs( test1[1] + t_origin - t_center ) > l.lmcache_side ||
-                                                     abs( test2[0] + s_origin - s_center ) > l.lmcache_side || abs( test2[1] + t_origin - t_center ) > l.lmcache_side )
-                                                {
-                                                        Warning( "HLRAD_AVOIDWALLBLEED: internal error. Contact vluzacn@163.com concerning this issue." );
-                                                        continue;
-                                                }
-                                                int wallflags1 = sample_wallflags[( test1[0] + s_origin - s_center + l.lmcache_side ) + ( 2 * l.lmcache_side + 1 ) * ( test1[1] + t_origin - t_center + l.lmcache_side )];
-                                                int wallflags2 = sample_wallflags[( test2[0] + s_origin - s_center + l.lmcache_side ) + ( 2 * l.lmcache_side + 1 ) * ( test2[1] + t_origin - t_center + l.lmcache_side )];
-                                                if ( wallflags1 & WALLFLAG_NUDGED )
-                                                {
-                                                        blocked1 = true;
-                                                }
-                                                if ( wallflags2 & WALLFLAG_NUDGED )
-                                                {
-                                                        blocked2 = true;
-                                                }
-                                        }
-                                        if ( blocked1 && blocked2 )
-                                        {
-                                                *pwallflags |= WALLFLAG_SHADOWED;
-                                        }
-                                }
-                        }
-                }
-                for ( pass = 0; pass < 2; pass++ )
-                {
-                        for ( s = s_center - l.lmcache_side; s <= s_center + l.lmcache_side; s++ )
-                        {
-                                for ( t = t_center - l.lmcache_side; t <= t_center + l.lmcache_side; t++ )
-                                {
-                                        weighting = ( qmin( 0.5, sizehalf - ( s - s_center ) ) - qmax( -0.5, -sizehalf - ( s - s_center ) ) )
-                                                * ( qmin( 0.5, sizehalf - ( t - t_center ) ) - qmax( -0.5, -sizehalf - ( t - t_center ) ) );
-                                        if ( g_bleedfix && !g_drawnudge )
-                                        {
-                                                int wallflags = sample_wallflags[( s - s_center + l.lmcache_side ) + ( 2 * l.lmcache_side + 1 ) * ( t - t_center + l.lmcache_side )];
-                                                if ( wallflags & ( WALLFLAG_BLOCKED | WALLFLAG_SHADOWED ) )
-                                                {
-                                                        continue;
-                                                }
-                                                if ( wallflags & WALLFLAG_NUDGED )
-                                                {
-                                                        if ( pass == 0 )
-                                                        {
-                                                                continue;
-                                                        }
-                                                }
-                                        }
-                                        pos = s + l.lmcachewidth * t;
-                                        // when blur distance (g_blur) is large, the subsample can be very far from the original lightmap sample (aligned with interval TEXTURE_STEP (16.0))
-                                        // in some cases such as a thin cylinder, the subsample can even grow into the opposite side
-                                        // as a result, when exposed to a directional light, the light on the cylinder may "leak" into the opposite dark side
-                                        // this correction limits the effect of blur distance when the normal changes very fast
-                                        // this correction will not break the smoothness that HLRAD_GROWSAMPLE ensures
-                                        weighting_correction = DotProduct( l.lmcache_normal[pos].norm[0], centernormal );
-                                        weighting_correction = ( weighting_correction > 0 ) ? weighting_correction * weighting_correction : 0;
-                                        weighting = weighting * weighting_correction;
-                                        for ( int n = 0; n < l.normal_count; n++ )
-                                        {
-                                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                                                {
-
-                                                        VectorMA( fl_samples[j][i].light[n], weighting, l.lmcache[pos][j].light[n], fl_samples[j][i].light[n] );
-                                                }
-                                        }
-                                        
-                                        subsamples += weighting;
-                                }
-                        }
-                        if ( subsamples > NORMAL_EPSILON )
-                        {
+                        // stop when we run out of lightstyles
+                        if ( f->styles[i] == 0xFF )
                                 break;
-                        }
-                        else
-                        {
-                                subsamples = 0.0;
-                                for ( int n = 0; n < l.normal_count; n++ )
-                                {
-                                        for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                                        {
-                                                VectorClear( fl_samples[j][i].light[n] );
-                                        }
-                                }
-                                
-                        }
-                }
-                if ( subsamples > 0 )
-                {
-                        for ( int n = 0; n < l.normal_count; n++ )
-                        {
-                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                                {
-                                        VectorScale( fl_samples[j][i].light[n], 1.0 / subsamples, fl_samples[j][i].light[n] );
-                                }
-                        }
-                        
-                }
-        } // end of i loop
-        free( sample_wallflags );
-        StopRadTimer( BuildFacelights, WallFlagStuff );
 
-        StartRadTimer( BuildFacelights, AddSamplesToPatches );
-        // average up the direct light on each patch for radiosity
-        AddSamplesToPatches( fl_samples, f_styles, facenum, &l );
-        {
-                for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
-                {
-                        //LRC:
-                        unsigned istyle;
-                        if ( patch->samples <= ON_EPSILON * ON_EPSILON )
-                                patch->samples = 0.0;
-                        if ( patch->samples )
-                        {
-                                for ( int n = 0; n < l.normal_count; n++ )
-                                {
-                                        for ( istyle = 0; istyle < ALLSTYLES && patch->totalstyle_all[istyle] != 255; istyle++ )
-                                        {
-                                                vec3_t v;
-                                                VectorScale( patch->samplelight_all[istyle].light[n], 1.0f / patch->samples, v );
-                                                VectorAdd( patch->directlight_all[istyle].light[n], v, patch->directlight_all[istyle].light[n] );
-                                        }
-                                }
-                                
-                        }
-                        //LRC (ends)
-                }
-        }
-        StopRadTimer( BuildFacelights, AddSamplesToPatches );
-
-        StartRadTimer( BuildFacelights, PatchRadiosity );
-        for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
-        {
-                // get the PVS for the pos to limit the number of checks
-                if ( !g_bspdata->visdatasize )
-                {
-                        memset( pvs, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                        lastoffset = -1;
-                }
-                else
-                {
-                        dleaf_t*        leaf = PointInLeaf( patch->origin );
-
-                        thisoffset = leaf->visofs;
-                        if ( patch == g_face_patches[facenum] || thisoffset != lastoffset )
-                        {
-                                if ( thisoffset == -1 )
-                                {
-                                        memset( pvs, 0, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                }
-                                else
-                                {
-                                        DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf->visofs], pvs, sizeof( pvs ) );
-                                }
-                        }
-                        lastoffset = thisoffset;
-                }
-                if ( l.translucent_b )
-                {
-                        if ( !g_bspdata->visdatasize )
-                        {
-                                memset( pvs2, 255, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                lastoffset2 = -1;
-                        }
-                        else
-                        {
-                                VectorMA( patch->origin, -( g_translucentdepth + 2 * PATCH_HUNT_OFFSET ), l.facenormal, spot2 );
-                                dleaf_t*        leaf2 = PointInLeaf( spot2 );
-
-                                thisoffset2 = leaf2->visofs;
-                                if ( l.numsurfpt == 0 || thisoffset2 != lastoffset2 )
-                                {
-                                        if ( thisoffset2 == -1 )
-                                        {
-                                                memset( pvs2, 0, ( g_bspdata->dmodels[0].visleafs + 7 ) / 8 );
-                                        }
-                                        else
-                                        {
-                                                DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf2->visofs], pvs2, sizeof( pvs2 ) );
-                                        }
-                                }
-                                lastoffset2 = thisoffset2;
-                        }
-
-                        for ( int n = 0; n < l.normal_count; n++ )
-                        {
-                                vec3_t frontsampled[ALLSTYLES], backsampled[ALLSTYLES];
-                                for ( j = 0; j < ALLSTYLES; j++ )
-                                {
-                                        VectorClear( frontsampled[j] );
-                                        VectorClear( backsampled[j] );
-                                }
-                                VectorSubtract( vec3_origin, l.normals[n], normal2 );
-                                GatherSampleLight( patch->origin, pvs, l.normals[n], frontsampled,
-                                                   patch->totalstyle_all
-                                                   , 1
-                                                   , l.texref
-                                                   , facenum
-                                );
-                                GatherSampleLight( spot2, pvs2, normal2, backsampled,
-                                                   patch->totalstyle_all
-                                                   , 1
-                                                   , l.texref
-                                                   , facenum
-                                );
-                                for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                                {
-                                        for ( int x = 0; x < 3; x++ )
-                                        {
-                                                patch->totallight_all[j].light[n][x] += ( 1.0 - l.translucent_v[x] ) * frontsampled[j][x] + l.translucent_v[x] * backsampled[j][x];
-                                        }
-                                }
-                        }
-                        
-                }
-                else
-                {
-                        for ( int n = 0; n < l.normal_count; n++ )
-                        {
-                                vec3_t sampled[ALLSTYLES];
-                                for ( j = 0; j < ALLSTYLES; j++ )
-                                {
-                                        VectorClear( sampled[j] );
-                                }
-
-
-                                GatherSampleLight( patch->origin, pvs, l.normals[n],
-                                                   sampled,
-                                                   patch->totalstyle_all
-                                                   , 1
-                                                   , l.texref
-                                                   , facenum
-                                );
-
-                                for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                                {
-                                        VectorCopy( sampled[j], patch->totallight_all[j].light[n] );
-                                }
-                        }
-                        
-                }
-        }
-        StopRadTimer( BuildFacelights, PatchRadiosity );
-
-        // add an ambient term if desired
-        if ( g_ambient[0] || g_ambient[1] || g_ambient[2] )
-        {
-                
-                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                {
-                        if ( f_styles[j] == 0 )
-                        {
-                                s = fl_samples[j];
-                                for ( i = 0; i < l.numsurfpt; i++, s++ )
-                                {
-                                        for ( int n = 0; n < l.normal_count; n++ )
-                                        {
-                                                VectorAdd( s->light[n], g_ambient, s->light[n] );
-                                        }
-                                }
-                                break;
-                        }
+                        BuildSupersampleFacelights( l, sampleinfo, i );
                 }
         }
 
-        // add circus lighting for finding black lightmaps
-        if ( g_circus )
-        {
-                
-                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                {
-                        if ( f_styles[j] == 0 )
-                        {
-                                int             amt = 7;
-
-                                s = fl_samples[j];
-
-                                while ( ( l.numsurfpt % amt ) == 0 )
-                                {
-                                        amt--;
-                                }
-                                if ( amt < 2 )
-                                {
-                                        amt = 7;
-                                }
-
-                                for ( i = 0; i < l.numsurfpt; i++, s++ )
-                                {
-                                        for ( int n = 0; n < l.normal_count; n++ )
-                                        {
-                                                if ( ( s->light[n][0] == 0 ) && ( s->light[n][1] == 0 ) && ( s->light[n][2] == 0 ) )
-                                                {
-                                                        VectorAdd( s->light[n], s_circuscolors[i % amt], s->light[n] );
-                                                }
-                                        }
-                                }
-                                break;
-                        }
-                }
-                
-        }
-
-        // light from dlight_threshold and above is sent out, but the
-        // texture itself should still be full bright
-
-        if ( g_face_patches[facenum] )       // Now all lighted surfaces glow
-        {
-                //LRC:
-                
-                if ( VectorAvg( g_face_patches[facenum]->baselight ) >= g_dlight_threshold )
-                {
-                        
-                                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                                {
-                                        if ( f_styles[j] == g_face_patches[facenum]->emitstyle )
-                                        {
-                                                break;
-                                        }
-                                }
-                                if ( j == ALLSTYLES )
-                                {
-                                        if ( ++stylewarningcount >= stylewarningnext )
-                                        {
-                                                stylewarningnext = stylewarningcount * 2;
-                                                Warning( "Too many direct light styles on a face(?,?,?)" );
-                                                Warning( " total %d warnings for too many styles", stylewarningcount );
-                                        }
-                                }
-                                else
-                                {
-                                        if ( f_styles[j] == 255 )
-                                        {
-                                                f_styles[j] = g_face_patches[facenum]->emitstyle;
-                                        }
-
-                                        s = fl_samples[j];
-                                        for ( i = 0; i < l.numsurfpt; i++, s++ )
-                                        {
-                                                for ( int n = 0; n < l.normal_count; n++ )
-                                                {
-                                                        VectorAdd( s->light[n], g_face_patches[facenum]->baselight, s->light[n] );
-                                                }
-                                        }
-                                }
-                }
-                //LRC (ends)
-        }
-        // samples
-        {
-                facelight_t *fl = &facelight[facenum];
-                vec_t maxlights[ALLSTYLES];
-                for ( j = 0; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                {
-                        maxlights[j] = 0;
-                        for ( i = 0; i < fl->numsamples; i++ )
-                        {
-                                vec_t b = VectorMaximum( fl_samples[j][i].light[0] );
-                                maxlights[j] = qmax( maxlights[j], b );
-                        }
-                        if ( maxlights[j] <= g_corings[f_styles[j]] * 0.1 ) // light is too dim, discard this style to reduce RAM usage
-                        {
-                                if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        ThreadLock();
-                                        if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                        {
-                                                g_maxdiscardedlight = maxlights[j];
-                                                VectorCopy( g_face_centroids[facenum], g_maxdiscardedpos );
-                                        }
-                                        ThreadUnlock();
-                                }
-                                maxlights[j] = 0;
-                        }
-                }
-                
-                for ( k = 0; k < MAXLIGHTMAPS; k++ )
-                {
-                        int bestindex = -1;
-                        if ( k == 0 )
-                        {
-                                bestindex = 0;
-                        }
-                        else
-                        {
-                                vec_t bestmaxlight = 0;
-                                for ( j = 1; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                                {
-                                        if ( maxlights[j] > bestmaxlight + NORMAL_EPSILON )
-                                        {
-                                                bestmaxlight = maxlights[j];
-                                                bestindex = j;
-                                        }
-                                }
-                        }
-                        if ( bestindex != -1 )
-                        {
-                                maxlights[bestindex] = 0;
-                                f->styles[k] = f_styles[bestindex];
-                                fl->samples[k] = (sample_t *)malloc( fl->numsamples * sizeof( sample_t ) );
-                                hlassume( fl->samples[k] != NULL, assume_NoMemory );
-                                memcpy( fl->samples[k], fl_samples[bestindex], fl->numsamples * sizeof( sample_t ) );
-                        }
-                        else
-                        {
-                                f->styles[k] = 255;
-                                fl->samples[k] = NULL;
-                        }
-                }
-                
-                for ( j = 1; j < ALLSTYLES && f_styles[j] != 255; j++ )
-                {
-                        if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                        {
-                                ThreadLock();
-                                if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = maxlights[j];
-                                        VectorCopy( g_face_centroids[facenum], g_maxdiscardedpos );
-                                }
-                                ThreadUnlock();
-                        }
-                }
-                for ( j = 0; j < ALLSTYLES; j++ )
-                {
-                        free( fl_samples[j] );
-                }
-        }
-        // patches
-        for ( patch = g_face_patches[facenum]; patch; patch = patch->next )
-        {
-                vec_t maxlights[ALLSTYLES];
-                for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                {
-                        maxlights[j] = VectorMaximum( patch->totallight_all[j].light[0] );
-                }
-                for ( k = 0; k < MAXLIGHTMAPS; k++ )
-                {
-                        int bestindex = -1;
-                        if ( k == 0 )
-                        {
-                                bestindex = 0;
-                        }
-                        else
-                        {
-                                vec_t bestmaxlight = 0;
-                                for ( j = 1; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                                {
-                                        if ( maxlights[j] > bestmaxlight + NORMAL_EPSILON )
-                                        {
-                                                bestmaxlight = maxlights[j];
-                                                bestindex = j;
-                                        }
-                                }
-                        }
-                        if ( bestindex != -1 )
-                        {
-                                maxlights[bestindex] = 0;
-                                patch->totalstyle[k] = patch->totalstyle_all[bestindex];
-                                for ( int n = 0; n < l.normal_count; n++ )
-                                {
-                                        VectorCopy( patch->totallight_all[bestindex].light[n], patch->totallight[k].light[n] );
-                                }
-                                
-                        }
-                        else
-                        {
-                                patch->totalstyle[k] = 255;
-                        }
-                }
-                for ( j = 1; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                {
-                        if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                        {
-                                ThreadLock();
-                                if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = maxlights[j];
-                                        VectorCopy( patch->origin, g_maxdiscardedpos );
-                                }
-                                ThreadUnlock();
-                        }
-                }
-                for ( j = 0; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                {
-                        maxlights[j] = VectorMaximum( patch->directlight_all[j].light[0] );
-                }
-                for ( k = 0; k < MAXLIGHTMAPS; k++ )
-                {
-                        int bestindex = -1;
-                        if ( k == 0 )
-                        {
-                                bestindex = 0;
-                        }
-                        else
-                        {
-                                vec_t bestmaxlight = 0;
-                                for ( j = 1; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                                {
-                                        if ( maxlights[j] > bestmaxlight + NORMAL_EPSILON )
-                                        {
-                                                bestmaxlight = maxlights[j];
-                                                bestindex = j;
-                                        }
-                                }
-                        }
-                        if ( bestindex != -1 )
-                        {
-                                maxlights[bestindex] = 0;
-                                patch->directstyle[k] = patch->totalstyle_all[bestindex];
-                                for ( int n = 0; n < l.normal_count; n++ )
-                                {
-                                        VectorCopy( patch->directlight_all[bestindex].light[n], patch->directlight[k].light[n] );
-                                }
-                        }
-                        else
-                        {
-                                patch->directstyle[k] = 255;
-                        }
-                }
-                for ( j = 1; j < ALLSTYLES && patch->totalstyle_all[j] != 255; j++ )
-                {
-                        if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                        {
-                                ThreadLock();
-                                if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = maxlights[j];
-                                        VectorCopy( patch->origin, g_maxdiscardedpos );
-                                }
-                                ThreadUnlock();
-                        }
-                }
-
-                delete[] patch->samplelight_all;
-                patch->samplelight_all = NULL;
-                delete[] patch->totallight_all;
-                patch->totallight_all = NULL;
-                delete[] patch->directlight_all;
-                patch->directlight_all = NULL;
-                delete[] patch->totalstyle_all;
-                patch->totalstyle_all = NULL;
-                
-        }
-        free( l.lmcache );
-        free( l.lmcache_normal );
-        free( l.lmcache_wallflags );
-        free( l.surfpt_position );
-        free( l.surfpt_surface );
+        BuildPatchLights( facenum );
 
         lightinfo[facenum] = l;
+        
 }
 
 // =====================================================================================
@@ -4936,9 +2055,6 @@ void PrecompLightmapOffsets()
         facelight_t*    fl;
         int             lightstyles;
 
-        int             i; //LRC
-        patch_t*        patch; //LRC
-
         g_bspdata->dlightdata.clear();
 
         for ( facenum = 0; facenum < g_bspdata->numfaces; facenum++ )
@@ -4949,126 +2065,6 @@ void PrecompLightmapOffsets()
                 if ( g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL )
                 {
                         continue;                                      // non-lit texture
-                }
-
-
-                for (int n = 0; n < fl->normal_count; n++ )
-                {
-                        int i, j, k;
-                        vec_t maxlights[ALLSTYLES];
-                        {
-                                vec3_t maxlights1[ALLSTYLES];
-                                vec3_t maxlights2[ALLSTYLES];
-                                for ( j = 0; j < ALLSTYLES; j++ )
-                                {
-                                        VectorClear( maxlights1[j] );
-                                        VectorClear( maxlights2[j] );
-                                }
-                                for ( k = 0; k < MAXLIGHTMAPS && f->styles[k] != 255; k++ )
-                                {
-                                        for ( i = 0; i < fl->numsamples; i++ )
-                                        {
-                                                VectorCompareMaximum( maxlights1[f->styles[k]], fl->samples[k][i].light[n], maxlights1[f->styles[k]] );
-                                        }
-                                }
-                                int numpatches;
-                                const int *patches;
-                                GetTriangulationPatches( facenum, &numpatches, &patches ); // collect patches and their neighbors
-
-                                for ( i = 0; i < numpatches; i++ )
-                                {
-                                        patch = &g_patches[patches[i]];
-                                        for ( k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++ )
-                                        {
-                                                VectorCompareMaximum( maxlights2[patch->totalstyle[k]], patch->totallight[k].light[n], maxlights2[patch->totalstyle[k]] );
-                                        }
-                                }
-                                for ( j = 0; j < ALLSTYLES; j++ )
-                                {
-                                        vec3_t v;
-                                        VectorAdd( maxlights1[j], maxlights2[j], v );
-                                        maxlights[j] = VectorMaximum( v );
-                                        if ( maxlights[j] <= g_corings[j] * 0.01 )
-                                        {
-                                                if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                                {
-                                                        g_maxdiscardedlight = maxlights[j];
-                                                        VectorCopy( g_face_centroids[facenum], g_maxdiscardedpos );
-                                                }
-                                                maxlights[j] = 0;
-                                        }
-                                }
-                        }
-                        unsigned char oldstyles[MAXLIGHTMAPS];
-                        sample_t *oldsamples[MAXLIGHTMAPS];
-                        for ( k = 0; k < MAXLIGHTMAPS; k++ )
-                        {
-                                oldstyles[k] = f->styles[k];
-                                oldsamples[k] = fl->samples[k];
-                        }
-                        for ( k = 0; k < MAXLIGHTMAPS; k++ )
-                        {
-                                unsigned char beststyle = 255;
-                                if ( k == 0 )
-                                {
-                                        beststyle = 0;
-                                }
-                                else
-                                {
-                                        vec_t bestmaxlight = 0;
-                                        for ( j = 1; j < ALLSTYLES; j++ )
-                                        {
-                                                if ( maxlights[j] > bestmaxlight + NORMAL_EPSILON )
-                                                {
-                                                        bestmaxlight = maxlights[j];
-                                                        beststyle = j;
-                                                }
-                                        }
-                                }
-                                if ( beststyle != 255 )
-                                {
-                                        maxlights[beststyle] = 0;
-                                        f->styles[k] = beststyle;
-                                        fl->samples[k] = (sample_t *)malloc( fl->numsamples * sizeof( sample_t ) );
-                                        hlassume( fl->samples[k] != NULL, assume_NoMemory );
-                                        for ( i = 0; i < MAXLIGHTMAPS && oldstyles[i] != 255; i++ )
-                                        {
-                                                if ( oldstyles[i] == f->styles[k] )
-                                                {
-                                                        break;
-                                                }
-                                        }
-                                        if ( i < MAXLIGHTMAPS && oldstyles[i] != 255 )
-                                        {
-                                                memcpy( fl->samples[k], oldsamples[i], fl->numsamples * sizeof( sample_t ) );
-                                        }
-                                        else
-                                        {
-                                                memcpy( fl->samples[k], oldsamples[0], fl->numsamples * sizeof( sample_t ) ); // copy 'sample.pos' from style 0 to the new style - because 'sample.pos' is actually the same for all styles! (why did we decide to store it in many places?)
-                                                for ( j = 0; j < fl->numsamples; j++ )
-                                                {
-                                                        VectorClear( fl->samples[k][j].light[n] );
-                                                }
-                                        }
-                                }
-                                else
-                                {
-                                        f->styles[k] = 255;
-                                        fl->samples[k] = NULL;
-                                }
-                        }
-                        for ( j = 1; j < ALLSTYLES; j++ )
-                        {
-                                if ( maxlights[j] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = maxlights[j];
-                                        VectorCopy( g_face_centroids[facenum], g_maxdiscardedpos );
-                                }
-                        }
-                        for ( k = 0; k < MAXLIGHTMAPS && oldstyles[k] != 255; k++ )
-                        {
-                                free( oldsamples[k] );
-                        }
                 }
 
                 for ( lightstyles = 0; lightstyles < MAXLIGHTMAPS; lightstyles++ )
@@ -5085,9 +2081,10 @@ void PrecompLightmapOffsets()
                 }
 
                 f->lightofs = g_bspdata->dlightdata.size();
-                for ( int i = 0; i < fl->numsamples * lightstyles * fl->normal_count; i++ )
+                int luxels = ( f->lightmap_size[0] + 1 ) * ( f->lightmap_size[1] + 1 );
+                for ( int i = 0; i < luxels * lightstyles * fl->normal_count; i++ )
                 {
-                        // Initialize all samples for this face.
+                        // Initialize all luxels for this face.
                         colorrgbexp32_t sample;
                         memset( &sample, 0, sizeof( colorrgbexp32_t ) );
                         g_bspdata->dlightdata.push_back( sample );
@@ -5283,311 +2280,5 @@ void ScaleDirectLights()
                 }
                 
         }
-}
-
-// =====================================================================================
-//  AddPatchLights
-//    This function is run multithreaded
-// =====================================================================================
-void AddPatchLights( int facenum )
-{
-        dface_t *f;
-        facelightlist_t *item;
-        dface_t *f_other;
-        facelight_t *fl_other;
-        int k;
-        int i;
-        sample_t *samp;
-
-        f = &g_bspdata->dfaces[facenum];
-
-        if ( g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL )
-        {
-                return;
-        }
-
-
-        for ( item = g_dependentfacelights[facenum]; item != NULL; item = item->next )
-        {
-                f_other = &g_bspdata->dfaces[item->facenum];
-                fl_other = &facelight[item->facenum];
-                for ( k = 0; k < MAXLIGHTMAPS && f_other->styles[k] != 255; k++ )
-                {
-                        for ( i = 0; i < fl_other->numsamples; i++ )
-                        {
-                                samp = &fl_other->samples[k][i];
-                                if ( samp->surface != facenum )
-                                { // the sample is not in this surface
-                                        continue;
-                                }
-
-                                {
-                                        vec3_t v;
-
-                                        int style = f_other->styles[k];
-                                        // Figure out the indirect lighting for this sample.
-                                        InterpolateSampleLight( samp->pos, samp->surface, 1, &style, &v
-                                        );
-
-                                        for ( int n = 0; n < fl_other->normal_count; n++ )
-                                        {
-                                                // Now add the indirect lighting onto the direct lighting to make
-                                                // the final lightmap sample.
-                                                VectorAdd( samp->light[n], v, samp->light[n] );
-                                        }
-#if 0
-                                        if ( VectorMaximum( v ) >= g_corings[f_other->styles[k]] )
-                                        {
-                                                for ( int n = 0; n < fl_other->normal_count; n++ )
-                                                {
-                                                        VectorCopy( v, samp->light[n] );
-                                                }
-                                        }
-                                        else
-                                        {
-                                                if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
-                                                {
-                                                        ThreadLock();
-                                                        if ( VectorMaximum( v ) > g_maxdiscardedlight + NORMAL_EPSILON )
-                                                        {
-                                                                g_maxdiscardedlight = VectorMaximum( v );
-                                                                VectorCopy( samp->pos, g_maxdiscardedpos );
-                                                        }
-                                                        ThreadUnlock();
-                                                }
-                                        }
-#endif
-                                }
-                        } // loop samples
-                }
-                
-        }
-
-}
-
-#if 0
-// =====================================================================================
-//  FinalLightFace
-//      Add the indirect lighting on top of the direct lighting and save into final map format
-// =====================================================================================
-void            FinalLightFace( const int facenum )
-{
-        if ( facenum == 0 && g_drawsample )
-        {
-                char name[_MAX_PATH + 20];
-                sprintf( name, "%s_sample.pts", g_Mapname );
-                Log( "Writing '%s' ...\n", name );
-                FILE *f;
-                f = fopen( name, "w" );
-                if ( f )
-                {
-                        const int pos_count = 15;
-                        const vec3_t pos[pos_count] = { { 0,0,0 },{ 1,0,0 },{ 0,1,0 },{ -1,0,0 },{ 0,-1,0 },{ 1,0,0 },{ 0,0,1 },{ -1,0,0 },{ 0,0,-1 },{ 0,-1,0 },{ 0,0,1 },{ 0,1,0 },{ 0,0,-1 },{ 1,0,0 },{ 0,0,0 } };
-                        int i, j, k;
-                        vec3_t v, dist;
-                        for ( i = 0; i < g_bspdata->numfaces; ++i )
-                        {
-                                const facelight_t *fl = &facelight[i];
-                                for ( j = 0; j < fl->numsamples; ++j )
-                                {
-                                        VectorCopy( fl->samples[0][j].pos, v );
-                                        VectorSubtract( v, g_drawsample_origin, dist );
-                                        if ( DotProduct( dist, dist ) < g_drawsample_radius * g_drawsample_radius )
-                                        {
-                                                for ( k = 0; k < pos_count; ++k )
-                                                        fprintf( f, "%g %g %g\n", v[0] + pos[k][0], v[1] + pos[k][1], v[2] + pos[k][2] );
-                                        }
-                                }
-                        }
-                        fclose( f );
-                        Log( "OK.\n" );
-                }
-                else
-                        Log( "Error.\n" );
-        }
-        int             i, j, k;
-        vec3_t          lb, v;
-        facelight_t*    fl;
-        sample_t*       samp;
-        float           minlight;
-        int             lightstyles;
-        dface_t*        f;
-        bumpsample_t			*original_basiclight;
-        bumpsample_t                  *final_basiclight;
-
-        // ------------------------------------------------------------------------
-        // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-        float           temp_rand;
-        // ------------------------------------------------------------------------
-
-        f = &g_bspdata->dfaces[facenum];
-        fl = &facelight[facenum];
-        patch_t *patch = g_face_patches[facenum];
-
-        if ( g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL )
-        {
-                return;                                            // non-lit texture
-        }
-
-
-        for ( lightstyles = 0; lightstyles < MAXLIGHTMAPS; lightstyles++ )
-        {
-                if ( f->styles[lightstyles] == 255 )
-                {
-                        break;
-                }
-        }
-
-        if ( !lightstyles )
-        {
-                return;
-        }
-
-        //
-        // set up the triangulation
-        //
-        //
-        // sample the triangulation
-        //
-        minlight = FloatForKey( g_face_entity[facenum], "_minlight" ) * 128;
-
-        original_basiclight = new bumpsample_t[fl->numsamples];
-        final_basiclight = new bumpsample_t[fl->numsamples];
-        hlassume( original_basiclight != NULL, assume_NoMemory );
-        hlassume( final_basiclight != NULL, assume_NoMemory );
-
-        
-        for ( k = 0; k < lightstyles; k++ )
-        {
-                samp = fl->samples[k];
-                for ( j = 0; j < fl->numsamples; j++, samp++ )
-                {
-                        for ( int n = 0; n < fl->normal_count; n++ )
-                        {
-                                VectorCopy( samp->light[n], lb );
-                                //VectorAdd( lb, patch->totallight[k].light[n], lb );
-                                if ( f->styles[0] != 0 )
-                                {
-                                        Warning( "wrong f->styles[0]" );
-                                }
-                                VectorCompareMaximum( lb, vec3_origin, lb );
-                                if ( k == 0 )
-                                {
-                                        VectorCopy( lb, original_basiclight[j].light[n] );
-                                }
-                                else
-                                {
-                                        VectorAdd( lb, original_basiclight[j].light[n], lb );
-                                }
-
-                                // ------------------------------------------------------------------------
-                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                                // colour lightscale:
-                                //lb[0] *= g_colour_lightscale[0];
-                                //lb[1] *= g_colour_lightscale[1];
-                                //lb[2] *= g_colour_lightscale[2];
-                                // ------------------------------------------------------------------------
-
-                                // clip from the bottom first
-                                for ( i = 0; i < 3; i++ )
-                                {
-                                        if ( lb[i] < minlight )
-                                        {
-                                                lb[i] = minlight;
-                                        }
-                                }
-
-
-                                // ------------------------------------------------------------------------
-                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-
-                                // AJM: your code is formatted really wierd, and i cant understand a damn thing. 
-                                //      so i reformatted it into a somewhat readable "normal" fashion. :P
-
-                                //if ( g_colour_qgamma[0] != 1.0 )
-                                //        lb[0] = (float)pow( lb[0] / 255.0f, g_colour_qgamma[0] ) * 255.0f;
-
-                                //if ( g_colour_qgamma[1] != 1.0 )
-                                //        lb[1] = (float)pow( lb[1] / 255.0f, g_colour_qgamma[1] ) * 255.0f;
-
-                                //if ( g_colour_qgamma[2] != 1.0 )
-                                //        lb[2] = (float)pow( lb[2] / 255.0f, g_colour_qgamma[2] ) * 255.0f;
-
-                                // Two different ways of adding noise to the lightmap - colour jitter
-                                // (red, green and blue channels are independent), and mono jitter
-                                // (monochromatic noise). For simulating dithering, on the cheap. :)
-
-                                // Tends to create seams between adjacent polygons, so not ideal.
-
-                                // Got really weird results when it was set to limit values to 256.0f - it
-                                // was as if r, g or b could wrap, going close to zero.
-
-                                //for ( i = 0; i < 3; ++i )
-                                //        if ( lb[i] < g_minlight )
-                                //                lb[i] = g_minlight;
-                                // ------------------------------------------------------------------------
-
-                                if ( k == 0 )
-                                {
-                                        VectorCopy( lb, final_basiclight[j].light[n] );
-                                }
-                                else
-                                {
-                                        VectorSubtract( lb, final_basiclight[j].light[n], lb );
-                                }
-
-                                //if ( k == 0 )
-                                //{
-                                //        if ( g_colour_jitter_hack[0] || g_colour_jitter_hack[1] || g_colour_jitter_hack[2] )
-                                //                for ( i = 0; i < 3; i++ )
-                                //                        lb[i] += g_colour_jitter_hack[i] * ( (float)rand() / RAND_MAX - 0.5 );
-                                //        if ( g_jitter_hack[0] || g_jitter_hack[1] || g_jitter_hack[2] )
-                                //        {
-                                //                temp_rand = (float)rand() / RAND_MAX - 0.5;
-                                //                for ( i = 0; i < 3; i++ )
-                                //                        lb[i] += g_jitter_hack[i] * temp_rand;
-                                //        }
-                                //}
-
-                                //for ( i = 0; i < 3; ++i )
-                                //{
-                                //        if ( lbi[i] < 0 ) lbi[i] = 0;
-                                //        if ( lbi[i] > 255 ) lbi[i] = 255;
-                                //}
-
-                                {
-                                        colorrgbexp32_t *col = SampleLightmap( g_bspdata, g_bspdata->dfaces + facenum, j, k, n );
-                                        LVector3 vcol;
-                                        VectorCopy( lb, vcol );
-                                        VectorToColorRGBExp32( vcol, *col );
-                                }
-                        }
-                }
-        }
-        
-        delete[] original_basiclight;
-        delete[] final_basiclight;
-
-}
-
-#endif
-
-
-//LRC
-vec3_t    totallight_default = { 0, 0, 0 };
-
-//LRC - utility for getting the right totallight value from a patch
-vec3_t* GetTotalLight( patch_t* patch, int style
-)
-{
-        int i;
-        for ( i = 0; i < MAXLIGHTMAPS && patch->totalstyle[i] != 255; i++ )
-        {
-                if ( patch->totalstyle[i] == style )
-                {
-                        return (vec3_t *)patch->totallight[i].light[0].light.get_data();
-                }
-        }
-        return &totallight_default;
 }
 

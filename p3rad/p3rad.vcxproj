@@ -112,6 +112,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <WholeProgramOptimization>true</WholeProgramOptimization>
       <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
     </ClCompile>
     <Midl>
       <TypeLibraryName>.\Release\hlrad.tlb</TypeLibraryName>
@@ -135,6 +136,8 @@
       <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateMapFile>true</GenerateMapFile>
+      <MapExports>true</MapExports>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -154,24 +157,19 @@
     <ClCompile Include="..\common\scriplib.cpp" />
     <ClCompile Include="..\common\threads.cpp" />
     <ClCompile Include="..\common\winding.cpp" />
-    <ClCompile Include="compress.cpp" />
     <ClCompile Include="leaf_ambient_lighting.cpp" />
-    <ClCompile Include="lerp.cpp" />
     <ClCompile Include="lightingutils.cpp" />
     <ClCompile Include="lightmap.cpp" />
+    <ClCompile Include="lights.cpp" />
     <ClCompile Include="loadtextures.cpp" />
     <ClCompile Include="mathutil.cpp" />
-    <ClCompile Include="nomatrix.cpp" />
+    <ClCompile Include="powsse.cpp" />
     <ClCompile Include="qrad.cpp" />
     <ClCompile Include="qradutil.cpp" />
     <ClCompile Include="radial.cpp" />
     <ClCompile Include="radstaticprop.cpp" />
-    <ClCompile Include="sparse.cpp" />
     <ClCompile Include="trace.cpp" />
-    <ClCompile Include="transfers.cpp" />
-    <ClCompile Include="transparency.cpp" />
-    <ClCompile Include="vismatrix.cpp" />
-    <ClCompile Include="vismatrixutil.cpp" />
+    <ClCompile Include="vismat.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\common\anorms.h" />
@@ -185,7 +183,6 @@
     <ClInclude Include="..\common\bspfile.h" />
     <ClInclude Include="..\common\cmdlib.h" />
     <ClInclude Include="..\common\cmdlinecfg.h" />
-    <ClInclude Include="compress.h" />
     <ClInclude Include="..\common\filelib.h" />
     <ClInclude Include="..\common\hlassert.h" />
     <ClInclude Include="..\common\log.h" />
@@ -195,7 +192,7 @@
     <ClInclude Include="leaf_ambient_lighting.h" />
     <ClInclude Include="lightingutils.h" />
     <ClInclude Include="lightmap.h" />
-    <ClInclude Include="patch.h" />
+    <ClInclude Include="lights.h" />
     <ClInclude Include="qrad.h" />
     <ClInclude Include="..\common\scriplib.h" />
     <ClInclude Include="..\common\threads.h" />
@@ -203,6 +200,7 @@
     <ClInclude Include="..\common\winding.h" />
     <ClInclude Include="radial.h" />
     <ClInclude Include="radstaticprop.h" />
+    <ClInclude Include="vismat.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

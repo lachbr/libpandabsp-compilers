@@ -13,6 +13,10 @@
 #include "anorms.h"
 #include "halton.h"
 
+#include "lights.h"
+
+#include "lightmap.h"
+
 #define NEVER_UPDATED -9999
 
 LightSurface::LightSurface( int thread, bspdata_t *data ) :
@@ -344,14 +348,14 @@ static directlight_t *find_ambient_sky_light()
         // So we don't have to keep finding the same sky light
         if ( found_light == nullptr )
         {
-                for ( int i = 0; i < numdlights; i++ )
+                for ( int i = 0; i < Lights::numdlights; i++ )
                 {
-                        directlight_t *dl = directlights[i];
+                        directlight_t *dl = Lights::directlights[i];
                         if ( dl == nullptr )
                         {
                                 continue;
                         }
-                        if ( dl->type == emit_skylight )
+                        if ( dl->type == emit_skyambient )
                         {
                                 found_light = dl;
                                 break;
@@ -373,7 +377,7 @@ void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
                         if ( skylight )
                         {
                                 // Add in sky ambient
-                                VectorCopy( skylight->diffuse_intensity, color );
+                                VectorCopy( skylight->intensity, color );
                         }
 
                 }
@@ -394,9 +398,9 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
         {
                 if ( skylight )
                 {
-                        LVector3 amb( skylight->diffuse_intensity[0],
-                                      skylight->diffuse_intensity[1],
-                                      skylight->diffuse_intensity[2] );
+                        LVector3 amb( skylight->intensity[0],
+                                      skylight->intensity[1],
+                                      skylight->intensity[2] );
                         colors[0] += amb * scale;
                 }
                 return;
@@ -580,21 +584,49 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
 
 void ComputeDirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnormal, LVector3 &color )
 {
-        vec3_t pos;
-        VectorCopy( vpos, pos );
-        vec3_t normal;
-        VectorCopy( vnormal, normal );
+        SSE_sampleLightOutput_t output;
+        int leaf = PointInLeaf( vpos ) - g_bspdata->dleafs;
+        for ( directlight_t *dl = Lights::activelights; dl != nullptr; dl = dl->next )
+        {
+                // skip lights with style
+                if ( dl->style )
+                        continue;
 
-        dleaf_t *leaf = PointInLeaf( pos );
-        byte pvs[( MAX_MAP_LEAFS + 7 ) / 8];
-        DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf->visofs], pvs, sizeof( pvs ) );
-        byte styles[ALLSTYLES];
-        memset( styles, 255, sizeof( styles ) );
-        styles[0] = 0;
-        vec3_t sample[ALLSTYLES];
-        memset( sample, 0, sizeof( sample ) );
+                // is this light potentially visible?
+                if ( !PVSCheck( dl->pvs, leaf ) )
+                        continue;
 
-        GatherSampleLight( pos, pvs, normal, sample, styles, 0, -1, -1 );
+                // push the vertex towards the light to avoid surface acne
+                LVector3 adjusted = vpos;
+                float epsilon = 0.0;
+                if ( dl->type != emit_skyambient )
+                {
+                        // push towards the light
+                        LVector3 fudge;
+                        if ( dl->type == emit_skylight )
+                        {
+                                fudge = -( dl->normal );
+                        }
+                        else
+                        {
+                                fudge = dl->origin - vpos;
+                                fudge.normalize();
+                        }
+                        fudge *= 4.0;
+                        adjusted += fudge;
+                }
+                else
+                {
+                        adjusted += 4.0 * vnormal;
+                }
 
-        VectorCopy( sample[0], color );
+                FourVectors adjusted4;
+                FourVectors normal4;
+                adjusted4.DuplicateVector( adjusted );
+                normal4.DuplicateVector( vnormal );
+
+                GatherSampleLightSSE( output, dl, -1, adjusted4, &normal4, 1, 0, 0, epsilon );
+
+                VectorMA( color, output.falloff.m128_f32[0] * output.dot[0].m128_f32[0], dl->intensity, color );
+        }
 }

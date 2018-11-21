@@ -20,6 +20,8 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 #include "radstaticprop.h"
 #include "radial.h"
 #include "leaf_ambient_lighting.h"
+#include "lights.h"
+#include "vismat.h"
 #include <virtualFileSystem.h>
 
 #include <load_prc_file.h>
@@ -53,6 +55,11 @@ pvector<int> g_face_patches;
 pvector<int> g_face_parents;
 pvector<int> g_cluster_children;
 
+size_t g_total_transfer = 0;
+
+vec_t g_minchop = 4;
+vec_t g_maxchop = 4;
+
 static pvector<LVector3> emitlight;
 static pvector<bumpsample_t> addlight;
 
@@ -62,6 +69,8 @@ string		g_mfincludefile;
 vec3_t          g_face_offset[MAX_MAP_FACES];              // for rotating bmodels
 
 vec_t           g_direct_scale = DEFAULT_DLIGHT_SCALE;
+vec_t           g_skysamplescale = 1.0;
+int             g_extrapasses = 4;
 
 unsigned        g_numbounce = 100; // max number of bounces
 
@@ -106,8 +115,6 @@ bool		g_rgb_transfers = DEFAULT_RGB_TRANSFERS;
 
 float		g_transtotal_hack = DEFAULT_TRANSTOTAL_HACK;
 unsigned char g_minlight = DEFAULT_MINLIGHT;
-float_type g_transfer_compress_type = DEFAULT_TRANSFER_COMPRESS_TYPE;
-vector_type g_rgbtransfer_compress_type = DEFAULT_RGBTRANSFER_COMPRESS_TYPE;
 bool g_softsky = DEFAULT_SOFTSKY;
 int g_blockopaque = DEFAULT_BLOCKOPAQUE;
 bool g_notextures = DEFAULT_NOTEXTURES;
@@ -575,425 +582,12 @@ static bool     IsSpecial( const dface_t* const f )
         return g_bspdata->texinfo[f->texinfo].flags & TEX_SPECIAL;
 }
 
-// =====================================================================================
-//  PlacePatchInside
-// =====================================================================================
-static bool     PlacePatchInside( patch_t* patch )
-{
-        const dplane_t* plane;
-        const vec_t*    face_offset = g_face_offset[patch->faceNumber];
-
-        plane = getPlaneFromFaceNumber( patch->faceNumber );
-
-        vec_t pointsfound;
-        vec_t pointstested;
-        pointsfound = pointstested = 0;
-        vec3_t center;
-        bool found;
-        vec3_t bestpoint;
-        vec_t bestdist = -1.0;
-        vec3_t point;
-        vec_t dist;
-        vec3_t v;
-
-        patch->winding->getCenter( center );
-        found = false;
-
-        VectorMA( center, PATCH_HUNT_OFFSET, plane->normal, point );
-        pointstested++;
-        if ( HuntForWorld( point, face_offset, plane, 4, 0.2, PATCH_HUNT_OFFSET ) ||
-             HuntForWorld( point, face_offset, plane, 4, 0.8, PATCH_HUNT_OFFSET ) )
-        {
-                pointsfound++;
-                VectorSubtract( point, center, v );
-                dist = VectorLength( v );
-                if ( !found || dist < bestdist )
-                {
-                        found = true;
-                        VectorCopy( point, bestpoint );
-                        bestdist = dist;
-                }
-        }
-        {
-                for ( int i = 0; i < patch->winding->m_NumPoints; i++ )
-                {
-                        const vec_t *p1;
-                        const vec_t *p2;
-                        p1 = patch->winding->m_Points[i];
-                        p2 = patch->winding->m_Points[( i + 1 ) % patch->winding->m_NumPoints];
-                        VectorAdd( p1, p2, point );
-                        VectorAdd( point, center, point );
-                        VectorScale( point, 1.0 / 3.0, point );
-                        VectorMA( point, PATCH_HUNT_OFFSET, plane->normal, point );
-                        pointstested++;
-                        if ( HuntForWorld( point, face_offset, plane, 4, 0.2, PATCH_HUNT_OFFSET ) ||
-                             HuntForWorld( point, face_offset, plane, 4, 0.8, PATCH_HUNT_OFFSET ) )
-                        {
-                                pointsfound++;
-                                VectorSubtract( point, center, v );
-                                dist = VectorLength( v );
-                                if ( !found || dist < bestdist )
-                                {
-                                        found = true;
-                                        VectorCopy( point, bestpoint );
-                                        bestdist = dist;
-                                }
-                        }
-                }
-        }
-
-        patch->exposure = pointsfound / pointstested;
-        if ( found )
-        {
-                VectorCopy( bestpoint, patch->origin );
-                patch->flags = ePatchFlagNull;
-                return true;
-        }
-        else
-        {
-                VectorMA( center, PATCH_HUNT_OFFSET, plane->normal, patch->origin );
-                patch->flags = ePatchFlagOutside;
-                Developer( DEVELOPER_LEVEL_FLUFF, "Patch @ (%4.3f %4.3f %4.3f) outside world\n",
-                           patch->origin[0], patch->origin[1], patch->origin[2] );
-                return false;
-        }
-}
-static void		UpdateEmitterInfo( patch_t *patch )
-{
-#if ACCURATEBOUNCE_DEFAULT_SKYLEVEL + 3 > SKYLEVELMAX
-#error "please raise SKYLEVELMAX"
-#endif
-        const vec_t *origin = patch->origin;
-        const Winding *winding = patch->winding;
-        vec_t radius = ON_EPSILON;
-        for ( int x = 0; x < winding->m_NumPoints; x++ )
-        {
-                vec3_t delta;
-                vec_t dist;
-                VectorSubtract( winding->m_Points[x], origin, delta );
-                dist = VectorLength( delta );
-                if ( dist > radius )
-                {
-                        radius = dist;
-                }
-        }
-        int skylevel = ACCURATEBOUNCE_DEFAULT_SKYLEVEL;
-        vec_t area = winding->getArea();
-        vec_t size = 0.8f;
-        if ( area < size * radius * radius ) // the shape is too thin
-        {
-                skylevel++;
-                size *= 0.25f;
-                if ( area < size * radius * radius )
-                {
-                        skylevel++;
-                        size *= 0.25f;
-                        if ( area < size * radius * radius )
-                        {
-                                // stop here
-                                radius = sqrt( area / size );
-                                // just decrease the range to limit the use of the new method. because when the area is small, the new method becomes randomized and unstable.
-                        }
-                }
-        }
-        patch->emitter_range = ACCURATEBOUNCE_THRESHOLD * radius;
-        if ( g_noemitterrange )
-        {
-                patch->emitter_range = 0.0;
-        }
-        patch->emitter_skylevel = skylevel;
-}
-
 
 // =====================================================================================
 //
 //    SUBDIVIDE PATCHES
 //
 // =====================================================================================
-
-// misc
-#define MAX_SUBDIVIDE 16384
-static Winding* windingArray[MAX_SUBDIVIDE];
-static unsigned g_numwindings = 0;
-
-// =====================================================================================
-//  cutWindingWithGrid
-//      Caller must free this returned value at some point
-// =====================================================================================
-static void     cutWindingWithGrid( patch_t *patch, const dplane_t *plA, const dplane_t *plB )
-// This function has been rewritten because the original one is not totally correct and may fail to do what it claims.
-{
-        // patch->winding->m_NumPoints must > 0
-        // plA->dist and plB->dist will not be used
-        Winding *winding = NULL;
-        vec_t chop;
-        vec_t epsilon;
-        const int max_gridsize = 64;
-        vec_t gridstartA;
-        vec_t gridstartB;
-        int gridsizeA;
-        int gridsizeB;
-        vec_t gridchopA;
-        vec_t gridchopB;
-        int numstrips;
-
-        winding = new Winding( *patch->winding ); // perform all the operations on the copy
-        chop = patch->chop;
-        chop = qmax( 1.0, chop );
-        epsilon = 0.6;
-
-        // optimize the grid
-        {
-                vec_t minA;
-                vec_t maxA;
-                vec_t minB;
-                vec_t maxB;
-
-                minA = minB = BOGUS_RANGE;
-                maxA = maxB = -BOGUS_RANGE;
-                for ( int x = 0; x < winding->m_NumPoints; x++ )
-                {
-                        vec_t *point;
-                        vec_t dotA;
-                        vec_t dotB;
-                        point = winding->m_Points[x];
-                        dotA = DotProduct( point, plA->normal );
-                        minA = qmin( minA, dotA );
-                        maxA = qmax( maxA, dotA );
-                        dotB = DotProduct( point, plB->normal );
-                        minB = qmin( minB, dotB );
-                        maxB = qmax( maxB, dotB );
-                }
-
-                gridchopA = chop;
-                gridsizeA = (int)ceil( ( maxA - minA - 2 * epsilon ) / gridchopA );
-                gridsizeA = qmax( 1, gridsizeA );
-                if ( gridsizeA > max_gridsize )
-                {
-                        gridsizeA = max_gridsize;
-                        gridchopA = ( maxA - minA ) / (vec_t)gridsizeA;
-                }
-                gridstartA = ( minA + maxA ) / 2.0 - ( gridsizeA / 2.0 ) * gridchopA;
-
-                gridchopB = chop;
-                gridsizeB = (int)ceil( ( maxB - minB - 2 * epsilon ) / gridchopB );
-                gridsizeB = qmax( 1, gridsizeB );
-                if ( gridsizeB > max_gridsize )
-                {
-                        gridsizeB = max_gridsize;
-                        gridchopB = ( maxB - minB ) / (vec_t)gridsizeB;
-                }
-                gridstartB = ( minB + maxB ) / 2.0 - ( gridsizeB / 2.0 ) * gridchopB;
-        }
-
-        // cut the winding by the direction of plane A and save into windingArray
-        {
-                g_numwindings = 0;
-                for ( int i = 1; i < gridsizeA; i++ )
-                {
-                        vec_t dist;
-                        Winding *front = NULL;
-                        Winding *back = NULL;
-
-                        dist = gridstartA + i * gridchopA;
-                        winding->Clip( plA->normal, dist, &front, &back );
-
-                        if ( !front || front->WindingOnPlaneSide( plA->normal, dist, epsilon ) == SIDE_ON ) // ended
-                        {
-                                if ( front )
-                                {
-                                        delete front;
-                                        front = NULL;
-                                }
-                                if ( back )
-                                {
-                                        delete back;
-                                        back = NULL;
-                                }
-                                break;
-                        }
-                        if ( !back || back->WindingOnPlaneSide( plA->normal, dist, epsilon ) == SIDE_ON ) // didn't begin
-                        {
-                                if ( front )
-                                {
-                                        delete front;
-                                        front = NULL;
-                                }
-                                if ( back )
-                                {
-                                        delete back;
-                                        back = NULL;
-                                }
-                                continue;
-                        }
-
-                        delete winding;
-                        winding = NULL;
-
-                        windingArray[g_numwindings] = back;
-                        g_numwindings++;
-                        back = NULL;
-
-                        winding = front;
-                        front = NULL;
-                }
-
-                windingArray[g_numwindings] = winding;
-                g_numwindings++;
-                winding = NULL;
-        }
-
-        // cut by the direction of plane B
-        {
-                numstrips = g_numwindings;
-                for ( int i = 0; i < numstrips; i++ )
-                {
-                        Winding *strip = windingArray[i];
-                        windingArray[i] = NULL;
-
-                        for ( int j = 1; j < gridsizeB; j++ )
-                        {
-                                vec_t dist;
-                                Winding *front = NULL;
-                                Winding *back = NULL;
-
-                                dist = gridstartB + j * gridchopB;
-                                strip->Clip( plB->normal, dist, &front, &back );
-
-                                if ( !front || front->WindingOnPlaneSide( plB->normal, dist, epsilon ) == SIDE_ON ) // ended
-                                {
-                                        if ( front )
-                                        {
-                                                delete front;
-                                                front = NULL;
-                                        }
-                                        if ( back )
-                                        {
-                                                delete back;
-                                                back = NULL;
-                                        }
-                                        break;
-                                }
-                                if ( !back || back->WindingOnPlaneSide( plB->normal, dist, epsilon ) == SIDE_ON ) // didn't begin
-                                {
-                                        if ( front )
-                                        {
-                                                delete front;
-                                                front = NULL;
-                                        }
-                                        if ( back )
-                                        {
-                                                delete back;
-                                                back = NULL;
-                                        }
-                                        continue;
-                                }
-
-                                delete strip;
-                                strip = NULL;
-
-                                windingArray[g_numwindings] = back;
-                                g_numwindings++;
-                                back = NULL;
-
-                                strip = front;
-                                front = NULL;
-                        }
-
-                        windingArray[g_numwindings] = strip;
-                        g_numwindings++;
-                        strip = NULL;
-                }
-        }
-
-        delete patch->winding;
-        patch->winding = NULL;
-}
-
-// =====================================================================================
-//  getGridPlanes
-//      From patch, determine perpindicular grid planes to subdivide with (returned in planeA and planeB)
-//      assume S and T is perpindicular (they SHOULD be in worldcraft 3.3 but aren't always . . .)
-// =====================================================================================
-static void     getGridPlanes( const patch_t* const p, dplane_t* const pl )
-{
-        const patch_t*  patch = p;
-        dplane_t*       planes = pl;
-        const dface_t*  f = g_bspdata->dfaces + patch->faceNumber;
-        texinfo_t*      tx = &g_bspdata->texinfo[f->texinfo];
-        dplane_t*       plane = planes;
-        const dplane_t* faceplane = getPlaneFromFaceNumber( patch->faceNumber );
-        int             x;
-
-        for ( x = 0; x < 2; x++, plane++ )
-        {
-                // cut the patch along texel grid planes
-                vec_t			val;
-                vec3_t temp;
-                VectorScale( tx->lightmap_vecs[!x], tx->lightmap_scale, temp );
-                val = DotProduct( faceplane->normal, temp );
-                VectorMA( temp, -val, faceplane->normal, plane->normal );
-                VectorNormalize( plane->normal );
-                plane->dist = DotProduct( plane->normal, patch->origin );
-        }
-}
-
-// =====================================================================================
-//  SubdividePatch
-// =====================================================================================
-static void     SubdividePatch( patch_t* patch )
-{
-        dplane_t        planes[2];
-        dplane_t*       plA = &planes[0];
-        dplane_t*       plB = &planes[1];
-        Winding**       winding;
-        unsigned        x;
-        patch_t*        new_patch;
-
-        memset( windingArray, 0, sizeof( windingArray ) );
-        g_numwindings = 0;
-
-        getGridPlanes( patch, planes );
-        cutWindingWithGrid( patch, plA, plB );
-
-        x = 0;
-        patch->next = NULL;
-        winding = windingArray;
-        while ( *winding == NULL )
-        {
-                winding++;
-                x++;
-        }
-        patch->winding = *winding;
-        winding++;
-        x++;
-        patch->area = patch->winding->getArea();
-        patch->winding->getCenter( patch->origin );
-        PlacePatchInside( patch );
-        UpdateEmitterInfo( patch );
-
-        new_patch = g_patches + g_num_patches;
-        for ( ; x < g_numwindings; x++, winding++ )
-        {
-                if ( *winding )
-                {
-                        memcpy( new_patch, patch, sizeof( patch_t ) );
-
-                        new_patch->winding = *winding;
-                        new_patch->area = new_patch->winding->getArea();
-                        new_patch->winding->getCenter( new_patch->origin );
-                        new_patch->needs_bumpmap = patch->needs_bumpmap;
-                        PlacePatchInside( new_patch );
-                        UpdateEmitterInfo( new_patch );
-
-                        new_patch++;
-                        g_num_patches++;
-                        hlassume( g_num_patches < MAX_PATCHES, assume_MAX_PATCHES );
-                }
-        }
-
-        // ATTENTION: We let SortPatches relink all the ->next correctly! instead of doing it here too which is somewhat complicated
-}
 
 // =====================================================================================
 //  MakePatchForFace
@@ -1146,306 +740,6 @@ void ReadLightingCone()
                                 g_lightingconeinfo[i][0] = power;
                                 g_lightingconeinfo[i][1] = scale;
                                 Developer( DEVELOPER_LEVEL_MESSAGE, "info_angularfade: %s = %f %f\n", texname, power, scale );
-                        }
-                }
-        }
-}
-
-static vec_t    getScale( const patch_t* const patch )
-{
-        dface_t*        f = g_bspdata->dfaces + patch->faceNumber;
-        texinfo_t*      tx = &g_bspdata->texinfo[f->texinfo];
-
-        if ( g_texscale )
-        {
-                const dplane_t*	faceplane = getPlaneFromFace( f );
-                vec3_t			vecs_perpendicular[2];
-                vec_t			scale[2];
-                vec_t			dot;
-
-                // snap texture "vecs" to faceplane without affecting texture alignment
-                for ( int x = 0; x < 2; x++ )
-                {
-                        vec3_t temp;
-                        VectorScale( tx->lightmap_vecs[x], tx->lightmap_scale, temp );
-                        dot = DotProduct( faceplane->normal, temp );
-                        VectorMA( temp, -dot, faceplane->normal, vecs_perpendicular[x] );
-                }
-
-                scale[0] = 1 / qmax( NORMAL_EPSILON, VectorLength( vecs_perpendicular[0] ) );
-                scale[1] = 1 / qmax( NORMAL_EPSILON, VectorLength( vecs_perpendicular[1] ) );
-
-                // don't care about the angle between vecs[0] and vecs[1] (given the length of "vecs", smaller angle = larger texel area), because gridplanes will have the same angle (also smaller angle = larger patch area)
-
-                return sqrt( scale[0] * scale[1] );
-        }
-        else
-        {
-                return 1.0;
-        }
-}
-
-// =====================================================================================
-//  getChop
-// =====================================================================================
-static bool		getEmitMode( const patch_t *patch )
-{
-        bool emitmode = false;
-        vec_t value = VectorAvg( patch->baselight );
-        if ( g_face_texlights[patch->faceNumber] )
-        {
-                if ( *ValueForKey( g_face_texlights[patch->faceNumber], "_scale" ) )
-                {
-                        value *= FloatForKey( g_face_texlights[patch->faceNumber], "_scale" );
-                }
-        }
-        if ( value >= g_dlight_threshold )
-        {
-                emitmode = true;
-        }
-        if ( g_face_texlights[patch->faceNumber] )
-        {
-                switch ( IntForKey( g_face_texlights[patch->faceNumber], "_fast" ) )
-                {
-                case 1:
-                        emitmode = false;
-                        break;
-                case 2:
-                        emitmode = true;
-                        break;
-                }
-        }
-        return emitmode;
-}
-static vec_t    getChop( const patch_t* const patch )
-{
-        vec_t           rval;
-
-        if ( g_face_texlights[patch->faceNumber] )
-        {
-                if ( *ValueForKey( g_face_texlights[patch->faceNumber], "_chop" ) )
-                {
-                        rval = FloatForKey( g_face_texlights[patch->faceNumber], "_chop" );
-                        if ( rval < 1.0 )
-                        {
-                                rval = 1.0;
-                        }
-                        return rval;
-                }
-        }
-        if ( !patch->emitmode )
-        {
-                rval = g_chop * getScale( patch );
-        }
-        else
-        {
-                rval = g_texchop * getScale( patch );
-                // we needn't do this now, so let's save our compile time.
-        }
-
-        return rval;
-}
-
-// =====================================================================================
-//  MakePatchForFace
-// =====================================================================================
-static void     MakePatchForFace( const int fn, Winding* w, int style
-                                  , int bouncestyle
-) //LRC
-{
-        const dface_t*  f = g_bspdata->dfaces + fn;
-
-        // No g_patches at all for the sky!
-        if ( !IsSpecial( f ) )
-        {
-                if ( g_face_texlights[fn] )
-                {
-                        style = IntForKey( g_face_texlights[fn], "style" );
-                        if ( style < 0 )
-                                style = -style;
-                        style = (unsigned char)style;
-                        if ( style >= ALLSTYLES )
-                        {
-                                Error( "invalid light style: style (%d) >= ALLSTYLES (%d)", style, ALLSTYLES );
-                        }
-                }
-                patch_t*        patch;
-                vec3_t          light;
-                vec3_t          centroid = { 0, 0, 0 };
-                texinfo_t *tv = &g_bspdata->texinfo[f->texinfo];
-
-                int             numpoints = w->m_NumPoints;
-
-                if ( numpoints < 3 )                                 // WTF! (Actually happens in real-world maps too)
-                {
-                        Developer( DEVELOPER_LEVEL_WARNING, "Face %d only has %d points on winding\n", fn, numpoints );
-                        return;
-                }
-                if ( numpoints > MAX_POINTS_ON_WINDING )
-                {
-                        Error( "numpoints %d > MAX_POINTS_ON_WINDING", numpoints );
-                        return;
-                }
-
-                patch = &g_patches[g_num_patches];
-                hlassume( g_num_patches < MAX_PATCHES, assume_MAX_PATCHES );
-                memset( patch, 0, sizeof( patch_t ) );
-
-                patch->winding = w;
-
-                patch->area = patch->winding->getArea();
-                patch->winding->getCenter( patch->origin );
-                patch->faceNumber = fn;
-                patch->needs_bumpmap = g_textures[g_bspdata->texinfo[f->texinfo].texref].bump != nullptr;
-
-                totalarea += patch->area;
-
-                BaseLightForFace( f, light );
-                //LRC        VectorCopy(light, patch->totallight);
-                VectorCopy( light, patch->baselight );
-
-                patch->emitstyle = style;
-
-                VectorCopy( g_textures[g_bspdata->texinfo[f->texinfo].texref].reflectivity, patch->texturereflectivity );
-                if ( g_face_texlights[fn] && *ValueForKey( g_face_texlights[fn], "_texcolor" ) )
-                {
-                        vec3_t texturecolor;
-                        vec3_t texturereflectivity;
-                        GetVectorForKey( g_face_texlights[fn], "_texcolor", texturecolor );
-                        for ( int k = 0; k < 3; k++ )
-                        {
-                                texturecolor[k] = floor( texturecolor[k] + 0.001 );
-                        }
-                        if ( VectorMinimum( texturecolor ) < -0.001 || VectorMaximum( texturecolor ) > 255.001 )
-                        {
-                                vec3_t origin;
-                                GetVectorForKey( g_face_texlights[fn], "origin", origin );
-                                Error( "light_surface entity at (%g,%g,%g): texture color (%g,%g,%g) must be numbers between 0 and 255.", origin[0], origin[1], origin[2], texturecolor[0], texturecolor[1], texturecolor[2] );
-                        }
-                        VectorScale( texturecolor, 1.0 / 255.0, texturereflectivity );
-                        for ( int k = 0; k < 3; k++ )
-                        {
-                                texturereflectivity[k] = pow( texturereflectivity[k], g_texreflectgamma );
-                        }
-                        VectorScale( texturereflectivity, g_texreflectscale, texturereflectivity );
-                        if ( VectorMaximum( texturereflectivity ) > 1.0 + NORMAL_EPSILON )
-                        {
-                                Warning( "Texture '%s': reflectivity (%f,%f,%f) greater than 1.0.", g_textures[g_bspdata->texinfo[f->texinfo].texref].name, texturereflectivity[0], texturereflectivity[1], texturereflectivity[2] );
-                        }
-                        VectorCopy( texturereflectivity, patch->texturereflectivity );
-                }
-                {
-                        vec_t opacity = 0.0;
-                        if ( g_face_entity[fn] - g_bspdata->entities == 0 )
-                        {
-                                opacity = 1.0;
-                        }
-                        else
-                        {
-                                int x;
-                                for ( x = 0; x < g_opaque_face_count; x++ )
-                                {
-                                        opaqueList_t *op = &g_opaque_face_list[x];
-                                        if ( op->entitynum == g_face_entity[fn] - g_bspdata->entities )
-                                        {
-                                                opacity = 1.0;
-                                                if ( op->transparency )
-                                                {
-                                                        opacity = 1.0 - VectorAvg( op->transparency_scale );
-                                                        opacity = opacity > 1.0 ? 1.0 : opacity < 0.0 ? 0.0 : opacity;
-                                                }
-                                                if ( op->style != -1 )
-                                                { // toggleable opaque entity
-                                                        if ( bouncestyle == -1 )
-                                                        { // by default
-                                                                opacity = 0.0; // doesn't reflect light
-                                                        }
-                                                }
-                                                break;
-                                        }
-                                }
-                                if ( x == g_opaque_face_count )
-                                { // not opaque
-                                        if ( bouncestyle != -1 )
-                                        { // with light_bounce
-                                                opacity = 1.0; // reflects light
-                                        }
-                                }
-                        }
-                        VectorScale( patch->texturereflectivity, opacity, patch->bouncereflectivity );
-                }
-                patch->bouncestyle = bouncestyle;
-                if ( bouncestyle == 0 )
-                { // there is an unnamed light_bounce
-                        patch->bouncestyle = -1; // reflects light normally
-                }
-                patch->emitmode = getEmitMode( patch );
-                patch->scale = getScale( patch );
-                patch->chop = getChop( patch );
-                VectorCopy( g_translucenttextures[g_bspdata->texinfo[f->texinfo].texref], patch->translucent_v );
-                patch->translucent_b = !VectorCompare( patch->translucent_v, vec3_origin );
-                PlacePatchInside( patch );
-                UpdateEmitterInfo( patch );
-
-                g_face_patches[fn] = patch;
-                g_num_patches++;
-
-                // Per-face data
-                {
-                        int             j;
-
-                        // Centroid of face for nudging samples in direct lighting pass
-                        for ( j = 0; j < f->numedges; j++ )
-                        {
-                                int             edge = g_bspdata->dsurfedges[f->firstedge + j];
-
-                                if ( edge > 0 )
-                                {
-                                        VectorAdd( g_bspdata->dvertexes[g_bspdata->dedges[edge].v[0]].point, centroid, centroid );
-                                        VectorAdd( g_bspdata->dvertexes[g_bspdata->dedges[edge].v[1]].point, centroid, centroid );
-                                }
-                                else
-                                {
-                                        VectorAdd( g_bspdata->dvertexes[g_bspdata->dedges[-edge].v[1]].point, centroid, centroid );
-                                        VectorAdd( g_bspdata->dvertexes[g_bspdata->dedges[-edge].v[0]].point, centroid, centroid );
-                                }
-                        }
-
-                        // Fixup centroid for anything with an altered origin (rotating models/turrets mostly)
-                        // Save them for moving direct lighting points towards the face center
-                        VectorScale( centroid, 1.0 / ( f->numedges * 2 ), centroid );
-                        VectorAdd( centroid, g_face_offset[fn], g_face_centroids[fn] );
-                }
-
-                {
-                        vec3_t          mins;
-                        vec3_t          maxs;
-
-                        patch->winding->getBounds( mins, maxs );
-
-                        if ( g_subdivide )
-                        {
-                                vec_t           amt;
-                                vec_t           length;
-                                vec3_t          delta;
-
-                                VectorSubtract( maxs, mins, delta );
-                                length = VectorLength( delta );
-                                amt = patch->chop;
-
-                                if ( length > amt )
-                                {
-                                        if ( patch->area < 1.0 )
-                                        {
-                                                Developer( DEVELOPER_LEVEL_WARNING,
-                                                           "Patch at (%4.3f %4.3f %4.3f) (face %d) tiny area (%4.3f) not subdividing \n",
-                                                           patch->origin[0], patch->origin[1], patch->origin[2], patch->faceNumber, patch->area );
-                                        }
-                                        else
-                                        {
-                                                SubdividePatch( patch );
-                                        }
-                                }
                         }
                 }
         }
@@ -1688,6 +982,9 @@ static void MakePatchForFace( int facenum, Winding *w )
         texinfo_t *tex;
 
         tex = g_bspdata->texinfo + f->texinfo;
+        ThreadLock();
+        std::cout << "Texinfo: " << f->texinfo << std::endl;
+        ThreadUnlock();
 
         area = w->getArea();
         if ( area <= 0 )
@@ -1708,7 +1005,7 @@ static void MakePatchForFace( int facenum, Winding *w )
         patch.child1 = -1;
         patch.child2 = -1;
         patch.parent = -1;
-        patch.bumped = 0;
+        patch.bumped = (byte)( g_textures[tex->texref].bump != nullptr );
 
         // link and save patch data
         patch.next = g_face_patches[facenum];
@@ -1781,10 +1078,12 @@ static void MakePatchForFace( int facenum, Winding *w )
 
         VectorCopy( patch.plane->normal, patch.normal );
 
-        vec3_t fmins, fmaxs;
-        w->getBounds( fmins, fmaxs );
-        VectorCopy( fmins, patch.face_mins );
-        VectorCopy( fmaxs, patch.face_maxs );
+        vec3_t vmins, vmaxs;
+        w->getBounds( vmins, vmaxs );
+        VectorCopy( vmins, patch.face_mins );
+        VectorCopy( vmaxs, patch.face_maxs );
+        VectorCopy( patch.face_mins, patch.mins );
+        VectorCopy( patch.face_maxs, patch.maxs );
 
         BaseLightForFace( f, patch.baselight, &patch.basearea, patch.reflectivity );
 
@@ -1810,7 +1109,6 @@ static void MakePatches()
         LVector3 origin;
         entity_t *ent;
 
-        ParseEntities( g_bspdata );
         printf( "%i faces\n", g_bspdata->numfaces );
 
         for ( i = 0; i < g_bspdata->nummodels; i++ )
@@ -1886,7 +1184,11 @@ int CreateChildPatch( int parentnum, Winding *w, float area, const LVector3 &cen
         VectorCopy( vmaxs, child.maxs );
 
         if ( child.baselight.length() == 0 )
+        {
+                g_patches.push_back( child );
                 return childidx;
+        }
+                
 
         // subdivide patch towards minchop if on the edge of the face
         LVector3 total;
@@ -1906,6 +1208,10 @@ int CreateChildPatch( int parentnum, Winding *w, float area, const LVector3 &cen
                 }
         }
 
+        ThreadLock();
+        g_patches.push_back( child );
+        ThreadUnlock();
+
         return childidx;
 }
 
@@ -1922,11 +1228,15 @@ void SubdividePatch( int patchnum )
         // get the current patch
         patch_t *patch = &g_patches[patchnum];
         if ( !patch )
+        {
                 return;
+        }   
 
         // never subdivide sky patches
         if ( patch->sky )
+        {
                 return;
+        }
 
         // get the patch winding
         w = patch->winding;
@@ -1962,7 +1272,10 @@ void SubdividePatch( int patchnum )
         }
 
         if ( !subdivide )
+        {
                 return;
+        } 
+                
 
         // split the winding
         VectorCopy( vec3_origin, split );
@@ -2092,290 +1405,7 @@ static void SubdividePatches()
         printf( "%i patches after subdivision\n", patch_count );
 }
 
-#if 0
-static void     MakePatches()
-{
-        int             i;
-        int             j;
-        unsigned int    k;
-        dface_t*        f;
-        int             fn;
-        Winding*        w;
-        dmodel_t*       mod;
-        vec3_t          origin;
-        entity_t*       ent;
-        const char*     s;
-        vec3_t          light_origin;
-        vec3_t          model_center;
-        bool            b_light_origin;
-        bool            b_model_center;
-        eModelLightmodes lightmode;
-
-        int				style; //LRC
-
-
-        Log( "%i faces\n", g_bspdata->numfaces );
-
-        Log( "Create Patches : " );
-        g_patches = (patch_t *)AllocBlock( MAX_PATCHES * sizeof( patch_t ) );
-
-        for ( i = 0; i < g_bspdata->nummodels; i++ )
-        {
-                b_light_origin = false;
-                b_model_center = false;
-                lightmode = eModelLightmodeNull;
-
-
-                mod = g_bspdata->dmodels + i;
-                ent = EntityForModel( g_bspdata, i );
-                VectorCopy( vec3_origin, origin );
-
-                if ( *( s = ValueForKey( ent, "zhlt_lightflags" ) ) )
-                {
-                        lightmode = (eModelLightmodes)atoi( s );
-                }
-
-                // models with origin brushes need to be offset into their in-use position
-                if ( *( s = ValueForKey( ent, "origin" ) ) )
-                {
-                        double          v1, v2, v3;
-
-                        if ( sscanf( s, "%lf %lf %lf", &v1, &v2, &v3 ) == 3 )
-                        {
-                                origin[0] = v1;
-                                origin[1] = v2;
-                                origin[2] = v3;
-                        }
-
-                }
-
-                // Allow models to be lit in an alternate location (pt1)
-                if ( *( s = ValueForKey( ent, "light_origin" ) ) )
-                {
-                        entity_t*       e = FindTargetEntity( g_bspdata, s );
-
-                        if ( e )
-                        {
-                                if ( *( s = ValueForKey( e, "origin" ) ) )
-                                {
-                                        double          v1, v2, v3;
-
-                                        if ( sscanf( s, "%lf %lf %lf", &v1, &v2, &v3 ) == 3 )
-                                        {
-                                                light_origin[0] = v1;
-                                                light_origin[1] = v2;
-                                                light_origin[2] = v3;
-
-                                                b_light_origin = true;
-                                        }
-                                }
-                        }
-                }
-
-                // Allow models to be lit in an alternate location (pt2)
-                if ( *( s = ValueForKey( ent, "model_center" ) ) )
-                {
-                        double          v1, v2, v3;
-
-                        if ( sscanf( s, "%lf %lf %lf", &v1, &v2, &v3 ) == 3 )
-                        {
-                                model_center[0] = v1;
-                                model_center[1] = v2;
-                                model_center[2] = v3;
-
-                                b_model_center = true;
-                        }
-                }
-
-                // Allow models to be lit in an alternate location (pt3)
-                if ( b_light_origin && b_model_center )
-                {
-                        VectorSubtract( light_origin, model_center, origin );
-                }
-
-                //LRC:
-                if ( *( s = ValueForKey( ent, "style" ) ) )
-                {
-                        style = atoi( s );
-                        if ( style < 0 )
-                                style = -style;
-                }
-                else
-                {
-                        style = 0;
-                }
-                //LRC (ends)
-                style = (unsigned char)style;
-                if ( style >= ALLSTYLES )
-                {
-                        Error( "invalid light style: style (%d) >= ALLSTYLES (%d)", style, ALLSTYLES );
-                }
-                int bouncestyle = -1;
-                {
-                        int j;
-                        for ( j = 0; j < g_bspdata->numentities; j++ )
-                        {
-                                entity_t *lightent = &g_bspdata->entities[j];
-                                if ( !strcmp( ValueForKey( lightent, "classname" ), "light_bounce" )
-                                     && *ValueForKey( lightent, "target" )
-                                     && !strcmp( ValueForKey( lightent, "target" ), ValueForKey( ent, "targetname" ) ) )
-                                {
-                                        bouncestyle = IntForKey( lightent, "style" );
-                                        if ( bouncestyle < 0 )
-                                                bouncestyle = -bouncestyle;
-                                        bouncestyle = (unsigned char)bouncestyle;
-                                        if ( bouncestyle >= ALLSTYLES )
-                                        {
-                                                Error( "invalid light style: style (%d) >= ALLSTYLES (%d)", bouncestyle, ALLSTYLES );
-                                        }
-                                        break;
-                                }
-                        }
-                }
-
-                for ( j = 0; j < mod->numfaces; j++ )
-                {
-                        fn = mod->firstface + j;
-                        g_face_entity[fn] = ent;
-                        VectorCopy( origin, g_face_offset[fn] );
-                        g_face_texlights[fn] = FindTexlightEntity( fn );
-                        g_face_lightmode[fn] = lightmode;
-                        f = g_bspdata->dfaces + fn;
-                        w = new Winding( *f, g_bspdata );
-                        for ( k = 0; k < w->m_NumPoints; k++ )
-                        {
-                                VectorAdd( w->m_Points[k], origin, w->m_Points[k] );
-                        }
-                        MakePatchForFace( fn, w, style
-                                          , bouncestyle
-                        ); //LRC
-                }
-        }
-
-        Log( "%i base patches\n", g_num_patches );
-        Log( "%i square feet [%.2f square inches]\n", (int)( totalarea / 144 ), totalarea );
-}
-#endif
-
-// =====================================================================================
-//  patch_sorter
-// =====================================================================================
-static int CDECL patch_sorter( const void* p1, const void* p2 )
-{
-        patch_t*        patch1 = (patch_t*)p1;
-        patch_t*        patch2 = (patch_t*)p2;
-
-        if ( patch1->faceNumber < patch2->faceNumber )
-        {
-                return -1;
-        }
-        else if ( patch1->faceNumber > patch2->faceNumber )
-        {
-                return 1;
-        }
-        else
-        {
-                return 0;
-        }
-}
-
-// =====================================================================================
-//  patch_sorter
-//      This sorts the patches by facenumber, which makes their runs compress even better
-// =====================================================================================
-static void     SortPatches()
-{
-        // SortPatches is the ideal place to do this, because the address of the patches are going to be invalidated.
-        patch_t *old_patches = g_patches;
-        g_patches = (patch_t *)AllocBlock( ( g_num_patches + 1 ) * sizeof( patch_t ) ); // allocate one extra slot considering how terribly the code were written
-        memcpy( g_patches, old_patches, g_num_patches * sizeof( patch_t ) );
-        FreeBlock( old_patches );
-        qsort( (void*)g_patches, (size_t)g_num_patches, sizeof( patch_t ), patch_sorter );
-
-        // Fixup g_face_patches & Fixup patch->next
-        memset( g_face_patches, 0, sizeof( g_face_patches ) );
-        {
-                unsigned        x;
-                patch_t*        patch = g_patches + 1;
-                patch_t*        prev = g_patches;
-
-                g_face_patches[prev->faceNumber] = prev;
-
-                for ( x = 1; x < g_num_patches; x++, patch++ )
-                {
-                        if ( patch->faceNumber != prev->faceNumber )
-                        {
-                                prev->next = NULL;
-                                g_face_patches[patch->faceNumber] = patch;
-                        }
-                        else
-                        {
-                                prev->next = patch;
-                        }
-                        prev = patch;
-                }
-        }
-        for ( unsigned x = 0; x < g_num_patches; x++ )
-        {
-                patch_t *patch = &g_patches[x];
-                patch->leafnum = PointInLeaf( patch->origin ) - g_bspdata->dleafs;
-        }
-}
-
-// =====================================================================================
-//  FreePatches
-// =====================================================================================
-static void     FreePatches()
-{
-        unsigned        x;
-        patch_t*        patch = g_patches;
-
-        // AJM EX
-        //Log("patches: %i of %i (%2.2lf percent)\n", g_num_patches, MAX_PATCHES, (double)((double)g_num_patches / (double)MAX_PATCHES));
-
-        for ( x = 0; x < g_num_patches; x++, patch++ )
-        {
-                delete patch->winding;
-        }
-        memset( g_patches, 0, sizeof( patch_t ) * g_num_patches );
-        FreeBlock( g_patches );
-        g_patches = NULL;
-}
-
 //=====================================================================
-
-// =====================================================================================
-//  WriteWorld
-// =====================================================================================
-static void     WriteWorld( const char* const name )
-{
-        unsigned        i;
-        unsigned        j;
-        FILE*           out;
-        patch_t*        patch;
-        Winding*        w;
-
-        out = fopen( name, "w" );
-
-        if ( !out )
-                Error( "Couldn't open %s", name );
-
-        for ( j = 0, patch = g_patches; j < g_num_patches; j++, patch++ )
-        {
-                w = patch->winding;
-                Log( "%i\n", w->m_NumPoints );
-                for ( i = 0; i < w->m_NumPoints; i++ )
-                {
-                        Log( "%5.2f %5.2f %5.2f %5.3f %5.3f %5.3f\n",
-                             w->m_Points[i][0],
-                             w->m_Points[i][1],
-                             w->m_Points[i][2], patch->totallight[0].light[0][0] / 256, patch->totallight[0].light[0][1] / 256, patch->totallight[0].light[0][2] / 256 ); //LRC
-                }
-                Log( "\n" );
-        }
-
-        fclose( out );
-}
 
 // =====================================================================================
 //  CollectLight
@@ -2386,49 +1416,64 @@ static void     WriteWorld( const char* const name )
 // =====================================================================================
 static void     CollectLight( LVector3 &total )
 {
-        unsigned        j; //LRC
-        unsigned        i;
-        patch_t*        patch;
+        int i, j;
+        patch_t *patch;
 
-        for ( i = 0, patch = g_patches; i < g_num_patches; i++, patch++ )
+        total.set( 0.0, 0.0, 0.0 );
+
+        // process patches in reverse order so that children are processed before their parents
+        size_t patch_count = g_patches.size();
+        for ( i = patch_count - 1; i >= 0; i-- )
         {
-                bumpsample_t newtotallight[MAXLIGHTMAPS];
-                memset( newtotallight, 0, sizeof( bumpsample_t ) * MAXLIGHTMAPS );
-                for ( j = 0; j < MAXLIGHTMAPS && newstyles[i][j] != 255; j++ )
+                patch = &g_patches[i];
+                int normal_count = patch->bumped ? NUM_BUMP_VECTS + 1 : 1;
+
+                if ( patch->sky )
                 {
-                        int k;
-                        for ( k = 0; k < MAXLIGHTMAPS && patch->totalstyle[k] != 255; k++ )
-                        {
-                                if ( patch->totalstyle[k] == newstyles[i][j] )
-                                {
-                                        for ( int n = 0; n < patch->normal_count; n++ )
-                                        {
-                                                VectorCopy( patch->totallight[k].light[n], newtotallight[j].light[n] );
-                                        }
-                                        break;
-                                }
-                        }
+                        VectorFill( emitlight[i], 0 );
                 }
-                for ( j = 0; j < MAXLIGHTMAPS; j++ )
+                else if ( patch->child1 == -1 )
                 {
-                        if ( newstyles[i][j] != 255 )
+                        // leaf node in patch tree
+                        for ( j = 0; j < normal_count; j++ )
                         {
-                                patch->totalstyle[j] = newstyles[i][j];
-                                for ( int n = 0; n < patch->normal_count; n++ )
-                                {
-                                        VectorCopy( newtotallight[j].light[n], patch->totallight[j].light[n] );
-                                }
-                                VectorCopy( addlight[i][j].light[0], emitlight[i][j] );
-                                VectorAdd( total, emitlight[i][j], total );
+                                VectorAdd( patch->totallight.light[j], addlight[i].light[j], patch->totallight.light[j] );
                         }
-                        else
+                        VectorCopy( addlight[i].light[0], emitlight[i] );
+                        VectorAdd( total, emitlight[i], total );
+                }
+                else
+                {
+                        // this is an interior node.
+                        // pull received ilght from children
+
+                        float s1, s2;
+                        patch_t *child1, *child2;
+
+                        child1 = &g_patches[patch->child1];
+                        child2 = &g_patches[patch->child2];
+
+                        if ( (int)patch->area != (int)( child1->area + child2->area ) )
+                                s1 = 0;
+
+                        s1 = child1->area / ( child1->area + child2->area );
+                        s2 = child2->area / ( child1->area + child2->area );
+
+                        // patch->totallight = s1 * child1->totallight + s2 * child2->totallight
+                        for ( j = 0; j < normal_count; j++ )
                         {
-                                patch->totalstyle[j] = 255;
+                                VectorScale( child1->totallight.light[j], s1, patch->totallight.light[j] );
+                                VectorMA( patch->totallight.light[j], s2, child2->totallight.light[j], patch->totallight.light[j] );
                         }
+
+                        // patch->emitlight = s1 * child1->emitlight + s2 * child2->emitlight
+                        VectorScale( emitlight[patch->child1], s1, emitlight[i] );
                 }
 
-                memset( addlight[i], 0, sizeof( addlight[i] ) );
-                
+                for ( j = 0; j < NUM_BUMP_VECTS + 1; j++ )
+                {
+                        VectorFill( addlight[i].light[j], 0 );
+                }
         }
 }
 
@@ -2441,362 +1486,97 @@ static void     CollectLight( LVector3 &total )
 #pragma warning(push)
 #pragma warning(disable: 4100)                             // unreferenced formal parameter
 #endif
-static void     GatherLight( int threadnum )
+
+void GatherLight( int threadnum )
 {
-        int             j;
-        patch_t*        patch;
-
-        unsigned        k, m; //LRC
-                              //LRC    vec3_t          sum;
-
-        unsigned        iIndex;
-        transfer_data_t* tData;
-        transfer_index_t* tIndex;
-        float f;
-        bumpsample_t			adds[ALLSTYLES];
-        int				style;
-        unsigned int	fastfind_index = 0;
+        int i, j, k;
+        transfer_t *trans;
+        int num;
+        patch_t *patch;
+        LVector3 sum, v;
 
         while ( 1 )
         {
                 j = GetThreadWork();
                 if ( j == -1 )
-                {
                         break;
-                }
-                
-
-                patch = &g_patches[j];
-                memset( adds, 0, ALLSTYLES * sizeof( bumpsample_t ) );
-
-                tData = patch->tData;
-                tIndex = patch->tIndex;
-                iIndex = patch->iIndex;
-
-                for ( int n = 0; n < patch->normal_count; n++ )
-                {
-                        for ( m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++ )
-                        {
-                                VectorAdd( adds[patch->totalstyle[m]].light[n], patch->totallight[m].light[n], adds[patch->totalstyle[m]].light[n] );
-                        }
-                }
-                
-
-                for ( k = 0; k < iIndex; k++, tIndex++ )
-                {
-                        unsigned        l;
-                        unsigned        size = ( tIndex->size + 1 );
-                        unsigned        patchnum = tIndex->index;
-
-                        for ( l = 0; l < size; l++, tData += float_size[g_transfer_compress_type], patchnum++ )
-                        {
-                                vec3_t          v;
-                                //LRC:
-                                patch_t*		emitpatch = &g_patches[patchnum];
-                                unsigned		emitstyle;
-                                int				opaquestyle = -1;
-                                GetStyle( j, patchnum, opaquestyle, fastfind_index );
-                                float_decompress( g_transfer_compress_type, tData, &f );
-
-                                // for each style on the emitting patch
-                                for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->directstyle[emitstyle] != 255; emitstyle++ )
-                                {
-                                        for ( int n = 0; n < emitpatch->normal_count; n++ )
-                                        {
-                                                VectorScale( emitpatch->directlight[emitstyle].light[n], f, v );
-                                                VectorMultiply( v, emitpatch->bouncereflectivity, v );
-                                                if ( isPointFinite( v ) )
-                                                {
-                                                        int addstyle = emitpatch->directstyle[emitstyle];
-                                                        if ( emitpatch->bouncestyle != -1 )
-                                                        {
-                                                                if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
-                                                                        addstyle = emitpatch->bouncestyle;
-                                                                else
-                                                                        continue;
-                                                        }
-                                                        if ( opaquestyle != -1 )
-                                                        {
-                                                                if ( addstyle == 0 || addstyle == opaquestyle )
-                                                                        addstyle = opaquestyle;
-                                                                else
-                                                                        continue;
-                                                        }
-                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
-                                                }
-                                        }
-                                        
-                                }
-                                for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->totalstyle[emitstyle] != 255; emitstyle++ )
-                                {
-                                        //Log( "Patchnum %u, emitstyle %u, emitlight (%4.3f %4.3f %4.3f)", patchnum, emitstyle,
-                                        //     emitlight[patchnum][emitstyle][0], emitlight[patchnum][emitstyle][1],
-                                        //     emitlight[patchnum][emitstyle][2] );
-                                        VectorScale( emitlight[patchnum][emitstyle], f, v );
-                                        VectorMultiply( v, emitpatch->bouncereflectivity, v );
-                                        if ( isPointFinite( v ) )
-                                        {
-                                                int addstyle = emitpatch->totalstyle[emitstyle];
-                                                if ( emitpatch->bouncestyle != -1 )
-                                                {
-                                                        if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
-                                                                addstyle = emitpatch->bouncestyle;
-                                                        else
-                                                                continue;
-                                                }
-                                                if ( opaquestyle != -1 )
-                                                {
-                                                        if ( addstyle == 0 || addstyle == opaquestyle )
-                                                                addstyle = opaquestyle;
-                                                        else
-                                                                continue;
-                                                }
-                                                for ( int n = 0; n < patch->normal_count; n++ )
-                                                {
-                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
-                                                }
-                                                
-                                        }
-                                        else
-                                        {
-                                                Log( "GatherLight, v (%4.3f %4.3f %4.3f)@(%4.3f %4.3f %4.3f)\n",
-                                                                v[0], v[1], v[2], patch->origin[0], patch->origin[1], patch->origin[2] );
-                                        }
-                                }
-                                //LRC (ends)
-
-                                //Log( "GatherLight, v (%4.3f %4.3f %4.3f)\n",
-                                //     v[0], v[1], v[2] );
-                        }
-                }
-
-                vec_t maxlights[ALLSTYLES];
-                for ( style = 0; style < ALLSTYLES; style++ )
-                {
-                        maxlights[style] = VectorMaximum( adds[style].light[0] );
-                }
-                for ( m = 0; m < MAXLIGHTMAPS; m++ )
-                {
-                        unsigned char beststyle = 255;
-                        if ( m == 0 )
-                        {
-                                beststyle = 0;
-                        }
-                        else
-                        {
-                                vec_t bestmaxlight = 0;
-                                for ( style = 1; style < ALLSTYLES; style++ )
-                                {
-                                        if ( maxlights[style] > bestmaxlight + NORMAL_EPSILON )
-                                        {
-                                                bestmaxlight = maxlights[style];
-                                                beststyle = style;
-                                        }
-                                }
-                        }
-                        if ( beststyle != 255 )
-                        {
-                                maxlights[beststyle] = 0;
-                                newstyles[j][m] = beststyle;
-                                for ( int n = 0; n < patch->normal_count; n++ )
-                                {
-                                        VectorCopy( adds[beststyle].light[n], addlight[j][m].light[n] );
-                                }
-                        }
-                        else
-                        {
-                                newstyles[j][m] = 255;
-                        }
-                }
-                for ( style = 1; style < ALLSTYLES; style++ )
-                {
-                        if ( maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON )
-                        {
-                                ThreadLock();
-                                if ( maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = maxlights[style];
-                                        VectorCopy( patch->origin, g_maxdiscardedpos );
-                                }
-                                ThreadUnlock();
-                        }
-                }
-                
-        }
-}
-
-// RGB Transfer version
-static void     GatherRGBLight( int threadnum )
-{
-        int             j;
-        patch_t*        patch;
-
-        unsigned        k, m; //LRC
-                              //LRC    vec3_t          sum;
-
-        unsigned        iIndex;
-        rgb_transfer_data_t* tRGBData;
-        transfer_index_t* tIndex;
-        float f[3];
-        bumpsample_t			adds[ALLSTYLES];
-        int				style;
-        unsigned int	fastfind_index = 0;
-
-        while ( 1 )
-        {
-                j = GetThreadWork();
-                if ( j == -1 )
-                {
-                        break;
-                }
-                
 
                 patch = &g_patches[j];
 
-                tRGBData = patch->tRGBData;
-                tIndex = patch->tIndex;
-                iIndex = patch->iIndex;
-
-                memset( adds, 0, ALLSTYLES * sizeof( bumpsample_t ) );
-                for ( int n = 0; n < patch->normal_count; n++ )
+                trans = patch->transfers;
+                num = patch->numtransfers;
+                if ( patch->bumped )
                 {
-                        for ( m = 0; m < MAXLIGHTMAPS && patch->totalstyle[m] != 255; m++ )
+                        LVector3 delta;
+                        LVector3 bumpsum[NUM_BUMP_VECTS + 1];
+                        LVector3 normals[NUM_BUMP_VECTS + 1];
+
+                        GetPhongNormal( patch->facenum, patch->origin, normals[0] );
+
+                        texinfo_t *tinfo = &g_bspdata->texinfo[g_bspdata->dfaces[patch->facenum].texinfo];
+                        // use facenormal along with the smooth normal to build the three bump map vectors
+                        GetBumpNormals( GetLVector3_2( tinfo->vecs[0] ),
+                                        GetLVector3_2( tinfo->vecs[1] ), patch->normal,
+                                        normals[0], &normals[1] );
+
+                        // force the base lightmap to use the flat normal instead of the phong normal
+                        // FIXME: why does the patch not use the phong normal?
+                        normals[0] = patch->normal;
+
+                        for ( i = 0; i < NUM_BUMP_VECTS + 1; i++ )
                         {
-                                VectorAdd( adds[patch->totalstyle[m]].light[n], patch->totallight[m].light[n], adds[patch->totalstyle[m]].light[n] );
+                                VectorFill( bumpsum[i], 0 );
+                        }
+
+                        float dot;
+                        for ( k = 0; k < num; k++, trans++ )
+                        {
+                                patch_t *patch2 = &g_patches[trans->patch];
+
+                                // get vector to other patch
+                                VectorSubtract( patch2->origin, patch->origin, delta );
+                                delta.normalize();
+                                // find light emitted from other patch
+                                for ( i = 0; i < 3; i++ )
+                                {
+                                        v[i] = emitlight[trans->patch][i] * patch2->reflectivity[i];
+                                }
+                                // remove normal already factored into transfer steradian
+                                float scale = 1.0f / DotProduct( delta, patch->normal );
+                                VectorScale( v, trans->transfer * scale, v );
+
+                                LVector3 bumpTransfer;
+                                for ( i = 0; i < NUM_BUMP_VECTS + 1; i++ )
+                                {
+                                        dot = DotProduct( delta, normals[i] );
+                                        if ( dot <= 0 )
+                                        {
+//						Assert( i > 0 ); // if this hits, then the transfer shouldn't be here.  It doesn't face the flat normal of this face!
+                                                continue;
+                                        }
+                                        bumpTransfer = v * dot;
+                                        VectorAdd( bumpsum[i], bumpTransfer, bumpsum[i] );
+                                }
+                        }
+
+                        for ( i = 0; i < NUM_BUMP_VECTS + 1; i++ )
+                        {
+                                VectorCopy( bumpsum[i], addlight[j].light[i] );
                         }
                 }
-                
-
-                for ( k = 0; k < iIndex; k++, tIndex++ )
+                else
                 {
-                        unsigned        l;
-                        unsigned        size = ( tIndex->size + 1 );
-                        unsigned        patchnum = tIndex->index;
-                        for ( l = 0; l < size; l++, tRGBData += vector_size[g_rgbtransfer_compress_type], patchnum++ )
+                        VectorFill( sum, 0 );
+                        for ( k = 0; k < num; k++, trans++ )
                         {
-                                vec3_t          v;
-                                //LRC:
-                                patch_t*		emitpatch = &g_patches[patchnum];
-                                unsigned		emitstyle;
-                                int				opaquestyle = -1;
-                                GetStyle( j, patchnum, opaquestyle, fastfind_index );
-                                vector_decompress( g_rgbtransfer_compress_type, tRGBData, &f[0], &f[1], &f[2] );
-
-                                // for each style on the emitting patch
-                                for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->directstyle[emitstyle] != 255; emitstyle++ )
+                                for ( i = 0; i < 3; i++ )
                                 {
-                                        for ( int n = 0; n < emitpatch->normal_count; n++ )
-                                        {
-                                                VectorMultiply( emitpatch->directlight[emitstyle].light[n], f, v );
-                                                VectorMultiply( v, emitpatch->bouncereflectivity, v );
-                                                if ( isPointFinite( v ) )
-                                                {
-                                                        int addstyle = emitpatch->directstyle[emitstyle];
-                                                        if ( emitpatch->bouncestyle != -1 )
-                                                        {
-                                                                if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
-                                                                        addstyle = emitpatch->bouncestyle;
-                                                                else
-                                                                        continue;
-                                                        }
-                                                        if ( opaquestyle != -1 )
-                                                        {
-                                                                if ( addstyle == 0 || addstyle == opaquestyle )
-                                                                        addstyle = opaquestyle;
-                                                                else
-                                                                        continue;
-                                                        }
-                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
-                                                }
-                                        }
+                                        v[i] = emitlight[trans->patch][i] * g_patches[trans->patch].reflectivity[i];
                                 }
-                                for ( emitstyle = 0; emitstyle < MAXLIGHTMAPS && emitpatch->totalstyle[emitstyle] != 255; emitstyle++ )
-                                {
-                                        VectorMultiply( emitlight[patchnum][emitstyle], f, v );
-                                        VectorMultiply( v, emitpatch->bouncereflectivity, v );
-                                        if ( isPointFinite( v ) )
-                                        {
-                                                int addstyle = emitpatch->totalstyle[emitstyle];
-                                                if ( emitpatch->bouncestyle != -1 )
-                                                {
-                                                        if ( addstyle == 0 || addstyle == emitpatch->bouncestyle )
-                                                                addstyle = emitpatch->bouncestyle;
-                                                        else
-                                                                continue;
-                                                }
-                                                if ( opaquestyle != -1 )
-                                                {
-                                                        if ( addstyle == 0 || addstyle == opaquestyle )
-                                                                addstyle = opaquestyle;
-                                                        else
-                                                                continue;
-                                                }
-                                                for ( int n = 0; n < patch->normal_count; n++ )
-                                                {
-                                                        VectorAdd( adds[addstyle].light[n], v, adds[addstyle].light[n] );
-                                                }
-                                                
-                                        }
-                                        else
-                                        {
-                                                Verbose( "GatherLight, v (%4.3f %4.3f %4.3f)@(%4.3f %4.3f %4.3f)\n",
-                                                                v[0], v[1], v[2], patch->origin[0], patch->origin[1], patch->origin[2] );
-                                        }
-                                }
-                                //LRC (ends)
+                                VectorScale( v, trans->transfer, v );
+                                VectorAdd( sum, v, sum );
                         }
-                }
-
-                vec_t maxlights[ALLSTYLES];
-                for ( style = 0; style < ALLSTYLES; style++ )
-                {
-                        maxlights[style] = VectorMaximum( adds[style].light[0] );
-                }
-                for ( m = 0; m < MAXLIGHTMAPS; m++ )
-                {
-                        unsigned char beststyle = 255;
-                        if ( m == 0 )
-                        {
-                                beststyle = 0;
-                        }
-                        else
-                        {
-                                vec_t bestmaxlight = 0;
-                                for ( style = 1; style < ALLSTYLES; style++ )
-                                {
-                                        if ( maxlights[style] > bestmaxlight + NORMAL_EPSILON )
-                                        {
-                                                bestmaxlight = maxlights[style];
-                                                beststyle = style;
-                                        }
-                                }
-                        }
-                        if ( beststyle != 255 )
-                        {
-                                maxlights[beststyle] = 0;
-                                newstyles[j][m] = beststyle;
-                                for ( int n = 0; n < patch->normal_count; n++ )
-                                {
-                                        VectorCopy( adds[beststyle].light[n], addlight[j][m].light[n] );
-                                }
-                        }
-                        else
-                        {
-                                newstyles[j][m] = 255;
-                        }
-                }
-                for ( style = 1; style < ALLSTYLES; style++ )
-                {
-                        if ( maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON )
-                        {
-                                ThreadLock();
-                                if ( maxlights[style] > g_maxdiscardedlight + NORMAL_EPSILON )
-                                {
-                                        g_maxdiscardedlight = maxlights[style];
-                                        VectorCopy( patch->origin, g_maxdiscardedpos );
-                                }
-                                ThreadUnlock();
-                        }
+                        VectorCopy( sum, addlight[j].light[0] );
                 }
         }
 }
@@ -2813,34 +1593,29 @@ static void     BounceLight()
         unsigned        i;
         char            name[64];
 
-        unsigned        j; //LRC
+        bool keep_bouncing = false;// g_numbounce > 0;
 
-        bool keep_bouncing = true;
-
-        for ( i = 0; i < g_num_patches; i++ )
+        for ( i = 0; i < g_patches.size(); i++ )
         {
                 patch_t *patch = &g_patches[i];
-                for ( j = 0; j < MAXLIGHTMAPS && patch->totalstyle[j] != 255; j++ )
-                {
-                        //Log( "BounceLight copy to emitlight: patchnum %u, light (%4.3f, %4.3f, %4.3f)\n", i, patch->totallight[j].light[0][0],
-                        //     patch->totallight[j].light[0][1], patch->totallight[j].light[0][2] );
-                        VectorCopy( patch->totallight[j].light[0], emitlight[i][j] );
-                }
+                // totallight has a copy of the direct lighting.  Move it to the emitted light and zero it out (to integrate bounces only)
+                std::cout << "patch " << i << " totallight is " << patch->totallight.light[0].light << std::endl;
+                VectorCopy( patch->totallight.light[0], emitlight[i] );
+                // NOTE: This means that only the bounced light is integrated into totallight!
+                VectorFill( patch->totallight.light[0], 0 );
         }
 
         LVector3 last_added( 0 );
         i = 0;
         while ( keep_bouncing )
         {
-                if ( g_rgb_transfers )
-                {
-                        NamedRunThreadsOn( g_num_patches, g_estimate, GatherRGBLight );
-                }
-                else
-                {
-                        NamedRunThreadsOn( g_num_patches, g_estimate, GatherLight );
-                }
+                // transfer light from to the leaf patches from other patches via transfers
+                // this moves shooter->emitlight to receiver->addlight
+                NamedRunThreadsOn( g_patches.size(), g_estimate, GatherLight );
 
+                // move newly received light (addlight) to light to be sent out (emitlight)
+                // start at children and pull light up to parents
+                // light is always received to leaf patches
                 LVector3 totaladd( 0 );
                 CollectLight( totaladd );
 
@@ -2854,91 +1629,172 @@ static void     BounceLight()
                         keep_bouncing = false;
 
                 i++;
-                if ( g_dumppatches )
-                {
-                        sprintf( name, "bounce%u.txt", i );
-                        WriteWorld( name );
-                }
-        }
-
-        for ( i = 0; i < g_num_patches; i++ )
-        {
-                patch_t *patch = &g_patches[i];
-                for ( j = 0; j < MAXLIGHTMAPS && patch->totalstyle[j] != 255; j++ )
-                {
-                        for ( int n = 0; n < patch->normal_count; n++ )
-                        {
-                                VectorCopy( emitlight[i][j], patch->totallight[j].light[n] );
-                        }
-                        
-                }
         }
 }
 
-// =====================================================================================
-//  CheckMaxPatches
-// =====================================================================================
-static void     CheckMaxPatches()
+float FormFactorPolyToDiff( patch_t *polygon, patch_t *diff )
 {
-        switch ( g_method )
+        Winding *w = polygon->winding;
+
+        float formfac = 0.0;
+
+        for ( int i = 0; i < w->m_NumPoints; i++ )
         {
-        case eMethodVismatrix:
-                hlassume( g_num_patches < MAX_VISMATRIX_PATCHES, assume_MAX_PATCHES ); // should use "<=" instead. --vluzacn
-                break;
-        case eMethodSparseVismatrix:
-                hlassume( g_num_patches < MAX_SPARSE_VISMATRIX_PATCHES, assume_MAX_PATCHES );
-                break;
-        case eMethodNoVismatrix:
-                hlassume( g_num_patches < MAX_PATCHES, assume_MAX_PATCHES );
-                break;
+                int inext = ( i < w->m_NumPoints - 1 ) ? i + 1 : 0;
+
+                vec3_t vGammaVector, vVector1, vVector2;
+                VectorSubtract( w->m_Points[i], diff->origin, vVector1 );
+                VectorSubtract( w->m_Points[inext], diff->origin, vVector2 );
+                VectorNormalize( vVector1 );
+                VectorNormalize( vVector2 );
+                CrossProduct( vVector1, vVector2, vGammaVector );
+                float flSinAlpha = VectorNormalize( vGammaVector );
+                if ( flSinAlpha < -1.0f || flSinAlpha > 1.0f )
+                        return 0.0f;
+                float sc = std::asin( flSinAlpha );
+                VectorScale( vGammaVector, sc, vGammaVector );
+
+                formfac += DotProduct( vGammaVector, diff->normal );
         }
+
+        formfac *= ( 0.5 / polygon->area );
+
+        return formfac;
 }
 
-// =====================================================================================
-//  MakeScalesStub
-// =====================================================================================
-static void     MakeScalesStub()
+float FormFactorDiffToDiff( patch_t *diff1, patch_t *diff2 )
 {
-        switch ( g_method )
-        {
-        case eMethodVismatrix:
-                MakeScalesVismatrix();
-                break;
-        case eMethodSparseVismatrix:
-                MakeScalesSparseVismatrix();
-                break;
-        case eMethodNoVismatrix:
-                MakeScalesNoVismatrix();
-                break;
-        }
+        LVector3 vdelta = diff1->origin - diff2->origin;
+        float len = vdelta.length();
+        vdelta.normalize();
+
+        return -vdelta.dot( diff1->normal ) * vdelta.dot( diff2->normal ) / ( len * len );
 }
 
-// =====================================================================================
-//  FreeTransfers
-// =====================================================================================
-static void     FreeTransfers()
+void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
 {
-        unsigned        x;
-        patch_t*        patch = g_patches;
+        LVector3 delta;
+        vec_t scale;
+        float trans;
+        transfer_t *transfer;
 
-        for ( x = 0; x < g_num_patches; x++, patch++ )
+        //
+        // get patches
+        //
+        if ( patchidx1 == -1 || patchidx2 == -1 )
+                return;
+
+        patch_t *patch1 = &g_patches[patchidx1];
+        patch_t *patch2 = &g_patches[patchidx2];
+
+        // todo IsSky: return
+
+        // overflow check!
+        if ( patch1->numtransfers >= MAX_PATCHES )
+                return;
+
+        // hack for patch areas <= 0 (degenerate)
+        if ( patch2->area <= 0 )
+                return;
+
+        transfer = &all_transfers[patch1->numtransfers];
+
+        scale = FormFactorDiffToDiff( patch2, patch1 );
+
+        if ( scale <= 0 )
+                return;
+
+        // test 5 times rule
+        LVector3 vdelta = patch1->origin - patch2->origin;
+        float thres = ( Q_PI * 0.04 ) * vdelta.dot( vdelta );
+
+        if ( thres < patch2->area )
         {
-                if ( patch->tData )
-                {
-                        FreeBlock( patch->tData );
-                        patch->tData = NULL;
-                }
-                if ( patch->tRGBData )
-                {
-                        FreeBlock( patch->tRGBData );
-                        patch->tRGBData = NULL;
-                }
-                if ( patch->tIndex )
-                {
-                        FreeBlock( patch->tIndex );
-                        patch->tIndex = NULL;
-                }
+                scale = FormFactorPolyToDiff( patch2, patch1 );
+                if ( scale <= 0.0 )
+                        return;
         }
+
+        trans = patch2->area * scale;
+        if ( trans <= TRANSFER_EPSILON )
+                return;
+
+        transfer->patch = patch2 - g_patches.data();
+        transfer->transfer = trans;
+
+        patch1->numtransfers++;
+}
+
+static int max_transfer = 0;
+
+void MakeScales( int patchidx, transfer_t *all_transfers )
+{
+        int j;
+        float total;
+        transfer_t *t, *t2;
+        total = 0;
+
+        if ( patchidx == -1 )
+                return;
+
+        patch_t *patch = &g_patches[patchidx];
+
+        // copy the transfers out
+        if ( patch->numtransfers )
+        {
+                if ( patch->numtransfers > max_transfer )
+                        max_transfer = patch->numtransfers;
+
+                patch->transfers = (transfer_t *)calloc( 1, patch->numtransfers * sizeof( transfer_t ) );
+                if ( !patch->transfers )
+                        Error( "Memory allocation failure" );
+
+                // get total transfer energy
+                t2 = all_transfers;
+
+                // overflow check!
+                for ( j = 0; j < patch->numtransfers; j++, t2++ )
+                {
+                        total += t2->transfer;
+                }
+
+                // the total transfer should be PI, but we need to correct errors due to overlapping surfaces
+                if ( total < Q_PI )
+                        total = 1.0 / total;
+                else
+                        total = 1.0 / Q_PI;
+
+                ThreadLock();
+                t = patch->transfers;
+                t2 = all_transfers;
+                for ( j = 0; j < patch->numtransfers; j++, t++, t2++ )
+                {
+                        std::cout << "new transfer for " << t2->patch << ": " << t2->transfer * total << std::endl;
+                        t->transfer = t2->transfer * total;
+                        t->patch = t2->patch;
+                }
+
+                if ( patch->numtransfers > max_transfer )
+                        max_transfer = patch->numtransfers;
+                ThreadUnlock();
+        }
+
+        ThreadLock();
+        g_total_transfer += patch->numtransfers;
+        ThreadUnlock();
+}
+
+void MakeAllScales()
+{
+        // determine visiblity between patches
+        BuildVisMatrix();
+
+        FreeVisMatrix();
+
+        Log( "transfers %d, max %d\n", g_total_transfer, max_transfer );
+
+        printf( "transfer lists: %5.1f megs\n",
+                (float)g_total_transfer * sizeof( transfer_t ) / ( 1024 * 1024 ) );
 }
 
 // =====================================================================================
@@ -2957,8 +1813,8 @@ static void     RadWorld()
         //BuildClusterTable();
 
         // turn each face into a single patch
-        MakePatches();
-        PairEdges();
+        MakePatches(); // done
+        PairEdges(); // done
 
         // TODO
         // store the vertex normals calculated in PairEdges
@@ -2966,68 +1822,53 @@ static void     RadWorld()
         // use in the engine
         //SaveVertexNormals();
 
-        SubdividePatches();
+        SubdividePatches(); // done
 
-        BuildDiffuseNormals();
-        // create directlights out of g_patches and lights
-        CreateDirectLights();
+        // create directlights out of patches and lights
+        Lights::CreateDirectLights(); // done
+
+        ScaleDirectLights();
 
         Log( "\n" );
 
+        // go!
+
         // generate a position map for each face
-        NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, FindFacePositions );
+        //NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, FindFacePositions );
 
         // build initial facelights
         lightinfo = (lightinfo_t *)malloc( g_bspdata->numfaces * sizeof( lightinfo_t ) );
         memset( lightinfo, 0, sizeof( lightinfo ) );
-        NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, BuildFacelights );
-
-        FreePositionMaps();
+        NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, BuildFacelights ); // done
 
         if ( g_numbounce > 0 )
         {
-                // build transfer lists
-                MakeScalesStub();
+                // allocate memory for emitlight/addlight
 
-                // these arrays are only used in CollectLight, GatherLight and BounceLight
-                emitlight = ( vec3_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( vec3_t[MAXLIGHTMAPS] ) );
-                addlight = ( bumpsample_t( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( bumpsample_t[MAXLIGHTMAPS] ) );
-                //addlight = new bumpsample_t[MAXLIGHTMAPS][g_num_patches + 1];
-                newstyles = ( unsigned char( *)[MAXLIGHTMAPS] )AllocBlock( ( g_num_patches + 1 ) * sizeof( unsigned char[MAXLIGHTMAPS] ) );
+                // build transfer lists
+                //MakeScalesStub();
+
+                emitlight.resize( g_patches.size() );
+                memset( emitlight.data(), 0, g_patches.size() * sizeof( LVector3 ) );
+                addlight.resize( g_patches.size() );
+                memset( addlight.data(), 0, g_patches.size() * sizeof( bumpsample_t ) );
+
+                ThreadLock();
+                MakeAllScales();
+                std::cout << "Making all scales" << std::endl;
+                ThreadUnlock();
+
                 // spread light around
                 BounceLight();
-
-                FreeBlock( emitlight );
-                emitlight = NULL;
-                //delete[] addlight;
-                FreeBlock( addlight );
-                addlight = NULL;
-                FreeBlock( newstyles );
-                newstyles = NULL;
         }
 
-        FreeTransfers();
-        FreeStyleArrays();
+        //FreeTransfers();
+        //FreeStyleArrays();
 
-        ScaleDirectLights();
-
-        NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, CreateTriangulations );
+        //NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, CreateTriangulations );
 
         // blend bounced light into direct light and save
         PrecompLightmapOffsets();
-
-#if 0
-        {
-
-                CreateFacelightDependencyList();
-
-                NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, AddPatchLights );
-
-                FreeFacelightDependencyList();
-        }
-#endif
-
-        FreeTriangulations();
 
         NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, FinalLightFace );
         if ( g_maxdiscardedlight > 0.01 )
@@ -3040,7 +1881,7 @@ static void     RadWorld()
         DoComputeStaticPropLighting();
 
         // free up the direct lights now that we have facelights
-        DeleteDirectLights();
+        Lights::DeleteDirectLights();
 
         ReportRadTimers();
 }
@@ -3114,17 +1955,6 @@ static void     Usage()
         Log( "   -rgbtransfers           : Enables RGB Transfers (for custom shadows)\n\n" );
 
         Log( "   -minlight #    : Minimum final light (integer from 0 to 255)\n" );
-        {
-                int i;
-                Log( "   -compress #    : compress tranfer (" );
-                for ( i = 0; i<float_type_count; i++ )
-                        Log( " %d=%s", i, float_type_string[i] );
-                Log( " )\n" );
-                Log( "   -rgbcompress # : compress rgbtranfer (" );
-                for ( i = 0; i<vector_type_count; i++ )
-                        Log( " %d=%s", i, vector_type_string[i] );
-                Log( " )\n" );
-        }
         Log( "   -softsky #     : Smooth skylight.(0=off 1=on)\n" );
         Log( "   -depth #       : Thickness of translucent objects.\n" );
         Log( "   -blockopaque # : Remove the black areas around opaque entities.(0=off 1=on)\n" );
@@ -3231,7 +2061,7 @@ static void     Settings()
         safe_snprintf( buf1, sizeof( buf1 ), "%3.3f", g_coring );
         safe_snprintf( buf2, sizeof( buf2 ), "%3.3f", DEFAULT_CORING );
         Log( "coring threshold     [ %17s ] [ %17s ]\n", buf1, buf2 );
-        Log( "patch interpolation  [ %17s ] [ %17s ]\n", g_lerp_enabled ? "on" : "off", DEFAULT_LERP_ENABLED ? "on" : "off" );
+        //Log( "patch interpolation  [ %17s ] [ %17s ]\n", g_lerp_enabled ? "on" : "off", DEFAULT_LERP_ENABLED ? "on" : "off" );
 
         Log( "\n" );
 
@@ -3302,11 +2132,7 @@ static void     Settings()
         Log( "rgb transfers        [ %17s ] [ %17s ]\n", g_rgb_transfers ? "on" : "off", DEFAULT_RGB_TRANSFERS ? "on" : "off" );
 
         Log( "minimum final light  [ %17d ] [ %17d ]\n", (int)g_minlight, (int)DEFAULT_MINLIGHT );
-        sprintf( buf1, "%d (%s)", g_transfer_compress_type, float_type_string[g_transfer_compress_type] );
-        sprintf( buf2, "%d (%s)", DEFAULT_TRANSFER_COMPRESS_TYPE, float_type_string[DEFAULT_TRANSFER_COMPRESS_TYPE] );
         Log( "size of transfer     [ %17s ] [ %17s ]\n", buf1, buf2 );
-        sprintf( buf1, "%d (%s)", g_rgbtransfer_compress_type, vector_type_string[g_rgbtransfer_compress_type] );
-        sprintf( buf2, "%d (%s)", DEFAULT_RGBTRANSFER_COMPRESS_TYPE, vector_type_string[DEFAULT_RGBTRANSFER_COMPRESS_TYPE] );
         Log( "size of rgbtransfer  [ %17s ] [ %17s ]\n", buf1, buf2 );
         Log( "soft sky             [ %17s ] [ %17s ]\n", g_softsky ? "on" : "off", DEFAULT_SOFTSKY ? "on" : "off" );
         safe_snprintf( buf1, sizeof( buf1 ), "%3.3f", g_translucentdepth );
@@ -3676,10 +2502,10 @@ int             main( const int argc, char** argv )
                                 {
                                         g_fastmode = true;
                                 }
-                                else if ( !strcasecmp( argv[i], "-nolerp" ) )
-                                {
-                                        g_lerp_enabled = false;
-                                }
+                                //else if ( !strcasecmp( argv[i], "-nolerp" ) )
+                                //{
+                                //        g_lerp_enabled = false;
+                                //}
                                 else if ( !strcasecmp( argv[i], "-chop" ) )
                                 {
                                         if ( i + 1 < argc )	//added "1" .--vluzacn
@@ -4131,33 +2957,6 @@ int             main( const int argc, char** argv )
                                 {
                                         g_drawnudge = true;
                                 }
-
-                                else if ( !strcasecmp( argv[i], "-compress" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_transfer_compress_type = (float_type)atoi( argv[++i] );
-                                                if ( g_transfer_compress_type < 0 || g_transfer_compress_type >= float_type_count )
-                                                        Usage();
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-rgbcompress" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_rgbtransfer_compress_type = (vector_type)atoi( argv[++i] );
-                                                if ( g_rgbtransfer_compress_type < 0 || g_rgbtransfer_compress_type >= vector_type_count )
-                                                        Usage();
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
                                 else if ( !strcasecmp( argv[i], "-depth" ) )
                                 {
                                         if ( i + 1 < argc )
@@ -4316,7 +3115,6 @@ int             main( const int argc, char** argv )
 
                         CheckForErrorLog();
 
-                        compress_compatability_test();
 #ifdef PLATFORM_CAN_CALC_EXTENT
                         hlassume( CalcFaceExtents_test(), assume_first );
 #endif
@@ -4367,6 +3165,21 @@ int             main( const int argc, char** argv )
                                 }
                         }
 
+
+                        g_face_patches.resize( MAX_MAP_FACES );
+                        g_face_parents.resize( MAX_MAP_FACES );
+                        g_cluster_children.resize( MAX_MAP_LEAFS );
+
+                        for ( int i = 0; i < MAX_MAP_FACES; i++ )
+                        {
+                                g_face_patches[i] = -1;
+                                g_face_parents[i] = -1;
+                        }
+                        for ( int i = 0; i < MAX_MAP_LEAFS; i++ )
+                        {
+                                g_cluster_children[i] = -1;
+                        }
+
                         LoadStaticProps();
                         LoadTextures();
                         LoadRadFiles( g_Mapname, user_lights, argv[0] );
@@ -4406,8 +3219,8 @@ int             main( const int argc, char** argv )
                         RadWorld();
 
                         FreeOpaqueFaceList();
-                        FreePatches();
-                        DeleteOpaqueNodes();
+                        //FreePatches();
+                        //DeleteOpaqueNodes();
 
                         if ( g_chart )
                                 PrintBSPFileSizes( g_bspdata );

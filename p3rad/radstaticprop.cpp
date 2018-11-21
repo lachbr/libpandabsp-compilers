@@ -15,6 +15,7 @@
 #include "threads.h"
 #include "qrad.h"
 #include "lightingutils.h"
+#include "lightmap.h"
 
 TypeHandle RADCollisionPolygon::_type_handle;
 

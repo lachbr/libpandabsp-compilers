@@ -28,6 +28,21 @@ void WorldToLuxelSpace( lightinfo_t *l, const LVector3 &world, LVector2 &coord )
         coord[1] = DotProduct( pos, l->worldtotex[1] ) - l->face->lightmap_mins[1];
 }
 
+void WorldToLuxelSpace( lightinfo_t *l, const FourVectors &world, FourVectors &coord )
+{
+        FourVectors luxel_org;
+        luxel_org.DuplicateVector( l->texorg );
+
+        FourVectors pos = world;
+        pos -= luxel_org;
+
+        coord.x = pos * GetLVector3( l->worldtotex[0] );
+        coord.x = SubSIMD( coord.x, ReplicateX4( l->face->lightmap_mins[0] ) );
+        coord.y = pos * GetLVector3( l->worldtotex[1] );
+        coord.y = SubSIMD( coord.y, ReplicateX4( l->face->lightmap_mins[1] ) );
+        coord.z = Four_Zeros;
+}
+
 void LuxelToWorldSpace( lightinfo_t *l, float s, float t, LVector3 &world )
 {
         LVector3 pos;
@@ -35,6 +50,22 @@ void LuxelToWorldSpace( lightinfo_t *l, float s, float t, LVector3 &world )
         t += l->face->lightmap_mins[1];
         VectorMA( l->texorg, s, l->textoworld[0], pos );
         VectorMA( pos, t, l->textoworld[1], world );
+}
+
+void LuxelToWorldSpace( lightinfo_t *l, fltx4 s, fltx4 t, FourVectors &world )
+{
+        world.DuplicateVector( l->texorg );
+        FourVectors st;
+
+        s = AddSIMD( s, ReplicateX4( l->face->lightmap_mins[0] ) );
+        st.DuplicateVector( l->textoworld[0] );
+        st *= s;
+        world += st;
+
+        t = AddSIMD( t, ReplicateX4( l->face->lightmap_mins[1] ) );
+        st.DuplicateVector( l->textoworld[1] );
+        st *= t;
+        world += st;
 }
 
 void AddDirectToRadial( radial_t *rad, const LVector3 &pos, const LVector2 &mins,
@@ -114,7 +145,7 @@ void AddDirectToRadial( radial_t *rad, const LVector3 &pos, const LVector2 &mins
 radial_t *BuildLuxelRadial( int facenum, int style )
 {
         facelight_t *fl = &facelight[facenum];
-        faceneighbor_t *fn = &g_faceneighbor[facenum];
+        faceneighbor_t *fn = &faceneighbor[facenum];
         dface_t *face = g_bspdata->dfaces + facenum;
         bool needs_bumpmap = face->bumped_lightmap;
 
@@ -128,21 +159,21 @@ radial_t *BuildLuxelRadial( int facenum, int style )
                 {
                         for ( int n = 0; n < fl->normal_count; n++ )
                         {
-                                VectorCopy( fl->samples[style][i].light[n], light.light[n] );
+                                VectorCopy( fl->light[style][i].light[n], light.light[n] );
                         }
                 }
                 else
                 {
-                        VectorCopy( fl->samples[style][i].light[0], light.light[0] );
+                        VectorCopy( fl->light[style][i].light[0], light.light[0] );
                 }
 
                 LVector3 samp_pos;
-                VectorCopy( fl->samples[style][i].pos, samp_pos );
+                VectorCopy( fl->sample[i].pos, samp_pos );
 
-                LVector2 samp_mins( fl->samples[style][i].mins[0],
-                                    fl->samples[style][i].mins[1] );
-                LVector2 samp_maxs( fl->samples[style][i].maxs[0],
-                                    fl->samples[style][i].maxs[1] );
+                LVector2 samp_mins( fl->sample[i].mins[0],
+                                    fl->sample[i].mins[1] );
+                LVector2 samp_maxs( fl->sample[i].maxs[0],
+                                    fl->sample[i].maxs[1] );
 
                 AddDirectToRadial( rad, samp_pos, samp_mins,
                                    samp_maxs, &light, needs_bumpmap,
@@ -152,13 +183,13 @@ radial_t *BuildLuxelRadial( int facenum, int style )
         
         for ( int i = 0; i < fn->numneighbors; i++ )
         {
-                fl = &facelight[fn->neighbors[i]];
+                fl = &facelight[fn->neighbor[i]];
 
                 bool neighbor_bump = fl->bumped;
 
                 int nstyle = 0;
 
-                dface_t *neighborface = g_bspdata->dfaces + fn->neighbors[i];
+                dface_t *neighborface = g_bspdata->dfaces + fn->neighbor[i];
 
                 // look for style that matches
                 if ( neighborface->styles[nstyle] != face->styles[nstyle] )
@@ -178,23 +209,23 @@ radial_t *BuildLuxelRadial( int facenum, int style )
                         }
                 }
 
-                lightinfo_t *l = &lightinfo[fn->neighbors[i]];
+                lightinfo_t *l = &lightinfo[fn->neighbor[i]];
 
                 for ( int j = 0; j < fl->numsamples; j++ )
                 {
                         bumpsample_t light;
 
-                        sample_t *samp = &fl->samples[nstyle][j];
+                        sample_t *samp = &fl->sample[j];
                         if ( neighbor_bump )
                         {
                                 for ( int n = 0; n < NUM_BUMP_VECTS + 1; n++ )
                                 {
-                                        VectorCopy( samp->light[n], light.light[n] );
+                                        VectorCopy( fl->light[style][j][n], light.light[n] );
                                 }
                         }
                         else
                         {
-                                VectorCopy( samp->light[0], light.light[0] );
+                                VectorCopy( fl->light[style][j][0], light.light[0] );
                         }
 
                         LVector3 tmp;
@@ -222,7 +253,7 @@ void PatchLightmapCoordRange( radial_t *rad, int patchidx, LVector2 &mins, LVect
         mins.set( 1e30, 1e30 );
         maxs.set( -1e30, -1e30 );
 
-        patch_t *patch = g_patches + patchidx;
+        patch_t *patch = &g_patches[patchidx];
         Winding *w = patch->winding;
 
         LVector2 coord;
@@ -321,22 +352,30 @@ radial_t *BuildPatchRadial( int facenum )
         facelight_t *fl = &facelight[facenum];
         bool needs_bumpmap = fl->bumped;
         radial_t *rad = AllocRadial( facenum );
-        faceneighbor_t *fn = &g_faceneighbor[facenum];
+        faceneighbor_t *fn = &faceneighbor[facenum];
 
         LVector2 mins, maxs;
 
+        patch_t *nextpatch;
+
         if ( g_face_patches[facenum] )
         {
-                for ( patch_t *patch = g_face_patches[facenum]; patch; patch = patch->next )
+                for ( patch_t *patch = &g_patches[g_face_patches[facenum]]; patch; patch = nextpatch )
                 {
                         
-                        int patchidx = patch - g_patches;
+                        nextpatch = nullptr;
+                        if ( patch->next != -1 )
+                        {
+                                nextpatch = &g_patches[patch->next];
+                        }
+
+                        int patchidx = patch - g_patches.data();
                         PatchLightmapCoordRange( rad, patchidx, mins, maxs );
 
                         LVector3 patch_org;
                         VectorCopy( patch->origin, patch_org );
                         AddBouncedToRadial( rad, patch_org, mins, maxs,
-                                            &patch->totallight[0], needs_bumpmap, needs_bumpmap );
+                                            &patch->totallight, needs_bumpmap, needs_bumpmap );
 
                 }
         }
@@ -344,12 +383,18 @@ radial_t *BuildPatchRadial( int facenum )
         
         for ( int i = 0; i < fn->numneighbors; i++ )
         {
-                int fn_idx = fn->neighbors[i];
+                int fn_idx = fn->neighbor[i];
                 if ( g_face_patches[fn_idx] )
                 {
-                        for ( patch_t *patch = g_face_patches[fn_idx]; patch; patch = patch->next )
+                        for ( patch_t *patch = &g_patches[g_face_patches[fn_idx]]; patch; patch = nextpatch )
                         {
-                                int patchidx = patch - g_patches;
+                                nextpatch = nullptr;
+                                if ( patch->next != -1 )
+                                {
+                                        nextpatch = &g_patches[patch->next];
+                                }
+
+                                int patchidx = patch - g_patches.data();
                                 PatchLightmapCoordRange( rad, patchidx, mins, maxs );
 
                                 bool neighbor_bump = facelight[fn_idx].bumped;
@@ -357,7 +402,7 @@ radial_t *BuildPatchRadial( int facenum )
                                 LVector3 patch_org;
                                 VectorCopy( patch->origin, patch_org );
                                 AddBouncedToRadial( rad, patch_org, mins, maxs,
-                                                    &patch->totallight[0], needs_bumpmap,
+                                                    &patch->totallight, needs_bumpmap,
                                                     neighbor_bump );
                         }
                 }
@@ -490,9 +535,9 @@ void FinalLightFace( const int facenum )
                         bool base_sample_ok = true;
 
                         LVector3 samp_pos;
-                        VectorCopy( fl->samples[0][j].pos, samp_pos );
+                        VectorCopy( fl->sample[j].pos, samp_pos );
 
-                        if ( !g_fastmode )
+                        if ( false )//!g_fastmode )
                         {
                                 base_sample_ok = SampleRadial( rad, samp_pos, &lb, bump_sample_count );
                                 //lb = rad->light[j];
@@ -501,7 +546,7 @@ void FinalLightFace( const int facenum )
                         {
                                 for ( int bump = 0; bump < bump_sample_count; bump++ )
                                 {
-                                        lb[bump] = fl->samples[0][j].light[bump];
+                                        lb[bump] = fl->light[0][j].light[bump];
                                 }
                         }
 

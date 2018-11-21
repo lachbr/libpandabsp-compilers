@@ -4,6 +4,7 @@
 #include "qrad.h"
 #include "anorms.h"
 #include "lightingutils.h"
+#include "lights.h"
 
 #include <aa_luse.h>
 #include <randomizer.h>
@@ -226,9 +227,9 @@ void add_emit_surface_lights( const LVector3 &start, LVector3 *cube )
         vec3_t vstart;
         VectorCopy( start, vstart );
 
-        for ( int i = 0; i < numdlights; i++ )
+        for ( int i = 0; i < Lights::numdlights; i++ )
         {
-                directlight_t *dl = directlights[i];
+                directlight_t *dl = Lights::directlights[i];
 
                 if ( dl == nullptr )
                 {
@@ -245,7 +246,10 @@ void add_emit_surface_lights( const LVector3 &start, LVector3 *cube )
                         continue;
                 }
 
-                if ( TestLine( vstart, dl->origin ) == CONTENTS_SOLID )
+                vec3_t vorg;
+                VectorCopy( dl->origin, vorg );
+
+                if ( TestLine( vstart, vorg ) == CONTENTS_SOLID )
                 {
                         continue;
                 }
@@ -464,9 +468,9 @@ compute_per_leaf_ambient_lighting()
         int in_ambient_cube = 0;
         int surface_lights = 0;
 
-        for ( int i = 0; i < numdlights; i++ )
+        for ( int i = 0; i < Lights::numdlights; i++ )
         {
-                directlight_t *dl = directlights[i];
+                directlight_t *dl = Lights::directlights[i];
 
                 if ( dl == nullptr )
                 {

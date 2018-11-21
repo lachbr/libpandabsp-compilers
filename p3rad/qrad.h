@@ -18,9 +18,9 @@
 #include "blockmem.h"
 #include "filelib.h"
 #include "winding.h"
-#include "compress.h"
 #include "cmdlinecfg.h"
 #include "mathlib/ssemath.h"
+#include "lights.h"
 
 #include <pnmImage.h>
 
@@ -139,6 +139,8 @@
 #define DEFAULT_BLEEDFIX true
 #define DEFAULT_TEXLIGHTGAP 0.0
 
+#define		TRANSFER_EPSILON		0.0000001
+
 
 #ifdef SYSTEM_WIN32
 #define DEFAULT_ESTIMATE    false
@@ -189,55 +191,6 @@ matrix_t;
 //
 
 extern Winding *WindingFromFace( dface_t *f );
-
-typedef enum
-{
-        emit_surface,
-        emit_point,
-        emit_spotlight,
-        emit_skylight
-}
-emittype_t;
-
-typedef struct directlight_s
-{
-        struct directlight_s* next;
-        emittype_t      type;
-        int             style;
-        vec3_t          origin;
-        vec3_t          intensity;
-        vec3_t          normal;                                // for surfaces and spotlights
-        float           stopdot;                               // for spotlights
-        float           stopdot2;                              // for spotlights
-
-                                                               // 'Arghrad'-like features
-        vec_t           fade;                                  // falloff scaling for linear and inverse square falloff 1.0 = normal, 0.5 = farther, 2.0 = shorter etc
-
-                                                               // -----------------------------------------------------------------------------------
-                                                               // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                                                               // Diffuse light_environment light colour
-                                                               // Really horrible hack which probably won't work!
-        vec3_t			diffuse_intensity;
-        // -----------------------------------------------------------------------------------
-        vec3_t			diffuse_intensity2;
-        vec_t			sunspreadangle;
-        int				numsunnormals;
-        vec3_t*			sunnormals;
-        vec_t*			sunnormalweights;
-
-        vec_t			patch_area;
-        vec_t			patch_emitter_range;
-        struct patch_s	*patch;
-        vec_t			texlightgap;
-        bool			topatch;
-        int flags;
-
-        int index;
-        byte *pvs;
-        int leaf;
-        int facenum;
-
-} directlight_t;
 
 INLINE byte PVSCheck( const byte *pvs, int leaf )
 {
@@ -323,17 +276,6 @@ typedef struct
         vec3_t norm[NUM_BUMP_VECTS + 1];
 } bumpnormal_t;
 
-typedef struct
-{
-        unsigned size : 12;
-        unsigned index : 20;
-} transfer_index_t;
-
-typedef unsigned transfer_raw_index_t;
-typedef unsigned char transfer_data_t;
-
-typedef unsigned char rgb_transfer_data_t;
-
 extern void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
                             , byte* styles
                             , int step
@@ -346,12 +288,6 @@ extern void     GatherSampleLight( const vec3_t pos, const byte* const pvs, cons
 #define	MAX_PATCHES	(65535*16) // limited by transfer_index_t
 #define MAX_VISMATRIX_PATCHES 65535
 #define MAX_SPARSE_VISMATRIX_PATCHES MAX_PATCHES
-
-typedef enum
-{
-        ePatchFlagNull = 0,
-        ePatchFlagOutside = 1
-} ePatchFlags;
 
 struct transfer_t
 {
@@ -406,6 +342,9 @@ struct patch_t
         transfer_t *transfers;
 
         short indices[3];
+
+        bool translucent_b;
+        float emitter_range;
 };
 
 extern pvector<patch_t> g_patches;
@@ -413,15 +352,24 @@ extern pvector<int> g_face_patches;
 extern pvector<int> g_face_parents;
 extern pvector<int> g_cluster_children;
 
-//LRC
-vec3_t* GetTotalLight( patch_t* patch, int style
-);
 
 struct SSE_sampleLightOutput_t
 {
         fltx4 dot[NUM_BUMP_VECTS + 1];
         fltx4 falloff;
         fltx4 sun_amount;
+};
+
+struct SSE_sampleLightInput_t
+{
+        directlight_t *dl;
+        int facenum;
+        FourVectors pos;
+        FourVectors *normals;
+        int normal_count;
+        int thread;
+        int lightflags;
+        int epsilon;
 };
 
 //
@@ -477,21 +425,15 @@ extern void LoadTextures();
 
 extern int             leafparents[MAX_MAP_LEAFS];
 extern int             nodeparents[MAX_MAP_NODES];
-extern int numdlights;
-extern directlight_t* directlights[MAX_MAP_LEAFS];
-extern directlight_t* activelights;
 
 extern entity_t* g_face_entity[MAX_MAP_FACES];
 extern vec3_t   g_face_offset[MAX_MAP_FACES];              // for models with origins
 extern eModelLightmodes g_face_lightmode[MAX_MAP_FACES];
 extern vec3_t   g_face_centroids[MAX_MAP_EDGES];
-extern entity_t* g_face_texlights[MAX_MAP_FACES];
-extern float g_sun_angular_extent;
 
 extern float    g_lightscale;
 extern float    g_dlight_threshold;
 extern float    g_coring;
-extern int      g_lerp_enabled;
 
 #include <simpleHashMap.h>
 
@@ -574,8 +516,6 @@ INLINE void ReportRadTimers()
         }
 }
 
-extern void     MakeShadowSplits();
-
 //==============================================
 
 extern bool		g_fastmode;
@@ -617,6 +557,8 @@ extern vec3_t	g_colour_lightscale;
 extern vec3_t	g_colour_jitter_hack;
 extern vec3_t	g_jitter_hack;
 
+extern int g_extrapasses;
+
 // ------------------------------------------------------------------------
 
 
@@ -626,8 +568,6 @@ extern const vec3_t vec3_one;
 
 extern float g_transtotal_hack;
 extern unsigned char g_minlight;
-extern float_type g_transfer_compress_type;
-extern vector_type g_rgbtransfer_compress_type;
 extern bool g_softsky;
 extern int g_blockopaque;
 extern bool g_drawpatch;
@@ -652,29 +592,21 @@ extern bool g_bleedfix;
 extern vec_t g_maxdiscardedlight;
 extern vec3_t g_maxdiscardedpos;
 extern vec_t g_texlightgap;
+extern vec_t g_skysamplescale;
 
 extern void     MakeTnodes( dmodel_t* bm );
 extern void     PairEdges();
-#define SKYLEVELMAX 8
-#define SKYLEVEL_SOFTSKYON 7
-#define SKYLEVEL_SOFTSKYOFF 4
-#define SUNSPREAD_SKYLEVEL 7
-#define SUNSPREAD_THRESHOLD 15.0
-extern int		g_numskynormals[SKYLEVELMAX + 1]; // 0, 6, 18, 66, 258, 1026, 4098, 16386, 65538
-extern vec3_t*	g_skynormals[SKYLEVELMAX + 1]; //[numskynormals]
-extern vec_t*	g_skynormalsizes[SKYLEVELMAX + 1]; // the weight of each normal
-extern void     BuildDiffuseNormals();
 extern void     BuildFacelights( int facenum );
 extern void     PrecompLightmapOffsets();
 extern void		ReduceLightmap();
 //extern void     FinalLightFace( int facenum );
 extern void		ScaleDirectLights(); // run before AddPatchLights
 extern void		CreateFacelightDependencyList(); // run before AddPatchLights
-extern void		AddPatchLights( int facenum );
 extern void		FreeFacelightDependencyList();
-extern int      TestLine( const vec3_t start, const vec3_t stop
-                          , vec_t *skyhitout = NULL
-);
+extern int      TestLine( const vec3_t start, const vec3_t stop, vec_t *skyhitout = NULL );
+extern int      TestLine( const vec3_t start, const vec3_t stop,
+                          float &total_fraction_visible, vec_t *skyhitout = NULL );
+extern void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers );
 #define OPAQUE_NODE_INLINECALL
 #ifdef OPAQUE_NODE_INLINECALL
 typedef struct
@@ -708,8 +640,7 @@ FORCEINLINE int TestPointOpaque( int modelnum, const vec3_t modelorigin, bool so
 #else
 extern int		TestPointOpaque( int modelnum, const vec3_t modelorigin, bool solid, const vec3_t point );
 #endif
-extern void     CreateDirectLights();
-extern void     DeleteDirectLights();
+
 extern void     GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &phongnormal );
 
 typedef bool( *funcCheckVisBit ) ( unsigned, unsigned
@@ -717,13 +648,11 @@ typedef bool( *funcCheckVisBit ) ( unsigned, unsigned
                                    , unsigned int&
                                    );
 extern funcCheckVisBit g_CheckVisBit;
-extern bool CheckVisBitBackwards( unsigned receiver, unsigned emitter, const vec3_t &backorigin, const vec3_t &backnormal
-                                  , vec3_t &transparency_out
-);
 
 // qradutil.c
 extern vec_t    PatchPlaneDist( const patch_t* const patch );
 extern dleaf_t* PointInLeaf( const vec3_t point );
+extern dleaf_t* PointInLeaf( const LVector3 &point );
 extern void     MakeBackplanes();
 extern const dplane_t* getPlaneFromFace( const dface_t* const face );
 extern const dplane_t* getPlaneFromFaceNumber( unsigned int facenum );
@@ -744,44 +673,15 @@ extern bool		FindNearestPosition( int facenum, const Winding *texwinding, const 
                                              , bool *nudged
 );
 
-// makescales.c
-extern void     MakeScalesVismatrix();
-extern void     MakeScalesSparseVismatrix();
-extern void     MakeScalesNoVismatrix();
-
 // transfers.c
 extern size_t   g_total_transfer;
-extern bool     readtransfers( const char* const transferfile, long numpatches );
-extern void     writetransfers( const char* const transferfile, long total_patches );
-
-// vismatrixutil.c (shared between vismatrix.c and sparse.c)
-extern void     MakeScales( int threadnum );
-extern void     DumpTransfersMemoryUsage();
-extern void     MakeRGBScales( int threadnum );
-
-// transparency.c (transparency array functions - shared between vismatrix.c and sparse.c)
-extern void	GetTransparency( const unsigned p1, const unsigned p2, vec3_t &trans, unsigned int &next_index );
-extern void	AddTransparencyToRawArray( const unsigned p1, const unsigned p2, const vec3_t trans );
-extern void	CreateFinalTransparencyArrays( const char *print_name );
-extern void	FreeTransparencyArrays();
-extern void GetStyle( const unsigned p1, const unsigned p2, int &style, unsigned int &next_index );
-extern void	AddStyleToStyleArray( const unsigned p1, const unsigned p2, const int style );
-extern void	CreateFinalStyleArrays( const char *print_name );
-extern void	FreeStyleArrays();
-
-// lerp.c
-extern void CreateTriangulations( int facenum );
-extern void GetTriangulationPatches( int facenum, int *numpatches, const int **patches );
-extern void InterpolateSampleLight( const vec3_t position, int surface, int numstyles, const int *styles, vec3_t *outs
-);
-extern void FreeTriangulations();
+extern void     MakeScales( int patch, transfer_t *all_transfers );
 
 // mathutil.c
 extern bool     TestSegmentAgainstOpaqueList( const vec_t* p1, const vec_t* p2
                                               , vec3_t &scaleout
                                               , int &opaquestyleout
 );
-extern bool     intersect_line_plane( const dplane_t* const plane, const vec_t* const p1, const vec_t* const p2, vec3_t point );
 extern bool     intersect_linesegment_plane( const dplane_t* const plane, const vec_t* const p1, const vec_t* const p2, vec3_t point );
 extern void     plane_from_points( const vec3_t p1, const vec3_t p2, const vec3_t p3, dplane_t* plane );
 extern bool     point_in_winding( const Winding& w, const dplane_t& plane, const vec_t* point

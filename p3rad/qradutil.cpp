@@ -46,6 +46,13 @@ dleaf_t*		PointInLeaf_Worst( const vec3_t point )
 {
         return PointInLeaf_Worst_r( 0, point );
 }
+dleaf_t*        PointInLeaf( const LVector3 &vpoint )
+{
+        vec3_t point;
+        VectorCopy( vpoint, point );
+
+        return PointInLeaf( point );
+}
 dleaf_t*        PointInLeaf( const vec3_t point )
 {
         int             nodenum;
@@ -464,7 +471,7 @@ static bool IsPositionValid( positionmap_t *map, const vec3_t &pos_st, vec3_t &p
         VectorAdd( pos, map->face_offset, pos );
         if ( usephongnormal )
         {
-                GetPhongNormal( map->facenum, pos, pos_normal, nullptr, 0 );
+                //GetPhongNormal( map->facenum, pos, pos_normal, nullptr, 0 );
         }
         else
         {
