@@ -982,9 +982,6 @@ static void MakePatchForFace( int facenum, Winding *w )
         texinfo_t *tex;
 
         tex = g_bspdata->texinfo + f->texinfo;
-        ThreadLock();
-        std::cout << "Texinfo: " << f->texinfo << std::endl;
-        ThreadUnlock();
 
         area = w->getArea();
         if ( area <= 0 )
@@ -1048,7 +1045,7 @@ static void MakePatchForFace( int facenum, Winding *w )
 
         patch.winding = w;
 
-        patch.plane = g_bspdata->dplanes + f->planenum;
+        patch.plane = (dplane_t *)getPlaneFromFace( f );
 
         if ( g_face_offset[facenum][0] || g_face_offset[facenum][1] || g_face_offset[facenum][2] )
         {
@@ -1593,13 +1590,12 @@ static void     BounceLight()
         unsigned        i;
         char            name[64];
 
-        bool keep_bouncing = false;// g_numbounce > 0;
+        bool keep_bouncing = g_numbounce > 0;
 
         for ( i = 0; i < g_patches.size(); i++ )
         {
                 patch_t *patch = &g_patches[i];
                 // totallight has a copy of the direct lighting.  Move it to the emitted light and zero it out (to integrate bounces only)
-                std::cout << "patch " << i << " totallight is " << patch->totallight.light[0].light << std::endl;
                 VectorCopy( patch->totallight.light[0], emitlight[i] );
                 // NOTE: This means that only the bounced light is integrated into totallight!
                 VectorFill( patch->totallight.light[0], 0 );
@@ -1616,12 +1612,8 @@ static void     BounceLight()
                 // move newly received light (addlight) to light to be sent out (emitlight)
                 // start at children and pull light up to parents
                 // light is always received to leaf patches
-                LVector3 totaladd( 0 );
-                CollectLight( totaladd );
-
-                LVector3 added = totaladd - last_added;
-
-                last_added = totaladd;
+                LVector3 added( 0 );
+                CollectLight( added );
 
                 printf( "\tBounce #%i added RGB(%.0f, %.0f, %.0f)\n", i + 1, added[0], added[1], added[2] );
 
@@ -1668,7 +1660,9 @@ float FormFactorDiffToDiff( patch_t *diff1, patch_t *diff2 )
         float len = vdelta.length();
         vdelta.normalize();
 
-        return -vdelta.dot( diff1->normal ) * vdelta.dot( diff2->normal ) / ( len * len );
+        float scale = -vdelta.dot(diff1->normal) * vdelta.dot(diff2->normal) / ( len * len );
+
+        return scale;
 }
 
 void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
@@ -1691,18 +1685,30 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
 
         // overflow check!
         if ( patch1->numtransfers >= MAX_PATCHES )
+        {
+                std::cout << "patch1 too many transfers" << std::endl;
                 return;
+        }
+                
 
         // hack for patch areas <= 0 (degenerate)
         if ( patch2->area <= 0 )
+        {
+                std::cout << "patch2 area <= 0" << std::endl;
                 return;
+        }
+                
 
         transfer = &all_transfers[patch1->numtransfers];
 
         scale = FormFactorDiffToDiff( patch2, patch1 );
 
         if ( scale <= 0 )
+        {
+                std::cout << "FormFactorDiff scale <= 0" << std::endl;
                 return;
+        }
+                
 
         // test 5 times rule
         LVector3 vdelta = patch1->origin - patch2->origin;
@@ -1712,12 +1718,20 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
         {
                 scale = FormFactorPolyToDiff( patch2, patch1 );
                 if ( scale <= 0.0 )
+                {
+                        std::cout << "FormFactorPoly scale <= 0" << std::endl;
                         return;
+                }
+                        
         }
 
         trans = patch2->area * scale;
         if ( trans <= TRANSFER_EPSILON )
+        {
+                std::cout << "trans less than transfer epsilon" << std::endl;
                 return;
+        }
+                
 
         transfer->patch = patch2 - g_patches.data();
         transfer->transfer = trans;
@@ -1764,19 +1778,16 @@ void MakeScales( int patchidx, transfer_t *all_transfers )
                 else
                         total = 1.0 / Q_PI;
 
-                ThreadLock();
                 t = patch->transfers;
                 t2 = all_transfers;
                 for ( j = 0; j < patch->numtransfers; j++, t++, t2++ )
                 {
-                        std::cout << "new transfer for " << t2->patch << ": " << t2->transfer * total << std::endl;
                         t->transfer = t2->transfer * total;
                         t->patch = t2->patch;
                 }
 
                 if ( patch->numtransfers > max_transfer )
                         max_transfer = patch->numtransfers;
-                ThreadUnlock();
         }
 
         ThreadLock();
@@ -1853,10 +1864,7 @@ static void     RadWorld()
                 addlight.resize( g_patches.size() );
                 memset( addlight.data(), 0, g_patches.size() * sizeof( bumpsample_t ) );
 
-                ThreadLock();
                 MakeAllScales();
-                std::cout << "Making all scales" << std::endl;
-                ThreadUnlock();
 
                 // spread light around
                 BounceLight();
@@ -3154,7 +3162,6 @@ int             main( const int argc, char** argv )
                         for ( size_t i = 0; i < g_multifiles.size(); i++ )
                         {
                                 Filename file = Filename::from_os_specific( g_multifiles[i] );
-                                cout << file.get_fullpath() << endl;
                                 if ( !vfs->mount( file, ".", VirtualFileSystem::MF_read_only ) )
                                 {
                                         Warning( "Could not mount multifile from %s!\n", file.get_fullpath().c_str() );

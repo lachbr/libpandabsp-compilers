@@ -441,6 +441,33 @@ int TestLine(const vec3_t start, const vec3_t stop, vec_t *skyhit)
         return TestLine( start, stop, frac_vis, skyhit );
 }
 
+void TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fraction4, int contents_mask )
+{
+        // contents_mask is the contents that you are looking to achieve from the test
+        // for example CONTENTS_EMPTY means that you want the test to return CONTENTS_EMPTY
+        // to be considered good, if it's not CONTENTS_EMPTY, fraction gets set to 0
+
+        *fraction4 = Four_Ones;
+
+        vec3_t vstart;
+        vec3_t vend;
+        float frac_vis;
+        int contents;
+
+        for ( int i = 0; i < 4; i++ )
+        {
+                VectorCopy( start.Vec( i ), vstart );
+                VectorCopy( end.Vec( i ), vend );
+                frac_vis = 0.0;
+                contents = TestLine( vstart, vend, frac_vis );
+                if ( ( contents & contents_mask ) == 0 )
+                        frac_vis = 0.0;
+                else
+                        frac_vis = 1.0;
+                *fraction4 = SetComponentSIMD( *fraction4, i, frac_vis );
+        }
+}
+
 int             TestLine( const vec3_t start, const vec3_t stop,
                           float &total_fraction_visible, vec_t *skyhit
 )

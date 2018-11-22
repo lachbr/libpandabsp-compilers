@@ -196,9 +196,6 @@ INLINE byte PVSCheck( const byte *pvs, int leaf )
 {
         leaf -= 1;
 
-        ThreadLock();
-        printf( "checking pvs for leaf %i\n", leaf );
-        ThreadUnlock();
         if ( leaf >= 0 )
         {
                 return pvs[leaf >> 3] & ( 1 << ( leaf & 7 ) );
@@ -608,6 +605,7 @@ extern void		ReduceLightmap();
 extern void		ScaleDirectLights(); // run before AddPatchLights
 extern void		CreateFacelightDependencyList(); // run before AddPatchLights
 extern void		FreeFacelightDependencyList();
+extern void     TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fraction4, int contents_mask = CONTENTS_EMPTY );
 extern int      TestLine( const vec3_t start, const vec3_t stop, vec_t *skyhitout = NULL );
 extern int      TestLine( const vec3_t start, const vec3_t stop,
                           float &total_fraction_visible, vec_t *skyhitout = NULL );

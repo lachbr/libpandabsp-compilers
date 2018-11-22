@@ -151,9 +151,9 @@ void TestPatchToFace( unsigned int patchnum, int facenum, int head, transfer_t *
                 {
                         //next patch
                         nextpatch = nullptr;
-                        if ( patch2->next != -1 )
+                        if ( patch2->nextparent != -1 )
                         {
-                                nextpatch = &g_patches[patch2->next];
+                                nextpatch = &g_patches[patch2->nextparent];
                         }
 
                         int patchidx2 = patch2 - g_patches.data();
@@ -235,9 +235,9 @@ void BuildVisLeafs( int threadnum )
                         for ( patch = &g_patches[g_cluster_children[leaf]]; patch; patch = nextpatch )
                         {
                                 nextpatch = nullptr;
-                                if ( patch->next != -1 )
+                                if ( patch->nextclusterchild != -1 )
                                 {
-                                        nextpatch = &g_patches[patch->next];
+                                        nextpatch = &g_patches[patch->nextclusterchild];
                                 }
 
                                 patchnum = patch - g_patches.data();

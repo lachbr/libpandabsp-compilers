@@ -15,6 +15,6 @@ $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <LocalDebuggerCommand>D:\OTHER\lachb\Documents\rpbmStudios\panda_hl_bsp_tools\Release\p3rad.exe</LocalDebuggerCommand>
     <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\testnewrad</LocalDebuggerWorkingDirectory>
-    <LocalDebuggerDebuggerType>Mixed</LocalDebuggerDebuggerType>
+    <LocalDebuggerDebuggerType>Auto</LocalDebuggerDebuggerType>
   </PropertyGroup>
 </Project>

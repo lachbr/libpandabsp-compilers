@@ -86,11 +86,8 @@ void MergeDLightVis( directlight_t *dl, int leafnum )
 
 void AddDLightToActiveList( directlight_t *dl )
 {
-        ThreadLock();
         dl->next = Lights::activelights;
         Lights::activelights = dl;
-        std::cout << "dl->next is " << dl->next << "\n\tactivelights is " << Lights::activelights << std::endl;
-        ThreadUnlock();
 }
 
 directlight_t *AllocDLight( LVector3 &origin, bool add_to_list )

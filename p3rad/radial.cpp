@@ -529,18 +529,17 @@ void FinalLightFace( const int facenum )
                 LVector3 avg( 0.0 );
                 int avg_count = 0;
 
-                for ( j = 0; j < fl->numsamples; j++ )
+                for ( j = 0; j < fl->numluxels; j++ )
                 {
                         // direct lighting
                         bool base_sample_ok = true;
 
                         LVector3 samp_pos;
-                        VectorCopy( fl->sample[j].pos, samp_pos );
+                        VectorCopy( fl->luxel_points[j], samp_pos );
 
-                        if ( false)//!g_fastmode )
+                        if ( !g_fastmode )
                         {
                                 base_sample_ok = SampleRadial( rad, samp_pos, &lb, bump_sample_count );
-                                //lb = rad->light[j];
 
                         }
                         else
@@ -556,7 +555,6 @@ void FinalLightFace( const int facenum )
                                 // bounced light
                                 // v is indirect light that is received on the luxel
                                 SampleRadial( prad, samp_pos, &v, bump_sample_count );
-                                //v = prad->light[j];
 
                                 for ( bump_sample = 0; bump_sample < bump_sample_count; bump_sample++ )
                                 {
@@ -574,13 +572,6 @@ void FinalLightFace( const int facenum )
 
                                 // save out to BSP file
                                 colorrgbexp32_t *col = SampleLightmap( g_bspdata, g_bspdata->dfaces + facenum, j, k, bump_sample );
-                                if ( col == nullptr )
-                                {
-                                        ThreadLock();
-                                        nassert_raise( "FinalLightFace: col is nullptr" );
-                                        ThreadUnlock();
-                                        continue;
-                                }
                                         
                                 LVector3 vcol;
                                 VectorCopy( lb[bump_sample], vcol );

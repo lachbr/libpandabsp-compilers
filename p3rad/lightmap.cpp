@@ -93,8 +93,6 @@ void PairEdges()
 
                 // get face normal
                 VectorCopy( pl->normal, fn->facenormal );
-
-                std::cout << "Base fn face normal " << fn->facenormal << std::endl;
         }
 
         // find neighbors
@@ -960,22 +958,14 @@ void GatherSampleSkyLightSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutp
                 }
                 
 
-                //FourVectors delta4;
-                //delta4.DuplicateVector( delta );
-                delta += input.pos.Vec( 0 );
+                FourVectors delta4;
+                delta4.DuplicateVector( delta );
+                delta4 += input.pos;
 
-                vec3_t skyhit;
-                VectorCopy( delta, skyhit );
-                vec3_t vdelta;
-                vec3_t vpos;
-                VectorCopy( input.pos.Vec( 0 ), vpos );
-                VectorCopy( delta, vdelta );
-                float total_fraction_visible = 1.0;
-                // can we see a sky brush?
-                if ( TestLine( vpos, vdelta, total_fraction_visible ) != CONTENTS_SKY )
-                        total_fraction_visible = 0.0;
+                fltx4 this_fraction;
+                TestFourLines( input.pos, delta4, &this_fraction, CONTENTS_SKY );
 
-                total_frac_vis = AddSIMD( total_frac_vis, ReplicateX4( total_fraction_visible ) );
+                total_frac_vis = AddSIMD( total_frac_vis, this_fraction );
         }
 
         fltx4 see_amount = MulSIMD( total_frac_vis, ReplicateX4( 1.0f / nsamples ) );
@@ -1062,15 +1052,7 @@ void GatherSampleAmbientSkySSE( SSE_sampleLightInput_t &input, SSE_sampleLightOu
                 surface_pos -= offset;
 
                 fltx4 fraction_visible4;
-                float fraction_visible = 1.0;
-                vec3_t vpos;
-                vec3_t vdelta;
-                VectorCopy( surface_pos.Vec( 0 ), vpos );
-                VectorCopy( delta.Vec( 0 ), vdelta );
-                int contents = TestLine( vpos, vdelta, fraction_visible );
-                if ( contents != CONTENTS_SKY )
-                        fraction_visible = 0.0;
-                fraction_visible4 = ReplicateX4( fraction_visible );
+                TestFourLines( surface_pos, delta, &fraction_visible4, CONTENTS_SKY );
                 for ( int i = 0; i < input.normal_count; i++ )
                 {
                         fltx4 added_amt = MulSIMD( fraction_visible4, dots[i] );
@@ -1099,12 +1081,6 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
 
         if ( input.dl->facenum == -1 )
         {
-                ThreadLock();
-                std::cout << "using light origin of" << input.dl->origin << std::endl;
-                std::cout << "Normal of " << input.normals[0].Vec( 0 ) << std::endl;
-                std::cout << "input position " << input.pos.Vec( 0 ) << std::endl;
-                ThreadUnlock();
-
                 src.DuplicateVector( input.dl->origin );
         }
         
@@ -1152,9 +1128,6 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
                 out.falloff = AddSIMD( out.falloff, MulSIMD( linear, falloffevaldist ) );
                 out.falloff = AddSIMD( out.falloff, constant );
                 out.falloff = ReciprocalSIMD( out.falloff );
-                ThreadLock();
-                std::cout << "Pointlight fallof is: " << SubFloat( out.falloff, 0 ) << std::endl;
-                ThreadUnlock();
                 break;
 
         case emit_surface:
@@ -1235,21 +1208,8 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
         }
 
         // ray trace for visibility
-        fltx4 fraction_visible4 = Four_Ones;
-        float frac_vis = 1.0;
-        vec3_t vstart, vsrc;
-        VectorCopy( input.pos.Vec( 0 ), vstart );
-        VectorCopy( src.Vec( 0 ), vsrc );
-        int contents = TestLine( vstart, vsrc, frac_vis );
-        ThreadLock();
-        std::cout << "TestLine frac vis " << frac_vis << " contents " << contents << std::endl;
-        ThreadUnlock();
-        if ( contents == CONTENTS_SOLID )
-        {
-                // hit something, light occluded
-                frac_vis = 0.0;
-        }
-        fraction_visible4 = ReplicateX4( frac_vis );
+        fltx4 fraction_visible4;
+        TestFourLines( input.pos, src, &fraction_visible4 );
         dot = MulSIMD( fraction_visible4, dot );
         out.dot[0] = dot;
 
@@ -1263,10 +1223,6 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
                         out.dot[i] = MaxSIMD( Four_Zeros, out.dot[i] );
                 }
         }
-
-        ThreadLock();
-        std::cout << "output dot " << SubFloat( out.dot[0], 0 ) << std::endl;
-        ThreadUnlock();
 }
 
 void GatherSampleLightSSE( SSE_sampleLightOutput_t &out, directlight_t *dl, int facenum,
@@ -1371,9 +1327,6 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
 
                 if ( skip )
                 {
-                        ThreadLock();
-                        printf( "GatherSampleLightAt4Points: pvs check failed, skip\n" );
-                        ThreadUnlock();
                         continue;
                 }
                         
@@ -1394,9 +1347,6 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
 
                 if ( skip )
                 {
-                        ThreadLock();
-                        printf( "GatherSampleLightAt4Points: all zeros, skip\n" );
-                        ThreadUnlock();
                         continue;
                 }
                         
@@ -1445,7 +1395,8 @@ void ComputeSampleIntensities( SSE_SampleInfo_t &info, bumpsample_t *samples, fl
         }
 }
 
-void ComputeLightmapGradients( SSE_SampleInfo_t &info, bool *has_processed_sample, float *sample_intensity, float *gradient )
+void ComputeLightmapGradients( SSE_SampleInfo_t &info, bool *has_processed_sample,
+                               float *sample_intensity, float *gradient )
 {
         int w = info.lightmap_width;
         int h = info.lightmap_height;
@@ -1468,18 +1419,41 @@ void ComputeLightmapGradients( SSE_SampleInfo_t &info, bool *has_processed_sampl
 
                         if ( sample.t > 0 )
                         {
-                                if ( sample.s > 0 )   gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1 - w] ) );
+                                if ( sample.s > 0 )
+                                {
+                                        gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1 - w] ) );
+                                }
+                                        
                                 gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - w] ) );
-                                if ( sample.s < w - 1 ) gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1 - w] ) );
+                                if ( sample.s < w - 1 )
+                                {
+                                        gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1 - w] ) );
+                                }
+                                        
                         }
                         if ( sample.t < h - 1 )
                         {
-                                if ( sample.s > 0 )   gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1 + w] ) );
+                                if ( sample.s > 0 )
+                                {
+                                        gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1 + w] ) );
+                                }
+                                        
                                 gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + w] ) );
-                                if ( sample.s < w - 1 ) gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1 + w] ) );
+                                if ( sample.s < w - 1 )
+                                {
+                                        gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1 + w] ) );
+                                }
+                                        
                         }
-                        if ( sample.s > 0 )   gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1] ) );
-                        if ( sample.s < w - 1 ) gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1] ) );
+                        if ( sample.s > 0 )
+                        {
+                                gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j - 1] ) );
+                        }
+                                
+                        if ( sample.s < w - 1 )
+                        {
+                                gradient[i] = std::max( gradient[i], fabs( sample_intensity[j] - sample_intensity[j + 1] ) );
+                        }
                 }
         }
 }
@@ -1794,8 +1768,7 @@ void AddSampleToPatch( sample_t *sample, lightvalue_t &light, int facenum )
         if ( VectorAvg( light.light ) < 1 )
         {
                 return;
-        }
-                
+        }    
 
         //
         // fixed the sample position and normal -- need to find the equiv pos, etc to set up
@@ -1907,10 +1880,6 @@ void BuildPatchLights( int facenum )
 
                         if ( patch->samplearea )
                         {
-                                ThreadLock();
-                                std::cout << "patchsample area " << patch->samplearea << std::endl;
-                                std::cout << "samplelight is " << patch->samplelight << std::endl;
-                                ThreadUnlock();
                                 float scale;
                                 LVector3 v;
                                 scale = 1.0 / patch->samplearea;
@@ -2011,9 +1980,7 @@ void BuildFacelights( const int facenum )
         facelight_t *fl = &facelight[facenum];
 
         InitLightInfo( l, facenum );
-        StartRadTimer( BuildFacelights, CalcPoints );
         CalcPoints( &l, fl, facenum );
-        StopRadTimer( BuildFacelights, CalcPoints );
         InitSampleInfo( l, GetCurrentThreadNumber(), sampleinfo );
 
         // allocate sample positions/normals to SSE
@@ -2058,7 +2025,7 @@ void BuildFacelights( const int facenum )
                 GatherSampleLightAt4Points( sampleinfo, nsample, num_samples );
         }
 
-        if ( false)//g_extra )
+        if ( g_extra )
         {
                 // for each lightstyle, perform a supersampling pass
                 for ( i = 0; i < MAXLIGHTMAPS; i++ )
