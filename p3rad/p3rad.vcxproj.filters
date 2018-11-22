@@ -85,7 +85,7 @@
     <ClCompile Include="vismat.cpp">
       <Filter>rad</Filter>
     </ClCompile>
-    <ClCompile Include="powsse.cpp">
+    <ClCompile Include="..\common\mathlib\powsse.cpp">
       <Filter>common\mathlib</Filter>
     </ClCompile>
   </ItemGroup>

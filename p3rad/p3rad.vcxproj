@@ -151,6 +151,7 @@
     <ClCompile Include="..\common\halton.cpp" />
     <ClCompile Include="..\common\log.cpp" />
     <ClCompile Include="..\common\mathlib.cpp" />
+    <ClCompile Include="..\common\mathlib\powsse.cpp" />
     <ClCompile Include="..\common\mathlib\sse.cpp" />
     <ClCompile Include="..\common\mathlib\sseconst.cpp" />
     <ClCompile Include="..\common\messages.cpp" />
@@ -163,7 +164,6 @@
     <ClCompile Include="lights.cpp" />
     <ClCompile Include="loadtextures.cpp" />
     <ClCompile Include="mathutil.cpp" />
-    <ClCompile Include="powsse.cpp" />
     <ClCompile Include="qrad.cpp" />
     <ClCompile Include="qradutil.cpp" />
     <ClCompile Include="radial.cpp" />
