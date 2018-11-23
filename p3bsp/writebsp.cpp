@@ -74,6 +74,7 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
         g_bspdata->numleafs++;
 
         leaf_p->contents = portalleaf->contents;
+        leaf_p->flags = 0;
 
         //
         // write bounding box info
