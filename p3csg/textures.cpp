@@ -123,8 +123,6 @@ int             TexinfoForBrushTexture( const plane_t* const plane, brush_textur
 
         // set the special flag
         if ( bt->name[0] == '*'
-             || contents == CONTENTS_SKY
-
              || contents == CONTENTS_ORIGIN
              || contents == CONTENTS_NULL
              || !strncasecmp( bt->name, "aaatrigger", 10 )
@@ -132,6 +130,12 @@ int             TexinfoForBrushTexture( const plane_t* const plane, brush_textur
         {
                 // actually only 'sky' and 'aaatrigger' needs this. --vluzacn
                 tx.flags |= TEX_SPECIAL;
+        }
+        else if ( contents == CONTENTS_SKY )
+        {
+                tx.flags |= TEX_SPECIAL;
+                tx.flags |= TEX_SKY;
+                tx.flags |= TEX_SKY2D;
         }
 
         if ( bt->txcommand )
