@@ -1534,6 +1534,9 @@ void GatherLight( int threadnum )
                 patch = &g_patches[j];
 
                 trans = patch->transfers;
+                if ( !trans )
+                        continue;
+
                 num = patch->numtransfers;
                 if ( patch->bumped )
                 {
@@ -1719,7 +1722,6 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
         // overflow check!
         if ( patch1->numtransfers >= MAX_PATCHES )
         {
-                std::cout << "patch1 too many transfers" << std::endl;
                 return;
         }
                 
@@ -1727,7 +1729,6 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
         // hack for patch areas <= 0 (degenerate)
         if ( patch2->area <= 0 )
         {
-                std::cout << "patch2 area <= 0" << std::endl;
                 return;
         }
                 
@@ -1738,7 +1739,6 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
 
         if ( scale <= 0 )
         {
-                std::cout << "FormFactorDiff scale <= 0" << std::endl;
                 return;
         }
                 
@@ -1752,7 +1752,6 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
                 scale = FormFactorPolyToDiff( patch2, patch1 );
                 if ( scale <= 0.0 )
                 {
-                        std::cout << "FormFactorPoly scale <= 0" << std::endl;
                         return;
                 }
                         
@@ -1761,7 +1760,6 @@ void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers )
         trans = patch2->area * scale;
         if ( trans <= TRANSFER_EPSILON )
         {
-                std::cout << "trans less than transfer epsilon" << std::endl;
                 return;
         }
                 
