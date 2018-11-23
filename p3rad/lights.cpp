@@ -363,8 +363,11 @@ static char *ValueForKeyWithDefault( entity_t *ent, char *key, char *default_val
         epair_t	*ep;
 
         for ( ep = ent->epairs; ep; ep = ep->next )
+        {
                 if ( !strcmp( ep->key, key ) )
                         return ep->value;
+        }
+                
         return default_value;
 }
 
@@ -439,17 +442,25 @@ void BuildVisForLightEnvironment()
                                 continue;
 
                         if ( !( dleafs[ileaf2].flags & ( LEAF_FLAGS_SKY | LEAF_FLAGS_SKY2D ) ) )
+                        {
                                 // leaf doesn't contain sky
                                 continue;
+                        } 
 
                         // Can this leaf see into the leaf with the sky in it?
                         if ( !PVSCheck( pvs, ileaf2 ) )
+                        {
                                 // nope, we can't see the sky leaf
                                 continue;
+                        }
+                                
 
                         if ( dleafs[ileaf2].flags & LEAF_FLAGS_SKY2D )
+                        {
                                 // we can see a leaf with a 2d sky in it
                                 leaf2dbits[nbyte] |= nbit;
+                        }
+                                
                         if ( dleafs[ileaf2].flags & LEAF_FLAGS_SKY )
                         {
                                 leafbits[nbyte] |= nbit;
@@ -470,8 +481,11 @@ void BuildVisForLightEnvironment()
                         continue;
 
                 if ( leaf2dbits[ileaf >> 3] & ( 1 << ( ileaf & 0x7 ) ) )
+                {
                         // mark this leaf as seeing the sky
                         dleafs[ileaf].flags |= LEAF_FLAGS_SKY2D;
+                }
+                        
 
                 // todo 3d skyboxes
         }
@@ -541,6 +555,7 @@ void ParseLightPoint( entity_t *e, directlight_t *dl )
 
 // =====================================================================================
 //  CreateDirectLights
+//  Builds the list of light sources to be used in calculation of lighting.
 // =====================================================================================
 void Lights::CreateDirectLights()
 {

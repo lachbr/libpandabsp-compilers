@@ -278,13 +278,6 @@ typedef struct
         vec3_t norm[NUM_BUMP_VECTS + 1];
 } bumpnormal_t;
 
-extern void     GatherSampleLight( const vec3_t pos, const byte* const pvs, const vec3_t normal, vec3_t* sample
-                            , byte* styles
-                            , int step
-                            , int texref
-                            , int texlightgap_surfacenum
-);
-
 #define MAX_COMPRESSED_TRANSFER_INDEX_SIZE ((1 << 12) - 1)
 
 #define	MAX_PATCHES	(65535*16) // limited by transfer_index_t
@@ -605,10 +598,11 @@ extern void		ReduceLightmap();
 extern void		ScaleDirectLights(); // run before AddPatchLights
 extern void		CreateFacelightDependencyList(); // run before AddPatchLights
 extern void		FreeFacelightDependencyList();
-extern void     TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fraction4, int contents_mask = CONTENTS_EMPTY );
-extern int      TestLine( const vec3_t start, const vec3_t stop, vec_t *skyhitout = NULL );
+extern void     TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fraction4,
+                               int contents_mask = CONTENTS_EMPTY, bool test_static_props = false );
+extern int      TestLine( const vec3_t start, const vec3_t stop, bool test_static_props = false, vec_t *skyhitout = NULL );
 extern int      TestLine( const vec3_t start, const vec3_t stop,
-                          float &total_fraction_visible, vec_t *skyhitout = NULL );
+                          float &total_fraction_visible, bool test_static_props = false, vec_t *skyhitout = NULL );
 extern void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers );
 #define OPAQUE_NODE_INLINECALL
 #ifdef OPAQUE_NODE_INLINECALL

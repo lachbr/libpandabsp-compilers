@@ -445,6 +445,7 @@ void InitLightInfo( lightinfo_t &l, int facenum )
         fl->normal_count = l.bumped ? NUM_BUMP_VECTS + 1 : 1;
         l.normal_count = fl->normal_count;
         fl->bumped = l.bumped;
+        f->bumped_lightmap = l.bumped;
         l.surfnum = facenum;
         l.face = f;
 
@@ -927,7 +928,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutp
 
         dot = MaxSIMD( dot, Four_Zeros );
         int zero_mask = TestSignSIMD( CmpEqSIMD( dot, Four_Zeros ) );
-        if ( zero_mask = 0xF )
+        if ( zero_mask == 0xF )
                 return;
 
         int nsamples = 1;
@@ -963,7 +964,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutp
                 delta4 += input.pos;
 
                 fltx4 this_fraction;
-                TestFourLines( input.pos, delta4, &this_fraction, CONTENTS_SKY );
+                TestFourLines( input.pos, delta4, &this_fraction, CONTENTS_SKY, true );
 
                 total_frac_vis = AddSIMD( total_frac_vis, this_fraction );
         }
@@ -972,7 +973,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutp
         out.dot[0] = MulSIMD( dot, see_amount );
         out.falloff = Four_Ones;
         out.sun_amount = MulSIMD( see_amount, ReplicateX4( 10000.0f ) );
-        for ( int i = 0; i < input.normal_count; i++ )
+        for ( int i = 1; i < input.normal_count; i++ )
         {
                 if ( ignore_normals )
                         out.dot[i] = ReplicateX4( CONSTANT_DOT );
@@ -1048,11 +1049,11 @@ void GatherSampleAmbientSkySSE( SSE_sampleLightInput_t &input, SSE_sampleLightOu
                 delta += input.pos;
                 FourVectors surface_pos = input.pos;
                 FourVectors offset = anorm;
-                offset *= input.epsilon;
+                offset *= -input.epsilon;
                 surface_pos -= offset;
 
                 fltx4 fraction_visible4;
-                TestFourLines( surface_pos, delta, &fraction_visible4, CONTENTS_SKY );
+                TestFourLines( surface_pos, delta, &fraction_visible4, CONTENTS_SKY, true );
                 for ( int i = 0; i < input.normal_count; i++ )
                 {
                         fltx4 added_amt = MulSIMD( fraction_visible4, dots[i] );
@@ -1209,7 +1210,7 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
 
         // ray trace for visibility
         fltx4 fraction_visible4;
-        TestFourLines( input.pos, src, &fraction_visible4 );
+        TestFourLines( input.pos, src, &fraction_visible4, CONTENTS_EMPTY, true );
         dot = MulSIMD( fraction_visible4, dot );
         out.dot[0] = dot;
 
@@ -1821,6 +1822,10 @@ void AddSampleToPatch( sample_t *sample, lightvalue_t &light, int facenum )
         // don't worry if some samples don't find a patch
 }
 
+/**
+ * Determines the brightness of each patch on a particular face
+ * from the calculated lightmap for the radiosity (light bouncing) pass.
+ */
 void BuildPatchLights( int facenum )
 {
         int i, k;
@@ -1947,6 +1952,10 @@ void BuildPatchLights( int facenum )
         }
 }
 
+/**
+ * Calculates a lightmap for a particular face, then
+ * uses the calculated lightmap to figure out brightness of each patch on the face.
+ */
 void BuildFacelights( const int facenum )
 {
         

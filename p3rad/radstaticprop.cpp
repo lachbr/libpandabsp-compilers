@@ -21,6 +21,7 @@ TypeHandle RADCollisionPolygon::_type_handle;
 
 pvector<TestGroup> g_test_groups;
 pvector<RADStaticProp *> g_static_props;
+pvector<RADStaticProp *> g_caster_props;
 
 bool g_collisions_loaded = false;
 LightMutex g_prop_lock( "RadStaticPropRayCastLock" );
@@ -60,13 +61,15 @@ void LoadStaticProps()
                         // Which leaf does the prop reside in?
                         dleaf_t *leaf = PointInLeaf( prop->pos );
 
-                        bool shadow_caster = prop->flags & STATICPROPFLAGS_LIGHTMAPSHADOWS;
+                        bool shadow_caster = ( prop->flags & STATICPROPFLAGS_LIGHTMAPSHADOWS ) != 0;
 
                         RADStaticProp *sprop = new RADStaticProp;
                         sprop->shadows = shadow_caster;
                         sprop->leafnum = leaf - g_bspdata->dleafs;
                         sprop->mdl = propnp;
                         sprop->propnum = (int)i;
+                        sprop->pvs = (byte *)calloc( 1, ( MAX_MAP_LEAFS + 7 ) / 8 );
+                        DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf->visofs], sprop->pvs, ( MAX_MAP_LEAFS + 7 ) / 8 );
 
                         // Apply all transforms and attribs to the vertices so they are now in world space,
                         // but do not remove any nodes or rearrange the vertices.
@@ -115,6 +118,8 @@ void LoadStaticProps()
                         }
 
                         g_static_props.push_back( sprop );
+                        if ( sprop->shadows )
+                                g_caster_props.push_back( sprop );
 
                         cout << "Successfully loaded static prop " << mdl_path << endl;
                 }
@@ -140,17 +145,19 @@ bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leaf
         tg->seg->set_point_a( start[0], start[1], start[2] );
         tg->seg->set_point_b( stop[0], stop[1], stop[2] );
 
-        for ( size_t i = 0; i < g_static_props.size(); i++ )
+        for ( size_t i = 0; i < g_caster_props.size(); i++ )
         {
-                RADStaticProp *sprop = g_static_props[i];
-                if ( !sprop->shadows || sprop->leafnum != leafnum )
+                RADStaticProp *sprop = g_caster_props[i];
+
+                // is prop potentially visible?
+                if ( !PVSCheck( sprop->pvs, leafnum ) )
                         continue;
+
                 for ( size_t polynum = 0; polynum < sprop->polygons.size(); polynum++ )
                 {
                         RADCollisionPolygon *poly = sprop->polygons[polynum];
                         if ( poly->segment_intersection_test( start, stop ) )
                         {
-                                //cout << "Collided with polygon in leaf " << leafnum << endl;
                                 return true;
                         }
 

@@ -97,6 +97,8 @@ struct RADStaticProp
         NodePath mdl;
         bool shadows;
         int propnum;
+
+        byte *pvs;
 };
 
 struct TestGroup
@@ -107,6 +109,7 @@ struct TestGroup
 extern pvector<TestGroup> g_test_groups;
 
 extern pvector<RADStaticProp *> g_static_props;
+extern pvector<RADStaticProp *> g_caster_props;
 
 extern void LoadStaticProps();
 extern bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leafnum );

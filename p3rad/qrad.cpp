@@ -5,6 +5,39 @@ R A D I O S I T Y    -aka-    R A D
 Code based on original code from Valve Software,
 Modified by Sean "Zoner" Cavanaugh (seanc@gearboxsoftware.com) with permission.
 Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
+Modified by Brian Lach (brianlach72@gmail.com) for use with the Panda3D game engine.
+
+==================================================================================
+
+Pieces of RAD:
+
+Direct lights:  light sources in the map (point lights, spot lights, etc)
+Patches:        light emitting rectangles (used for bouncing light)
+Samples:        points on a face to calculate a brightness value for (lightmap sampling points)
+Luxels:         pixels in a lightmap, coorespond to a sample
+
+===================================================================================
+
+A simple summary of RAD goes as follows:
+
+* Build a list of all lights in the map.
+* Make a single patch for each face.
+* Recursively chop up (subdivide) the face patches to meet a certain size criteria.
+
+* Then for each face
+        - Determine width and height of lightmap (depending on lightmap scale, face extents)
+        - Chop up the face to build a sample for each S,T position
+        - Build list of luxels (hold a world-space position and a lighting value) for each S,T position
+        - For each sample on the face, calculate a brightness value based on contributions from the direct lights,
+          store on the cooresponding luxel.
+        - Average up the luxels to determine a brightness value for each patch on the face (for the radiosity pass)
+
+* Determine which patches can see each other
+* For each patch, determine how much light would transfer from each visible patch to itself
+
+* Bounce the light, do as many passes until scene stabilizes, store the bounced light into a separate structure
+
+* For each luxel on each face, add the bounced light onto the direct light and store into final map format
 
 */
 

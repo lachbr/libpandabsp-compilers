@@ -311,8 +311,9 @@ void            MakeTnodes( dmodel_t* /*bm*/ )
 
 //==========================================================
 
-int             TestLine_r( const int node, const vec3_t start, const vec3_t stop
-                            , int &linecontent
+int             TestLine_r( const int node, const vec3_t start, const vec3_t stop,
+                            const vec3_t linestart, const vec3_t lineend,
+                            int &linecontent, bool test_static_props
                             , vec_t *skyhit, float &total_fraction_visible
 )
 {
@@ -328,13 +329,6 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
                 // We're in a leaf!
                 int leafnum = ~node;
                 dleaf_t *leaf = &g_bspdata->dleafs[leafnum];
-
-                if ( StaticPropIntersectionTest( start, stop, leafnum ) )
-                {
-                        // There was an intersection with a static prop.
-                        //cout << "Intersection with static prop!" << endl;
-                        return CONTENTS_SOLID;
-                }
 
                 int contents = leaf->contents;
 
@@ -357,6 +351,12 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
                         return CONTENTS_SOLID;
                 }
 
+                if ( test_static_props && StaticPropIntersectionTest( linestart, lineend, leafnum ) )
+                {
+                        // There was an intersection with a static prop.
+                        //cout << "Intersection with static prop!" << endl;
+                        return CONTENTS_SOLID;
+                }
 
                 linecontent = contents;
                 return CONTENTS_EMPTY;
@@ -385,28 +385,32 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
 
         if ( front > ON_EPSILON / 2 && back > ON_EPSILON / 2 )
         {
-                return TestLine_r( tnode->children[0], start, stop
-                                   , linecontent
+                return TestLine_r( tnode->children[0], start, stop,
+                                   linestart, lineend
+                                   , linecontent, test_static_props
                                    , skyhit, total_fraction_visible
                 );
         }
         if ( front < -ON_EPSILON / 2 && back < -ON_EPSILON / 2 )
         {
-                return TestLine_r( tnode->children[1], start, stop
-                                   , linecontent
+                return TestLine_r( tnode->children[1], start, stop,
+                                   linestart, lineend
+                                   , linecontent, test_static_props
                                    , skyhit, total_fraction_visible
                 );
         }
         if ( fabs( front ) <= ON_EPSILON && fabs( back ) <= ON_EPSILON )
         {
-                int r1 = TestLine_r( tnode->children[0], start, stop
-                                     , linecontent
+                int r1 = TestLine_r( tnode->children[0], start, stop,
+                                     linestart, lineend
+                                     , linecontent, test_static_props
                                      , skyhit, total_fraction_visible
                 );
                 if ( r1 == CONTENTS_SOLID )
                         return CONTENTS_SOLID;
-                int r2 = TestLine_r( tnode->children[1], start, stop
-                                     , linecontent
+                int r2 = TestLine_r( tnode->children[1], start, stop,
+                                     linestart, lineend
+                                     , linecontent, test_static_props
                                      , skyhit, total_fraction_visible
                 );
                 if ( r2 == CONTENTS_SOLID )
@@ -423,25 +427,28 @@ int             TestLine_r( const int node, const vec3_t start, const vec3_t sto
         mid[0] = start[0] + ( stop[0] - start[0] ) * frac;
         mid[1] = start[1] + ( stop[1] - start[1] ) * frac;
         mid[2] = start[2] + ( stop[2] - start[2] ) * frac;
-        r = TestLine_r( tnode->children[side], start, mid
-                        , linecontent
+        r = TestLine_r( tnode->children[side], start, mid,
+                        linestart, lineend
+                        , linecontent, test_static_props
                         , skyhit, total_fraction_visible
         );
         if ( r != CONTENTS_EMPTY )
                 return r;
-        return TestLine_r( tnode->children[!side], mid, stop
-                           , linecontent
+        return TestLine_r( tnode->children[!side], mid, stop,
+                           linestart, lineend
+                           , linecontent, test_static_props
                            , skyhit, total_fraction_visible
         );
 }
 
-int TestLine(const vec3_t start, const vec3_t stop, vec_t *skyhit)
+int TestLine(const vec3_t start, const vec3_t stop, bool test_static_props, vec_t *skyhit)
 {
         float frac_vis = 1.0;
-        return TestLine( start, stop, frac_vis, skyhit );
+        return TestLine( start, stop, frac_vis, test_static_props, skyhit );
 }
 
-void TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fraction4, int contents_mask )
+void TestFourLines( const FourVectors &start, const FourVectors &end,
+                    fltx4 *fraction4, int contents_mask, bool test_static_props )
 {
         // contents_mask is the contents that you are looking to achieve from the test
         // for example CONTENTS_EMPTY means that you want the test to return CONTENTS_EMPTY
@@ -459,7 +466,7 @@ void TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fra
                 VectorCopy( start.Vec( i ), vstart );
                 VectorCopy( end.Vec( i ), vend );
                 frac_vis = 0.0;
-                contents = TestLine( vstart, vend, frac_vis );
+                contents = TestLine( vstart, vend, frac_vis, test_static_props );
                 if ( ( contents & contents_mask ) == 0 )
                         frac_vis = 0.0;
                 else
@@ -469,12 +476,12 @@ void TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fra
 }
 
 int             TestLine( const vec3_t start, const vec3_t stop,
-                          float &total_fraction_visible, vec_t *skyhit
+                          float &total_fraction_visible, bool test_static_props, vec_t *skyhit
 )
 {
         int linecontent = 0;
-        return TestLine_r( 0, start, stop
-                           , linecontent
+        return TestLine_r( 0, start, stop, start, stop
+                           , linecontent, test_static_props
                            , skyhit,
                            total_fraction_visible
         );
