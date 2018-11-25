@@ -5,6 +5,8 @@
 #include "anorms.h"
 #include "bsptools.h"
 
+#include <CL/cl.h>
+
 #include <clockObject.h>
 
 edgeshare_t     edgeshare[MAX_MAP_EDGES];
@@ -1950,6 +1952,26 @@ void BuildPatchLights( int facenum )
                         }
                 }
         }
+}
+
+void DetermineLightmapMemory()
+{
+        float lm_bytes = 0;
+        float lm_megabytes = 0;
+
+        lightinfo_t l;
+        for ( int facenum = 0; facenum < g_bspdata->numfaces; facenum++ )
+        {
+                l.surfnum = facenum;
+                l.face = g_bspdata->dfaces + facenum;
+                CalcFaceExtents( &l );
+
+                lm_bytes += ( l.face->lightmap_size[0] + 1 ) * ( l.face->lightmap_size[1] + 1 ) * sizeof( colorrgbexp32_t );
+        }
+
+        lm_megabytes = lm_bytes / 1e6;
+
+        std::cout << "Lightmaps will take up " << lm_megabytes << " MB of storage" << std::endl;
 }
 
 /**

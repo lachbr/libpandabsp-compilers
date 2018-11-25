@@ -1847,6 +1847,10 @@ static void     RadWorld()
         unsigned        i;
         unsigned        j;
 
+        // figure out how much memory all the lightmaps for this level
+        // will take up on disk
+        DetermineLightmapMemory();
+
         MakeBackplanes();
         MakeParents( 0, -1 );
         MakeTnodes( &g_bspdata->dmodels[0] );

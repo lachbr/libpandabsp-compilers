@@ -589,6 +589,7 @@ extern vec3_t g_maxdiscardedpos;
 extern vec_t g_texlightgap;
 extern vec_t g_skysamplescale;
 
+extern void     DetermineLightmapMemory();
 extern void     MakeTnodes( dmodel_t* bm );
 extern void     PairEdges();
 extern void     BuildFacelights( int facenum );
