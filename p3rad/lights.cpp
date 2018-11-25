@@ -8,6 +8,7 @@
  *
  */
 
+//#include "clhelper.h"
 #include "lights.h"
 #include "qrad.h"
 
@@ -633,6 +634,14 @@ void Lights::CreateDirectLights()
         }
 
         printf( "%i direct lights\n", numdlights );
+
+        // now write the data into OpenCL device memory
+        //CLHelper::MakeAndWriteBuffer( true, false, sizeof( int ), true, &numdlights );
+        //CLHelper::MakeAndWriteBuffer( true, false, sizeof( directlight_t * ), true, activelights );
+        //CLHelper::MakeAndWriteBuffer( true, false, sizeof( float ), true, &sun_angular_extent );
+        //CLHelper::MakeAndWriteBuffer( true, false, sizeof( directlight_t * ), true, skylight );
+        //CLHelper::MakeAndWriteBuffer( true, false, sizeof( directlight_t * ), true, ambientlight );
+
 }
 
 // =====================================================================================

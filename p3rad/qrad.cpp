@@ -55,6 +55,7 @@ A simple summary of RAD goes as follows:
 #include "leaf_ambient_lighting.h"
 #include "lights.h"
 #include "vismat.h"
+//#include "clhelper.h"
 #include <virtualFileSystem.h>
 
 #include <load_prc_file.h>
@@ -1846,6 +1847,9 @@ static void     RadWorld()
 {
         unsigned        i;
         unsigned        j;
+
+        // setup our OpenCL environment for the GPU
+        //CLHelper::SetupCL();
 
         // figure out how much memory all the lightmaps for this level
         // will take up on disk

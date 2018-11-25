@@ -160,10 +160,12 @@ void CLHelper::WriteBuffer( cl_mem buf, bool blocking, size_t size, void *host_m
 /**
  * Creates a buffer and writes it into device memory.
  */
-void CLHelper::MakeAndWriteBuffer( bool read, bool write, size_t size, bool blocking, void *host_mem )
+cl_mem CLHelper::MakeAndWriteBuffer( bool read, bool write, size_t size, bool blocking, void *host_mem )
 {
         cl_mem buf;
 
         buf = MakeBuffer( read, write, size );
         WriteBuffer( buf, blocking, size, host_mem );
+
+        return buf;
 }

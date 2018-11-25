@@ -48,7 +48,7 @@ public:
         static void SetupCL( cl_uint preferred_device = CL_DEVICE_TYPE_GPU );
         static CLProgram *MakeProgram( const char *filename );
 
-        static void MakeAndWriteBuffer( bool read, bool write, size_t size, bool blocking, void *host_mem );
+        static cl_mem MakeAndWriteBuffer( bool read, bool write, size_t size, bool blocking, void *host_mem );
 
         static cl_mem MakeBuffer( bool read, bool write, size_t size );
         static void WriteBuffer( cl_mem buf, bool blocking, size_t size, void *host_mem );
