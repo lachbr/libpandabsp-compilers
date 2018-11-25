@@ -3,6 +3,7 @@
 
 #include <aa_luse.h>
 #include "bspfile.h"
+#include "mathlib/ssemath.h"
 
 #define TEST_EPSILON 0.03125
 #define DIST_EPSILON 0.03125
@@ -74,6 +75,20 @@ struct Trace
         LVector3 delta;
         LVector3 inv_delta;
         texinfo_t *surface;
+
+        // filled in by load_simd()
+        fltx4 sse_start;
+        fltx4 sse_delta;
+        fltx4 sse_inv_delta;
+        fltx4 sse_extents;
+
+        INLINE void load_simd()
+        {
+                sse_start = LoadAlignedSIMD( LVector4( start_pos, 0 ).get_data() );
+                sse_extents = LoadAlignedSIMD( LVector4( extents, 0 ).get_data() );
+                sse_delta = LoadAlignedSIMD( LVector4( delta, 0 ).get_data() );
+                sse_inv_delta = LoadAlignedSIMD( LVector4( inv_delta, 0 ).get_data() );
+        }
 
         collbspdata_t *bspdata;
 
