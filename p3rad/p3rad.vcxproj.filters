@@ -88,6 +88,9 @@
     <ClCompile Include="..\common\mathlib\powsse.cpp">
       <Filter>common\mathlib</Filter>
     </ClCompile>
+    <ClCompile Include="..\common\clhelper.cpp">
+      <Filter>common</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\template\basictypes.h">
@@ -176,6 +179,9 @@
     </ClInclude>
     <ClInclude Include="vismat.h">
       <Filter>rad</Filter>
+    </ClInclude>
+    <ClInclude Include="..\common\clhelper.h">
+      <Filter>common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

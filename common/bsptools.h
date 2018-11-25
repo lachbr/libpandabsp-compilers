@@ -27,6 +27,23 @@ struct Ray
                 start_offset /= -1;
         }
 
+        INLINE LVector3 inv_delta() const
+        {
+                LVector3 inv;
+                for ( int i = 0; i < 3; i++ )
+                {
+                        if ( delta[i] != 0.0 )
+                        {
+                                inv[i] = 1.0 / delta[i];
+                        }
+                        else
+                        {
+                                inv[i] = FLT_MAX;
+                        }
+                }
+                return inv;
+        }
+
         LPoint3 start;
         LPoint3 end;
         LPoint3 mins;
@@ -37,6 +54,8 @@ struct Ray
         LVector3 start_offset;
         LVector3 delta;
 };
+
+struct collbspdata_t;
 
 struct Trace
 {
@@ -52,9 +71,11 @@ struct Trace
         LPoint3 mins;
         LPoint3 maxs;
         LVector3 extents;
+        LVector3 delta;
+        LVector3 inv_delta;
         texinfo_t *surface;
 
-        bspdata_t *bspdata;
+        collbspdata_t *bspdata;
 
         INLINE bool has_hit() const
         {

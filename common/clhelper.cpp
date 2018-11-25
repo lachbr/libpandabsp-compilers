@@ -1,3 +1,5 @@
+#if 0
+
 /**
  * PANDA3D BSP TOOLS
  * Copyright (c) CIO Team. All rights reserved.
@@ -9,7 +11,7 @@
 
 #include "clhelper.h"
 
-#include <pnotify.h>
+//#include <pnotify.h>
 #include <virtualFileSystem.h>
 
 #include <iostream>
@@ -169,3 +171,5 @@ cl_mem CLHelper::MakeAndWriteBuffer( bool read, bool write, size_t size, bool bl
 
         return buf;
 }
+
+#endif
