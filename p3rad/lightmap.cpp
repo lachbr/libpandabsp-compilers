@@ -25,7 +25,7 @@ int EdgeVertex( dface_t *f, int edge )
         if ( edge < 0 )
                 edge += f->numedges;
         else if ( edge >= f->numedges )
-                edge = edge & f->numedges;
+                edge = edge % f->numedges;
 
         k = g_bspdata->dsurfedges[f->firstedge + edge];
         if ( k < 0 )
@@ -35,6 +35,48 @@ int EdgeVertex( dface_t *f, int edge )
         else
         {
                 return g_bspdata->dedges[k].v[0];
+        }
+}
+
+unsigned short FindOrAddNormal( const LVector3 &normal )
+{
+        for ( auto itr = g_bspdata->vertnormals.begin(); itr != g_bspdata->vertnormals.end(); itr++ )
+        {
+                if ( VectorCompare( normal.get_data(), itr->point) )
+                {
+                        return itr - g_bspdata->vertnormals.begin();
+                }
+        }
+
+        // normal not found, add it
+        unsigned short idx = g_bspdata->vertnormals.size();
+        dvertex_t vert;
+        VectorCopy( normal, vert.point );
+        g_bspdata->vertnormals.push_back( vert );
+        return idx;
+}
+
+void SaveVertexNormals()
+{
+        g_bspdata->vertnormalindices.clear();
+        g_bspdata->vertnormals.clear();
+
+        for ( int i = 0; i < g_bspdata->numfaces; i++ )
+        {
+                faceneighbor_t *fn = &faceneighbor[i];
+                dface_t *f = &g_bspdata->dfaces[i];
+
+                for ( int j = 0; j < f->numedges; j++ )
+                {
+
+                        LVector3 normal( 0 );
+
+                        if ( fn->normal )
+                                normal = fn->normal[j];
+
+                        unsigned short idx = FindOrAddNormal( normal );
+                        g_bspdata->vertnormalindices.push_back( idx );
+                }
         }
 }
 
@@ -365,7 +407,7 @@ void            GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &pho
         VectorCopy( pl->normal, facenormal );
         VectorCopy( facenormal, phongnormal );
 
-        if ( g_smoothing_threshold != -1 )
+        if ( g_smoothing_threshold != 1 )
         {
                 faceneighbor_t *fn = &faceneighbor[facenum];
 
@@ -425,8 +467,8 @@ void            GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &pho
 void GetBumpNormals( const texinfo_t *texinfo, const LVector3 &face_normal,
                      const LVector3 &phong_normal, LVector3 *bump_vecs )
 {
-        LVector3 stmp( texinfo->lightmap_vecs[0][0], texinfo->lightmap_vecs[0][1], texinfo->lightmap_vecs[0][2] );
-        LVector3 ttmp( texinfo->lightmap_vecs[1][0], texinfo->lightmap_vecs[1][1], texinfo->lightmap_vecs[1][2] );
+        LVector3 stmp( texinfo->vecs[0][0], texinfo->vecs[0][1], texinfo->vecs[0][2] );
+        LVector3 ttmp( texinfo->vecs[1][0], texinfo->vecs[1][1], texinfo->vecs[1][2] );
         GetBumpNormals( stmp, ttmp, face_normal, phong_normal, bump_vecs );
 }
 
@@ -828,7 +870,7 @@ void GetPhongNormal( int facenum, const FourVectors &spot, FourVectors &phongnor
                                 continue;
 
                         // store the old phong normal to avoid overwriting the already computed phong normals
-                        FourVectors oldphongnorm = phongnormal;
+                        FourVectors oldphongnorm = FourVectors( phongnormal );
 
                         // calculate distance from edge to pos
                         FourVectors temp;
@@ -849,7 +891,6 @@ void GetPhongNormal( int facenum, const FourVectors &spot, FourVectors &phongnor
                         phongnormal.x = AddSIMD( AndSIMD( result_mask, phongnormal.x ), AndNotSIMD( result_mask, oldphongnorm.x ) );
                         phongnormal.y = AddSIMD( AndSIMD( result_mask, phongnormal.y ), AndNotSIMD( result_mask, oldphongnorm.y ) );
                         phongnormal.z = AddSIMD( AndSIMD( result_mask, phongnormal.z ), AndNotSIMD( result_mask, oldphongnorm.z ) );
-
                 }
 
                 phongnormal.VectorNormalize();
@@ -870,8 +911,6 @@ void ComputeIlluminationPointAndNormalsSSE( const lightinfo_t &l, const FourVect
         // logic in GatherSampleLight
         FourVectors facenormal;
         facenormal.DuplicateVector( l.facenormal );
-        LVector3 vfn;
-        VectorCopy( l.facenormal, vfn );
         info->points += facenormal;
 
         if ( !l.isflat )

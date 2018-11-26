@@ -136,4 +136,6 @@ extern void GatherSampleLightSSE( SSE_sampleLightOutput_t &output, directlight_t
                                   const FourVectors &pos, FourVectors *normals, int normal_count,
                                   int thread, int lightflags = 0, float epsilon = 0 );
 
+extern void SaveVertexNormals();
+
 #endif // LIGHTMAP_H

@@ -1866,11 +1866,10 @@ static void     RadWorld()
         MakePatches(); // done
         PairEdges(); // done
 
-        // TODO
         // store the vertex normals calculated in PairEdges
         // so that the can be written to the bsp file for 
         // use in the engine
-        //SaveVertexNormals();
+        SaveVertexNormals();
 
         SubdividePatches(); // done
 
@@ -2549,98 +2548,9 @@ int             main( const int argc, char** argv )
                                 {
                                         g_fastmode = true;
                                 }
-                                //else if ( !strcasecmp( argv[i], "-nolerp" ) )
-                                //{
-                                //        g_lerp_enabled = false;
-                                //}
-                                else if ( !strcasecmp( argv[i], "-chop" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                g_chop = atof( argv[++i] );
-                                                if ( g_chop < 1 )
-                                                {
-                                                        Log( "expected value greater than 1 for '-chop'\n" );
-                                                        Usage();
-                                                }
-                                                if ( g_chop < 32 )
-                                                {
-                                                        Log( "Warning: Chop values below 32 are not recommended." );
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-texchop" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                g_texchop = atof( argv[++i] );
-                                                if ( g_texchop < 1 )
-                                                {
-                                                        Log( "expected value greater than 1 for '-texchop'\n" );
-                                                        Usage();
-                                                }
-                                                if ( g_texchop < 32 )
-                                                {
-                                                        Log( "Warning: texchop values below 16 are not recommended." );
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
                                 else if ( !strcasecmp( argv[i], "-notexscale" ) )
                                 {
                                         g_texscale = false;
-                                }
-                                else if ( !strcasecmp( argv[i], "-nosubdivide" ) )
-                                {
-                                        if ( i < argc )
-                                        {
-                                                g_subdivide = false;
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-scale" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                // ------------------------------------------------------------------------
-                                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                                                // Munge monochrome lightscale into colour one
-                                                i++;
-                                                g_colour_lightscale[0] = (float)atof( argv[i] );
-                                                g_colour_lightscale[1] = (float)atof( argv[i] );
-                                                g_colour_lightscale[2] = (float)atof( argv[i] );
-                                                // ------------------------------------------------------------------------
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-fade" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                g_fade = (float)atof( argv[++i] );
-                                                if ( g_fade < 0.0 )
-                                                {
-                                                        Log( "-fade must be a positive number\n" );
-                                                        Usage();
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
                                 }
                                 else if ( !strcasecmp( argv[i], "-ambient" ) )
                                 {
@@ -2654,40 +2564,6 @@ int             main( const int argc, char** argv )
                                         {
                                                 Error( "expected three color values after '-ambient'\n" );
                                         }
-                                }
-                                else if ( !strcasecmp( argv[i], "-limiter" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                g_limitthreshold = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-drawoverload" ) )
-                                {
-                                        g_drawoverload = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-lights" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                user_lights = argv[++i];
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-circus" ) )
-                                {
-                                        g_circus = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-noskyfix" ) )
-                                {
-                                        g_sky_lighting_fix = false;
                                 }
                                 else if ( !strcasecmp( argv[i], "-incremental" ) )
                                 {
@@ -2709,24 +2585,6 @@ int             main( const int argc, char** argv )
                                 {
                                         g_log = false;
                                 }
-                                else if ( !strcasecmp( argv[i], "-gamma" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                // ------------------------------------------------------------------------
-                                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                                                // Munge values from original, monochrome gamma into colour gamma
-                                                i++;
-                                                g_colour_qgamma[0] = (float)atof( argv[i] );
-                                                g_colour_qgamma[1] = (float)atof( argv[i] );
-                                                g_colour_qgamma[2] = (float)atof( argv[i] );
-                                                // ------------------------------------------------------------------------
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
                                 else if ( !strcasecmp( argv[i], "-dlight" ) )
                                 {
                                         if ( i + 1 < argc )	//added "1" .--vluzacn
@@ -2742,16 +2600,9 @@ int             main( const int argc, char** argv )
                                 {
                                         g_extra = true;
                                 }
-                                else if ( !strcasecmp( argv[i], "-sky" ) )
+                                else if ( !strcasecmp( argv[i], "-final" ) )
                                 {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                g_indirect_sun = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
+                                        g_skysamplescale = 16.0;
                                 }
                                 else if ( !strcasecmp( argv[i], "-smooth" ) )
                                 {
@@ -2763,91 +2614,6 @@ int             main( const int argc, char** argv )
                                         {
                                                 Usage();
                                         }
-                                }
-                                else if ( !strcasecmp( argv[i], "-smooth2" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_smoothing_value_2 = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-coring" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                g_coring = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-texdata" ) )
-                                {
-                                        if ( i + 1 < argc )	//added "1" .--vluzacn
-                                        {
-                                                int             x = atoi( argv[++i] ) * 1024;
-
-                                                //if (x > g_max_map_texref) //--vluzacn
-                                                {
-                                                        g_max_map_texref = x;
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-lightdata" ) ) //lightdata
-                                {
-                                        if ( i + 1 < argc ) //--vluzacn
-                                        {
-                                                int             x = atoi( argv[++i] ) * 1024;
-
-                                                //if (x > g_max_map_lightdata) //--vluzacn
-                                                {
-                                                        g_max_map_lightdata = x;
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-vismatrix" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                const char *value = argv[++i];
-                                                if ( !strcasecmp( value, "normal" ) )
-                                                {
-                                                        g_method = eMethodVismatrix;
-                                                }
-                                                else if ( !strcasecmp( value, "sparse" ) )
-                                                {
-                                                        g_method = eMethodSparseVismatrix;
-                                                }
-                                                else if ( !strcasecmp( value, "off" ) )
-                                                {
-                                                        g_method = eMethodNoVismatrix;
-                                                }
-                                                else
-                                                {
-                                                        Error( "Unknown vismatrix type: '%s'", value );
-                                                }
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-nospread" ) )
-                                {
-                                        g_allow_spread = false;
                                 }
                                 else if ( !strcasecmp( argv[i], "-nopaque" )
                                           || !strcasecmp( argv[i], "-noopaque" ) ) //--vluzacn
@@ -2864,145 +2630,6 @@ int             main( const int argc, char** argv )
                                         {
                                                 Usage();
                                         }
-                                }
-
-                                // ------------------------------------------------------------------------
-                                // Changes by Adam Foster - afoster@compsoc.man.ac.uk
-                                else if ( !strcasecmp( argv[i], "-colourgamma" ) )
-                                {
-                                        if ( i + 3 < argc )
-                                        {
-                                                g_colour_qgamma[0] = (float)atof( argv[++i] );
-                                                g_colour_qgamma[1] = (float)atof( argv[++i] );
-                                                g_colour_qgamma[2] = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Error( "expected three color values after '-colourgamma'\n" );
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-colourscale" ) )
-                                {
-                                        if ( i + 3 < argc )
-                                        {
-                                                g_colour_lightscale[0] = (float)atof( argv[++i] );
-                                                g_colour_lightscale[1] = (float)atof( argv[++i] );
-                                                g_colour_lightscale[2] = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Error( "expected three color values after '-colourscale'\n" );
-                                        }
-                                }
-
-                                else if ( !strcasecmp( argv[i], "-colourjitter" ) )
-                                {
-                                        if ( i + 3 < argc )
-                                        {
-                                                g_colour_jitter_hack[0] = (float)atof( argv[++i] );
-                                                g_colour_jitter_hack[1] = (float)atof( argv[++i] );
-                                                g_colour_jitter_hack[2] = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Error( "expected three color values after '-colourjitter'\n" );
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-jitter" ) )
-                                {
-                                        if ( i + 3 < argc )
-                                        {
-                                                g_jitter_hack[0] = (float)atof( argv[++i] );
-                                                g_jitter_hack[1] = (float)atof( argv[++i] );
-                                                g_jitter_hack[2] = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Error( "expected three color values after '-jitter'\n" );
-                                        }
-                                }
-
-                                // ------------------------------------------------------------------------
-
-                                else if ( !strcasecmp( argv[i], "-customshadowwithbounce" ) )
-                                {
-                                        g_customshadow_with_bouncelight = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-rgbtransfers" ) )
-                                {
-                                        g_rgb_transfers = true;
-                                }
-
-
-                                else if ( !strcasecmp( argv[i], "-bscale" ) )
-                                {
-                                        Error( "'-bscale' is obsolete." );
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_transtotal_hack = (float)atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-
-                                else if ( !strcasecmp( argv[i], "-minlight" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                int v = atoi( argv[++i] );
-                                                v = qmax( 0, qmin( v, 255 ) );
-                                                g_minlight = (unsigned char)v;
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-
-                                else if ( !strcasecmp( argv[i], "-softsky" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_softsky = (bool)atoi( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-
-                                else if ( !strcasecmp( argv[i], "-drawpatch" ) )
-                                {
-                                        g_drawpatch = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-drawsample" ) )
-                                {
-                                        g_drawsample = true;
-                                        if ( i + 4 < argc )
-                                        {
-                                                g_drawsample_origin[0] = atof( argv[++i] );
-                                                g_drawsample_origin[1] = atof( argv[++i] );
-                                                g_drawsample_origin[2] = atof( argv[++i] );
-                                                g_drawsample_radius = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-drawedge" ) )
-                                {
-                                        g_drawedge = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-drawlerp" ) )
-                                {
-                                        g_drawlerp = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-drawnudge" ) )
-                                {
-                                        g_drawnudge = true;
                                 }
                                 else if ( !strcasecmp( argv[i], "-depth" ) )
                                 {
@@ -3026,84 +2653,15 @@ int             main( const int argc, char** argv )
                                                 Usage();
                                         }
                                 }
-                                //else if (!strcasecmp (argv[i], "-waddir"))
-                                //{
-                                //	if (i + 1 < argc)
-                                //	{
-                                //		AddWadFolder (argv[++i]);
-                                //	}
-                                //	else
-                                //	{
-                                //		Usage ();
-                                //	}
-                                //}
                                 else if ( !strcasecmp( argv[i], "-notextures" ) )
                                 {
                                         g_notextures = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-texreflectgamma" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_texreflectgamma = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
                                 }
                                 else if ( !strcasecmp( argv[i], "-texreflectscale" ) )
                                 {
                                         if ( i + 1 < argc )
                                         {
                                                 g_texreflectscale = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-blur" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_blur = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-noemitterrange" ) )
-                                {
-                                        g_noemitterrange = true;
-                                }
-                                else if ( !strcasecmp( argv[i], "-nobleedfix" ) )
-                                {
-                                        g_bleedfix = false;
-                                }
-                                else if ( !strcasecmp( argv[i], "-texlightgap" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_texlightgap = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-lang" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                char tmp[_MAX_PATH];
-#ifdef SYSTEM_WIN32
-                                                GetModuleFileName( NULL, tmp, _MAX_PATH );
-#else
-                                                safe_strncpy( tmp, argv[0], _MAX_PATH );
-#endif
-                                                //LoadLangFile (argv[++i], tmp);
                                         }
                                         else
                                         {
