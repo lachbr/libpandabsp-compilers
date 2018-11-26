@@ -698,7 +698,7 @@ node_t*         AllocNode()
 {
         node_t*         n;
 
-        n = new node_t;
+        n = (node_t *)malloc( sizeof( node_t ) );
         memset( n, 0, sizeof( node_t ) );
 
         return n;

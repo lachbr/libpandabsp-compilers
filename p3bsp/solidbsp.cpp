@@ -1271,7 +1271,7 @@ static void MakeLeaf( node_t *leafnode )
 
                                 if ( !brushes_added.test( f->brushnum ) )
                                 {
-                                        leafnode->brushlist.push_back( f->brushnum );
+                                        leafnode->brushlist[leafnode->brushcount++] = f->brushnum;
                                         brushes_added.set( f->brushnum );
                                 }
 

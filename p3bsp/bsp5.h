@@ -165,7 +165,9 @@ typedef struct node_s
         int             valid;                                 // for flood filling
         int             occupied;                              // light number in leaf for outside filling
         int				empty;
-        pvector<int> brushlist; // index into g_dbrushes
+
+        int brushcount;
+        int brushlist[MAX_MAP_BRUSHES]; // index into g_dbrushes
 }
 node_t;
 

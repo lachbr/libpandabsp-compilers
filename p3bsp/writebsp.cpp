@@ -111,7 +111,7 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
         // write the leafbrushes
         //
         leaf_p->firstleafbrush = g_bspdata->dleafbrushes.size();
-        for ( size_t bnum = 0; bnum < node->brushlist.size(); bnum++ )
+        for ( size_t bnum = 0; bnum < node->brushcount; bnum++ )
         {
                 int brushnum = node->brushlist[bnum];
                 if ( std::find( g_bspdata->dleafbrushes.begin(), g_bspdata->dleafbrushes.end(), brushnum ) == g_bspdata->dleafbrushes.end() )
