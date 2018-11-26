@@ -437,6 +437,8 @@ bspdata_t            *LoadBSPImage( dheader_t* const header )
         CopyLump( LUMP_STATICPROPS, data->dstaticprops, header );
         CopyLump( LUMP_STATICPROPVERTEXDATA, data->dstaticpropvertexdatas, header );
         CopyLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header );
+        CopyLump( LUMP_VERTNORMALS, data->vertnormals, header );
+        CopyLump( LUMP_VERTNORMALINDICES, data->vertnormalindices, header );
 
         Free( header );                                          // everything has been copied out
 
@@ -534,6 +536,8 @@ void            WriteBSPFile( bspdata_t *data, const char* const filename )
         AddLump( LUMP_STATICPROPS, data->dstaticprops, header, bspfile );
         AddLump( LUMP_STATICPROPVERTEXDATA, data->dstaticpropvertexdatas, header, bspfile );
         AddLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header, bspfile );
+        AddLump( LUMP_VERTNORMALS, data->vertnormals, header, bspfile );
+        AddLump( LUMP_VERTNORMALINDICES, data->vertnormalindices, header, bspfile );
 
         fseek( bspfile, 0, SEEK_SET );
         SafeWrite( bspfile, header, sizeof( dheader_t ) );

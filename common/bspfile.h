@@ -150,7 +150,7 @@ enum
         LUMP_VERTNORMALINDICES,
 };
 
-static const int HEADER_LUMPS = 22;
+static const int HEADER_LUMPS = 24;
 
 typedef struct
 {
@@ -493,6 +493,8 @@ struct bspdata_t
         pvector<dstaticprop_t> dstaticprops;
         pvector<dstaticpropvertexdata_t> dstaticpropvertexdatas;
         pvector<colorrgbexp32_t> staticproplighting;
+        pvector<dvertex_t> vertnormals;
+        pvector<unsigned short> vertnormalindices;
 
         int      numentities;
         entity_t entities[MAX_MAP_ENTITIES];
