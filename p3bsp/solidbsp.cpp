@@ -1251,12 +1251,27 @@ static void MakeLeaf( node_t *leafnode )
         }
         leafnode->boundsbrush = NULL;
 
+        // build a list of brush indices that reside in this leaf
+        std::bitset<MAX_MAP_BRUSHES> brushes_added;
+        for ( surf = leafnode->surfaces; surf; surf = surf->next )
+        {
+                for ( f = surf->faces; f; f = f->next )
+                {
+                        if ( !brushes_added.test( f->brushnum ) )
+                        {
+                                leafnode->brushlist[leafnode->brushcount++] = f->brushnum;
+                                brushes_added.set( f->brushnum );
+                        }
+                }
+                
+        }
+
         if ( !( leafnode->isportalleaf && leafnode->contents == CONTENTS_SOLID ) )
         {
                 nummarkfaces = 0;
-                std::bitset<MAX_MAP_BRUSHES> brushes_added;
                 for ( surf = leafnode->surfaces; surf; surf = surf->next )
                 {
+
                         if ( !surf->onnode )
                         {
                                 continue;
@@ -1268,12 +1283,6 @@ static void MakeLeaf( node_t *leafnode )
                                         continue;
                                 }
                                 hlassume( nummarkfaces < MAX_LEAF_FACES, assume_MAX_LEAF_FACES );
-
-                                if ( !brushes_added.test( f->brushnum ) )
-                                {
-                                        leafnode->brushlist[leafnode->brushcount++] = f->brushnum;
-                                        brushes_added.set( f->brushnum );
-                                }
 
                                 markfaces[nummarkfaces++] = f->original;
                         }

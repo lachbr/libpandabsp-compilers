@@ -27,18 +27,6 @@ vec3_t          g_hull_size[NUM_HULLS][2] =
         {// 0x0x0
                 { 0, 0, 0 },{ 0, 0, 0 }
         }
-        ,
-    {// 32x32x72
-            { -16, -16, -36 },{ 16, 16, 36 }
-    }
-        ,
-    {// 64x64x64
-            { -32, -32, -32 },{ 32, 32, 32 }
-    }
-        ,
-    {// 32x32x36
-            { -16, -16, -18 },{ 16, 16, 18 }
-    }
 };
 static FILE*    polyfiles[NUM_HULLS];
 static FILE*    brushfiles[NUM_HULLS];
@@ -189,6 +177,8 @@ face_t*         NewFaceFromFace( const face_t* const in )
         newf->contents = in->contents;
         newf->facestyle = in->facestyle;
         newf->detaillevel = in->detaillevel;
+        newf->brushnum = in->brushnum;
+        newf->brushside = in->brushside;
 
         return newf;
 }

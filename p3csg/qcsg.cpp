@@ -837,10 +837,7 @@ void EmitBrushes()
         g_bspdata->dbrushsides.clear();
         g_bspdata->dbrushes.clear();
 
-        pvector<dbrushside_t> temp_brushsides;
-        temp_brushsides.resize( MAX_MAP_SIDES );
-
-        int numbrushsides = 0;
+        g_bspdata->dbrushsides.resize( g_numbrushsides );
 
         // Save out the map brushes and their sides
         for ( int bnum = 0; bnum < g_nummapbrushes; bnum++ )
@@ -861,11 +858,7 @@ void EmitBrushes()
                         cp.planenum = bside->planenum;
                         cp.texinfo = bside->texinfo;
                         cp.bevel = bside->bevel;
-                        temp_brushsides[bside_idx] = cp;
-                        if ( bside_idx + 1 > numbrushsides )
-                        {
-                                numbrushsides = bside_idx + 1;
-                        }
+                        g_bspdata->dbrushsides[bside_idx] = cp;
                 }
 
                 // add any axis planes not contained in the brush to bevel off corners
@@ -888,14 +881,6 @@ void EmitBrushes()
 
                 g_bspdata->dbrushes.push_back( db );
         }
-
-        std::cout << "Saving " << numbrushsides << " brush sides" << std::endl;
-        // Only save used brushsides
-        for ( int i = 0; i < numbrushsides; i++ )
-        {
-                g_bspdata->dbrushsides.push_back( temp_brushsides[i] );
-        }
-
 }
 
 // =====================================================================================

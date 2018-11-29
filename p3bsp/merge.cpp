@@ -51,6 +51,14 @@ static face_t*  TryMerge( face_t* f1, face_t* f2 )
         {
                 return NULL;
         }
+        if ( f1->brushnum != f2->brushnum )
+        {
+                return NULL;
+        }
+        if ( f1->brushside != f2->brushside )
+        {
+                return NULL;
+        }
         if ( f1->facestyle != f2->facestyle )
         {
                 return NULL;

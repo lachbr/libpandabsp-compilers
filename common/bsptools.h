@@ -66,6 +66,7 @@ struct Trace
         PN_stdfloat fraction;
         PN_stdfloat fraction_left_solid;
         int contents;
+        int hit_contents;
         bool all_solid;
         bool start_solid;
         bool is_point;
@@ -105,7 +106,8 @@ struct Trace
                 start_solid( false ),
                 is_point( false ),
                 surface( nullptr ),
-                bspdata( nullptr )
+                bspdata( nullptr ),
+                hit_contents( CONTENTS_EMPTY )
         {
         }
 

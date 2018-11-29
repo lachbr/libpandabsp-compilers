@@ -134,7 +134,7 @@ typedef struct bface_s
 } bface_t;
 
 // NUM_HULLS should be no larger than MAX_MAP_HULLS
-#define NUM_HULLS 4
+#define NUM_HULLS 1
 
 typedef struct
 {

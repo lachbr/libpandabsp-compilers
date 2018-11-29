@@ -171,7 +171,7 @@ typedef struct node_s
 }
 node_t;
 
-#define	NUM_HULLS		4
+#define	NUM_HULLS		1
 
 //=============================================================================
 // solidbsp.c
