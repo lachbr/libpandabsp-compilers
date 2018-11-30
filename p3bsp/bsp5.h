@@ -131,6 +131,8 @@ typedef struct brush_s
 {
         struct brush_s	*next;
         side_t			*sides;
+
+        int originalbrushnum;
 }
 brush_t;
 
@@ -166,18 +168,20 @@ typedef struct node_s
         int             occupied;                              // light number in leaf for outside filling
         int				empty;
 
-        int brushcount;
-        int brushlist[MAX_MAP_BRUSHES]; // index into g_dbrushes
+        brush_t *brushlist;
 }
 node_t;
 
 #define	NUM_HULLS		1
+
+extern vec_t g_brushbounds[MAX_MAP_BRUSHES][2][3];
 
 //=============================================================================
 // solidbsp.c
 extern void     SubdivideFace( face_t* f, face_t** prevptr );
 extern node_t*  SolidBSP( const surfchain_t* const surfhead,
                           brush_t *detailbrushes,
+                          brush_t *surfbrushes,
                           bool report_progress );
 
 //=============================================================================

@@ -111,9 +111,12 @@ static int		WriteDrawLeaf( node_t *node, const node_t *portalleaf )
         // write the leafbrushes
         //
         leaf_p->firstleafbrush = g_bspdata->dleafbrushes.size();
-        for ( size_t bnum = 0; bnum < node->brushcount; bnum++ )
+        for ( brush_t *b = node->brushlist; b; b = b->next )
         {
-                int brushnum = node->brushlist[bnum];
+                int brushnum = b->originalbrushnum;
+                ThreadLock();
+                Verbose( "Leaf %i has brush %i\n", g_bspdata->numleafs - 1, brushnum );
+                ThreadUnlock();
                 g_bspdata->dleafbrushes.push_back( brushnum );
         }
         leaf_p->numleafbrushes = g_bspdata->dleafbrushes.size() - leaf_p->firstleafbrush;

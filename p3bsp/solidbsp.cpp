@@ -1251,21 +1251,6 @@ static void MakeLeaf( node_t *leafnode )
         }
         leafnode->boundsbrush = NULL;
 
-        // build a list of brush indices that reside in this leaf
-        std::bitset<MAX_MAP_BRUSHES> brushes_added;
-        for ( surf = leafnode->surfaces; surf; surf = surf->next )
-        {
-                for ( f = surf->faces; f; f = f->next )
-                {
-                        if ( !brushes_added.test( f->brushnum ) )
-                        {
-                                leafnode->brushlist[leafnode->brushcount++] = f->brushnum;
-                                brushes_added.set( f->brushnum );
-                        }
-                }
-                
-        }
-
         if ( !( leafnode->isportalleaf && leafnode->contents == CONTENTS_SOLID ) )
         {
                 nummarkfaces = 0;
@@ -1604,6 +1589,27 @@ static void     BuildBspTree_r( node_t* node )
                 VectorFill( node->loosemaxs, -BOGUS_RANGE );
         }
 
+        brush_t *newlist = nullptr;
+
+        // find brushes in this node
+        for ( brush_t *b = node->brushlist; b; b = b->next )
+        {
+                BSPBoundingBox bbox;
+                bbox.set( g_brushbounds[b->originalbrushnum][0], g_brushbounds[b->originalbrushnum][1] );
+
+                BSPBoundingBox nbbox;
+                nbbox.set( node->mins, node->maxs );
+
+                if ( nbbox.testUnion( bbox ) )
+                {
+                        brush_t *newbrush = NewBrushFromBrush( b );
+                        newbrush->next = newlist;
+                        newlist = newbrush;
+                }
+        }
+
+        node->brushlist = newlist;
+
         int splitdetaillevel = CalcSplitDetaillevel( node );
         FixDetaillevelForDiscardable( node, splitdetaillevel );
         split = SelectPartition( node->surfaces, node, midsplit
@@ -1640,6 +1646,8 @@ static void     BuildBspTree_r( node_t* node )
         node->children[1] = AllocNode();
         node->children[0]->isdetail = split->detaillevel > 0;
         node->children[1]->isdetail = split->detaillevel > 0;
+        node->children[0]->brushlist = node->brushlist;
+        node->children[1]->brushlist = node->brushlist;
 
         // split all the polysurfaces into front and back lists
         SplitNodeSurfaces( allsurfs, node );
@@ -1696,6 +1704,7 @@ static void     BuildBspTree_r( node_t* node )
 // =====================================================================================
 node_t*         SolidBSP( const surfchain_t* const surfhead,
                           brush_t *detailbrushes,
+                          brush_t *surfbrushes,
                           bool report_progress )
 {
         node_t*         headnode;
@@ -1714,6 +1723,7 @@ node_t*         SolidBSP( const surfchain_t* const surfhead,
         headnode = AllocNode();
         headnode->surfaces = surfhead->surfaces;
         headnode->detailbrushes = detailbrushes;
+        headnode->brushlist = surfbrushes;
         headnode->isdetail = false;
         vec3_t brushmins, brushmaxs;
         VectorAddVec( surfhead->mins, -SIDESPACE, brushmins );

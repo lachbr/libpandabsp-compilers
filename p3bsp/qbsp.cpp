@@ -13,6 +13,8 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 #include <windows.h>
 #endif
 
+#include <bitset>
+
 #include "bsp5.h"
 
 /*
@@ -54,6 +56,7 @@ int             g_subdivide_size = DEFAULT_SUBDIVIDE_SIZE;
 
 bool            g_bUseNullTex = DEFAULT_NULLTEX; // "-nonulltex"
 
+vec_t g_brushbounds[MAX_MAP_BRUSHES][2][3];
 
 
 bool g_nohull2 = false;
@@ -528,6 +531,7 @@ brush_t *NewBrushFromBrush( const brush_t *b )
 {
         brush_t *newb;
         newb = AllocBrush();
+        newb->originalbrushnum = b->originalbrushnum;
         side_t *s, **pnews;
         for ( s = b->sides, pnews = &newb->sides; s; s = s->next, pnews = &( *pnews )->next )
         {
@@ -1054,6 +1058,7 @@ static brush_t *ReadBrushes( FILE *file )
                 }
                 brush_t *b;
                 b = AllocBrush();
+                b->originalbrushnum = 0;
                 b->next = brushes;
                 brushes = b;
                 side_t **psn;
@@ -1094,6 +1099,72 @@ static brush_t *ReadBrushes( FILE *file )
         return brushes;
 }
 
+brush_t *MakeBrushListFromSurfs(surfchain_t *surfs)
+{
+        brush_t *brushes = nullptr;
+
+        std::bitset<MAX_MAP_BRUSHES> added;
+        for ( surface_t *surf = surfs->surfaces; surf; surf = surf->next )
+        {
+                for ( face_t *f = surf->faces; f; f = f->next )
+                {
+                        if ( !added.test( f->brushnum ) )
+                        {
+                                dbrush_t *db = &g_bspdata->dbrushes[f->brushnum];
+
+                                brush_t *b;
+                                b = AllocBrush();
+                                b->originalbrushnum = f->brushnum;
+                                b->next = brushes;
+                                brushes = b;
+
+                                side_t **psn;
+                                psn = &b->sides;
+                                for ( int i = 0; i < db->numsides; i++ )
+                                {
+                                        dbrushside_t *dbs = &g_bspdata->dbrushsides[db->firstside + i];
+                                        
+                                        side_t *s;
+                                        s = AllocSide();
+                                        s->plane = g_dplanes[dbs->planenum ^ 1];
+                                        s->w = new Winding( s->plane.normal, s->plane.dist );
+
+                                        // clip against planes of all other sides to
+                                        // generate a winding of the brush side
+                                        for ( int j = 0; j < db->numsides; j++ )
+                                        {
+                                                if ( j == i )
+                                                        continue;
+
+                                                dbrushside_t *other_dbs = &g_bspdata->dbrushsides[db->firstside + j];
+                                                dplane_t pl = g_dplanes[other_dbs->planenum ^ 1];
+                                                if ( !s->w->Chop( pl.normal, pl.dist, NORMAL_EPSILON ) )
+                                                {
+                                                        break;
+                                                }
+                                                        
+                                        }
+
+                                        s->w->RemoveColinearPoints();
+
+                                        s->next = nullptr;
+                                        *psn = s;
+                                        psn = &s->next;
+                                }
+
+                                vec3_t mins, maxs;
+                                CalcBrushBounds( b, mins, maxs );
+                                VectorCopy( mins, g_brushbounds[b->originalbrushnum][0] );
+                                VectorCopy( maxs, g_brushbounds[b->originalbrushnum][1] );
+
+                                added.set( f->brushnum );
+                        }
+                }
+        }
+
+        return brushes;
+}
+
 
 // =====================================================================================
 //  ProcessModel
@@ -1102,6 +1173,7 @@ static bool     ProcessModel()
 {
         surfchain_t*    surfs;
         brush_t			*detailbrushes;
+        brush_t                 *surfbrushes;
         node_t*         nodes;
         dmodel_t*       model;
         int             startleafs;
@@ -1111,6 +1183,7 @@ static bool     ProcessModel()
         if ( !surfs )
                 return false;                                      // all models are done
         detailbrushes = ReadBrushes( brushfiles[0] );
+        surfbrushes = MakeBrushListFromSurfs( surfs );
 
         hlassume( g_bspdata->nummodels < MAX_MAP_MODELS, assume_MAX_MAP_MODELS );
 
@@ -1156,6 +1229,7 @@ static bool     ProcessModel()
         // SolidBSP generates a node tree
         nodes = SolidBSP( surfs,
                           detailbrushes,
+                          surfbrushes,
                           modnum == 0 );
 
         // build all the portals in the bsp tree
