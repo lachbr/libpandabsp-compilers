@@ -11,6 +11,7 @@
 //#include "clhelper.h"
 #include "lights.h"
 #include "qrad.h"
+#include "bsptools.h"
 
 directlight_t *Lights::activelights = nullptr;
 directlight_t* Lights::directlights[MAX_MAP_LEAFS];
@@ -243,85 +244,14 @@ void ParseLightGeneric( entity_t *e, directlight_t *dl )
 
 void SetLightFalloffParams( entity_t *e, directlight_t *dl )
 {
-        float d50 = FloatForKey( e, "_fifty_percent_distance" );
-        dl->start_fade_distance = 0;
-        dl->end_fade_distance = -1;
-        dl->cap_distance = 1.0e22;
-        if ( d50 )
-        {
-                float d0 = FloatForKey( e, "_zero_percent_distance" );
-                if ( d0 < d50 )
-                {
-                        Warning( "light has _fifty_percent_distance of %f but _zero_percent_distance of %f", d50, d0 );
-                        d0 = d50 * 2.0;
-                }
-                float a = 0, b = 1, c = 0;
-                if ( !SolveInverseQuadraticMonotonic( 0, 1.0, d50, 2.0, d0, 256.0, a, b, c ) )
-                {
-                        Warning( "Can't solve quadratic for light %f %f\n", d50, d0 );
-                }
-
-                // it it possible that the parameters couldn't be used because of enforing monoticity. If so, rescale so at
-                // least the 50 percent value is right
-                float v50 = c + d50 * ( b + d50 * a );
-                float scale = 2.0 / v50;
-                a *= scale;
-                b *= scale;
-                c *= scale;
-                dl->quadratic_atten = a;
-                dl->linear_atten = b;
-                dl->constant_atten = c;
-
-                if ( IntForKey( e, "_hardfalloff" ) )
-                {
-                        dl->end_fade_distance = d0;
-                        dl->start_fade_distance = 0.75 * d0 + 0.25 * d50;
-                }
-                else
-                {
-                        // now, we will find the point at which the 1/x term reaches its maximum value, and
-                        // prevent the light from going past there. If a user specifes an extreme falloff, the
-                        // quadratic will start making the light brighter at some distance. We handle this by
-                        // fading it from the minimum brightess point down to zero at 10x the minimum distance
-                        if ( std::fabs( a ) > 0.0 )
-                        {
-                                float flMax = b / ( -2.0 * a );				// where f' = 0
-                                if ( flMax > 0.0 )
-                                {
-                                        dl->cap_distance = flMax;
-                                        dl->start_fade_distance = flMax;
-                                        dl->end_fade_distance = 10.0 * flMax;
-                                }
-                        }
-                }
-        }
-        else
-        {
-                dl->constant_atten = FloatForKey( e, "_constant_attn" );
-                dl->linear_atten = FloatForKey( e, "_linear_attn" );
-                dl->quadratic_atten = FloatForKey( e, "_quadratic_attn" );
-
-                dl->radius = FloatForKey( e, "_distance" );
-
-                // clamp values >= 0
-                if ( dl->constant_atten < EQUAL_EPSILON )
-                        dl->constant_atten = 0.0;
-                if ( dl->linear_atten < EQUAL_EPSILON )
-                        dl->linear_atten = 0.0;
-                if ( dl->quadratic_atten < EQUAL_EPSILON )
-                        dl->quadratic_atten = 0.0;
-                if ( dl->constant_atten < EQUAL_EPSILON &&
-                     dl->linear_atten < EQUAL_EPSILON &&
-                     dl->quadratic_atten < EQUAL_EPSILON )
-                        dl->constant_atten = 1;
-
-                // scale intensity for unit 100 distance
-                float ratio = ( dl->constant_atten + 100 * dl->linear_atten + 100 * 100 * dl->quadratic_atten );
-                if ( ratio > 0 )
-                {
-                        VectorScale( dl->intensity, ratio, dl->intensity );
-                }
-        }
+        lightfalloffparams_t params = GetLightFalloffParams( e, dl->intensity );
+        dl->constant_atten = params.constant_atten;
+        dl->linear_atten = params.linear_atten;
+        dl->quadratic_atten = params.quadratic_atten;
+        dl->radius = params.radius;
+        dl->start_fade_distance = params.start_fade_distance;
+        dl->end_fade_distance = params.end_fade_distance;
+        dl->cap_distance = params.cap_distance;
 }
 
 void ParseLightSpot( entity_t *e, directlight_t *dl )

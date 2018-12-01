@@ -1,3 +1,14 @@
+/**
+ * PANDA3D BSP TOOLS
+ * Copyright (c) CIO Team. All rights reserved.
+ *
+ * @file bsptools.h
+ * @author Brian Lach
+ * @date August 10, 2018
+ *
+ * @desc Tools/helpers shared by the compilers and libpandabsp.
+ */
+
 #ifndef BSPTOOLS_H
 #define BSPTOOLS_H
 
@@ -132,5 +143,17 @@ extern bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float star
                                          float end, BaseBSPEnumerator *surf, int context, float scale = 1.0 );
 
 extern bool enumerate_nodes_along_ray( const Ray &ray, BaseBSPEnumerator *surf, int context, float scale = 1.0 );
+
+struct lightfalloffparams_t
+{
+        float constant_atten;
+        float linear_atten;
+        float quadratic_atten;
+        float radius;
+        float start_fade_distance;
+        float end_fade_distance;
+        float cap_distance;
+};
+extern lightfalloffparams_t GetLightFalloffParams( entity_t *e, LVector3 &intensity );
 
 #endif // BSPTOOLS_H
