@@ -148,9 +148,11 @@ enum
         LUMP_STATICPROPLIGHTING,
         LUMP_VERTNORMALS,
         LUMP_VERTNORMALINDICES,
+        LUMP_CUBEMAPDATA,
+        LUMP_CUBEMAPS,
 };
 
-static const int HEADER_LUMPS = 24;
+static const int HEADER_LUMPS = 26;
 
 typedef struct
 {
@@ -398,6 +400,13 @@ struct dstaticpropvertexdata_t
         unsigned short num_lighting_samples;
 };
 
+struct dcubemap_t
+{
+        int size;
+        int imgofs[6];
+        float pos[3];
+};
+
 typedef struct epair_s
 {
         struct epair_s* next;
@@ -495,6 +504,8 @@ struct bspdata_t
         pvector<colorrgbexp32_t> staticproplighting;
         pvector<dvertex_t> vertnormals;
         pvector<unsigned short> vertnormalindices;
+        pvector<colorrgbexp32_t> cubemapdata;
+        pvector<dcubemap_t> cubemaps;
 
         int      numentities;
         entity_t entities[MAX_MAP_ENTITIES];

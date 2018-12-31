@@ -439,6 +439,8 @@ bspdata_t            *LoadBSPImage( dheader_t* const header )
         CopyLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header );
         CopyLump( LUMP_VERTNORMALS, data->vertnormals, header );
         CopyLump( LUMP_VERTNORMALINDICES, data->vertnormalindices, header );
+        CopyLump( LUMP_CUBEMAPDATA, data->cubemapdata, header );
+        CopyLump( LUMP_CUBEMAPS, data->cubemaps, header );
 
         Free( header );                                          // everything has been copied out
 
@@ -538,6 +540,8 @@ void            WriteBSPFile( bspdata_t *data, const char* const filename )
         AddLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header, bspfile );
         AddLump( LUMP_VERTNORMALS, data->vertnormals, header, bspfile );
         AddLump( LUMP_VERTNORMALINDICES, data->vertnormalindices, header, bspfile );
+        AddLump( LUMP_CUBEMAPDATA, data->cubemapdata, header, bspfile );
+        AddLump( LUMP_CUBEMAPS, data->cubemaps, header, bspfile );
 
         fseek( bspfile, 0, SEEK_SET );
         SafeWrite( bspfile, header, sizeof( dheader_t ) );
