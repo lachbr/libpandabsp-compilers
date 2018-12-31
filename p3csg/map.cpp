@@ -962,6 +962,28 @@ bool            ParseMapEntity()
                 }
         }
 
+        if ( !strcmp( ValueForKey( mapent, "classname" ), "env_cubemap" ) )
+        {
+                // consume env_cubemap, emit it to dcubemap_t in bsp file
+                dcubemap_t dcm;
+                for ( int i = 0; i < 6; i++ )
+                {
+                        // this will be filled in when you build cubemaps in the engine
+                        dcm.imgofs[i] = -1;
+                }
+
+                vec3_t origin;
+                GetVectorForKey( mapent, "origin", origin );
+                VectorCopy( origin, dcm.pos );
+
+                dcm.size = IntForKey( mapent, "size" );
+
+                g_bspdata->cubemaps.push_back( dcm );
+
+                DeleteCurrentEntity( mapent );
+                return true;
+        }
+
         if ( !strcmp( ValueForKey( mapent, "classname" ), "prop_static" ) )
         {
                 // static props are consumed and emitted to the BSP file

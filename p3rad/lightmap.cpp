@@ -611,7 +611,7 @@ bool BuildSamples( lightinfo_t *l, facelight_t *fl, int facenum )
         LVector3 snorm( 1.0, 0.0, 0.0 );
         LVector3 tnorm( 0.0, 1.0, 0.0 );
 
-        float sample_offset = 0.5;//1.0;
+        float sample_offset = 1.0;
 
         //
         // clip the lightmap "spaced" winding by the lightmap cutting planes
