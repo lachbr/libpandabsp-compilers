@@ -16,7 +16,6 @@ int				g_max_map_lightdata = DEFAULT_MAX_MAP_LIGHTDATA;
 
 bspdata_t *g_bspdata = nullptr;
 
-std::string g_tex_contents_file = DEFAULT_TEXCONTENTS_FILE;
 map<string, contents_t> g_tex_contents;
 
 /*
@@ -390,8 +389,6 @@ bspdata_t            *LoadBSPFile( const char* const filename )
 // =====================================================================================
 bspdata_t            *LoadBSPImage( dheader_t* const header )
 {
-        LoadTextureContents();
-
         unsigned int     i;
 
         // swap the header
@@ -1616,58 +1613,51 @@ entity_t*       EntityForModel( bspdata_t *data, const int modnum )
         return &data->entities[0];
 }
 
-void SetTextureContentsFile( const char *path )
+// =====================================================================================
+
+void SetTextureContents( const char *texname, contents_t contents )
 {
-        g_tex_contents_file = path;
+        g_tex_contents[texname] = contents;
 }
 
-void LoadTextureContents()
+void SetTextureContents( const char *texname, const char *contents )
 {
-        g_tex_contents.clear();
+        SetTextureContents( texname, ContentsFromName( contents ) );
+}
 
-        g_tex_contents["NULL"] = CONTENTS_NULL;
-        g_tex_contents["SKIP"] = CONTENTS_NULL;
+contents_t ContentsFromName( const char *contents )
+{
+        if ( !strncmp( contents, "solid", 5 ) )
+                return CONTENTS_SOLID;
 
-        char *buffer;
-        LoadFile( g_tex_contents_file.c_str(), &buffer );
-        string strbuf = buffer;
+        else if ( !strncmp( contents, "empty", 5 ) )
+                return CONTENTS_EMPTY;
 
-        vector<string> lines = explode( "\n", strbuf );
-        for ( size_t linenum = 0; linenum < lines.size(); linenum++ )
-        {
-                string texdata = lines[linenum];
-                vector<string> tex_and_contents = explode( " ", texdata );
-                string tex = tex_and_contents[0];
-                string contents = tex_and_contents[1];
-                transform( contents.begin(), contents.end(), contents.begin(), tolower );
+        else if ( !strncmp( contents, "sky", 3 ) )
+                return CONTENTS_SKY;
 
-                if ( !strncmp( contents.c_str(), "solid", 5 ) )
-                        g_tex_contents[tex] = CONTENTS_SOLID;
-                else if ( !strncmp( contents.c_str(), "empty", 5 ) )
-                        g_tex_contents[tex] = CONTENTS_EMPTY;
-                else if ( !strncmp( contents.c_str(), "sky", 3 ) )
-                        g_tex_contents[tex] = CONTENTS_SKY;
-                else if ( !strncmp( contents.c_str(), "slime", 5 ) )
-                        g_tex_contents[tex] = CONTENTS_SLIME;
-                else if ( !strncmp( contents.c_str(), "water", 5 ) )
-                        g_tex_contents[tex] = CONTENTS_WATER;
-                else if ( !strncmp( contents.c_str(), "translucent", 11 ) )
-                        g_tex_contents[tex] = CONTENTS_TRANSLUCENT;
-                else if ( !strncmp( contents.c_str(), "hint", 4 ) )
-                        g_tex_contents[tex] = CONTENTS_HINT;
-                else if ( !strncmp( contents.c_str(), "null", 4 ) )
-                        g_tex_contents[tex] = CONTENTS_NULL;
-                else if ( !strncmp( contents.c_str(), "boundingbox", 11 ) )
-                        g_tex_contents[tex] = CONTENTS_BOUNDINGBOX;
-                else if ( !strncmp( contents.c_str(), "origin", 6 ) )
-                        g_tex_contents[tex] = CONTENTS_ORIGIN;
-                else
-                        g_tex_contents[tex] = CONTENTS_SOLID;
+        else if ( !strncmp( contents, "slime", 5 ) )
+                return CONTENTS_SLIME;
 
-                cout << tex << " is contents " << g_tex_contents[tex] << endl;
-        }
+        else if ( !strncmp( contents, "water", 5 ) )
+                return CONTENTS_WATER;
 
-        delete buffer;
+        else if ( !strncmp( contents, "translucent", 11 ) )
+                return CONTENTS_TRANSLUCENT;
+
+        else if ( !strncmp( contents, "hint", 4 ) )
+                return CONTENTS_HINT;
+
+        else if ( !strncmp( contents, "null", 4 ) )
+                return CONTENTS_NULL;
+
+        else if ( !strncmp( contents, "boundingbox", 11 ) )
+                return CONTENTS_BOUNDINGBOX;
+
+        else if ( !strncmp( contents, "origin", 6 ) )
+                return CONTENTS_ORIGIN;
+
+        return CONTENTS_SOLID;
 }
 
 contents_t GetTextureContents( const char *texname )
@@ -1679,6 +1669,8 @@ contents_t GetTextureContents( const char *texname )
 
         return CONTENTS_SOLID;
 }
+
+// =====================================================================================
 
 LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
 {

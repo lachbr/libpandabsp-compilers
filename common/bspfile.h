@@ -9,8 +9,6 @@
 #pragma once
 #endif
 
-#define DEFAULT_TEXCONTENTS_FILE "D:\\OTHER\\lachb\\Documents\\cio\\cio-panda3d\\built_x64\\bin\\texturecontents.txt"
-
 #define PBSP_MAGIC ( ( 'P' << 24 ) + ( 'S' << 16 ) + ( 'B' << 8 ) + 'P' )
 
 #define DEFAULT_LIGHTMAP_SIZE 16.0
@@ -563,10 +561,10 @@ extern void CDECL dtexdata_free();
 extern char*    GetTextureByNumber( bspdata_t *data, int texturenumber );
 
 extern map<string, contents_t> g_tex_contents;
-extern std::string g_tex_contents_file;
-extern void SetTextureContentsFile( const char *path );
-extern void LoadTextureContents();
+extern void SetTextureContents( const char *texname, const char *contents );
+extern void SetTextureContents( const char *texname, contents_t contents );
 extern contents_t GetTextureContents( const char *texname );
+extern contents_t ContentsFromName( const char *name );
 
 extern LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
 INLINE extern colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
