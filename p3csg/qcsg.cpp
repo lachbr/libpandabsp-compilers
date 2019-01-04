@@ -16,6 +16,9 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 #include <windows.h> //--vluzacn
 #endif
 
+#include <virtualFileSystem.h>
+#include <load_prc_file.h>
+
 /*
 
 NOTES
@@ -1509,6 +1512,8 @@ int             main( const int argc, char** argv )
         double          start, end;                 // start/end time log
         const char*     mapname_from_arg = NULL;    // mapname path from passed argvar
 
+        load_prc_file_data( "p3csg", "notify-level-bspmaterial info" );
+
         g_Program = "p3csg";
 
         int argcold = argc;
@@ -1525,9 +1530,6 @@ int             main( const int argc, char** argv )
                         // mapmakers wont cause beta testers (or possibly end users) to get a wad 
                         // error on zhlt.wad etc
                         //g_WadInclude.push_back("zhlt.wad");
-
-                        // Make sure we know which textures are sky, water, etc.
-                        LoadTextureContents();
 
                         InitDefaultHulls();
 
@@ -1764,6 +1766,38 @@ int             main( const int argc, char** argv )
                                 {
                                         g_resetlog = false;
                                 }
+                                else if ( !strcasecmp( argv[i], "-mfdir" ) )
+                                {
+                                        if ( i + 1 < argc )
+                                        {
+                                                VirtualFileSystem *vfs = VirtualFileSystem::get_global_ptr();
+
+                                                PT( VirtualFileList ) list = vfs->scan_directory( argv[++i] );
+
+                                                if ( !list )
+                                                {
+                                                        Warning( "%s is not a valid directory, no multifiles mounted", argv[i] );
+                                                        continue;
+                                                }
+
+                                                for ( size_t filenum = 0; filenum < list->get_num_files(); filenum++ )
+                                                {
+                                                        Filename fn = list->get_file( filenum )->get_filename();
+
+                                                        if ( fn.get_extension() != "mf" )
+                                                                continue;
+
+                                                        Log( "Mounting multifile %s\n", fn.get_fullpath().c_str() );
+                                                        VirtualFileSystem::get_global_ptr()->mount( fn,
+                                                                                                    Filename( "." ),
+                                                                                                    VirtualFileSystem::MF_read_only );
+                                                }
+                                        }
+                                        else
+                                        {
+                                                Usage();
+                                        }
+                                }
                                 else if ( !strcasecmp( argv[i], "-nolightopt" ) )
                                 {
                                         g_nolightopt = true;
@@ -1782,6 +1816,7 @@ int             main( const int argc, char** argv )
                                 {
                                         g_nullifytrigger = false;
                                 }
+                               
                                 else if ( argv[i][0] == '-' )
                                 {
                                         Log( "Unknown option \"%s\"\n", argv[i] );

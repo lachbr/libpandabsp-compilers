@@ -1,9 +1,6 @@
 #include "qrad.h"
-#include <virtualFileSystem.h>
-#include <texturePool.h>
 
-#include <viftokenizer.h>
-#include <vifparser.h>
+#include <bsp_material.h>
 
 #ifdef WORDS_BIGENDIAN
 #error "HLRAD_TEXTURE doesn't support WORDS_BIGENDIAN, because I have no big endian machine to test it"
@@ -30,8 +27,6 @@ void LoadTextures()
                 Log( "Load Textures:\n" );
         }
 
-        VirtualFileSystem *vfs = VirtualFileSystem::get_global_ptr();
-
         g_numtextures = g_bspdata->numtexrefs;
         g_textures = (radtexture_t *)malloc( g_numtextures * sizeof( radtexture_t ) );
         hlassume( g_textures != NULL, assume_NoMemory );
@@ -51,46 +46,38 @@ void LoadTextures()
                         texref_t *tref = &g_bspdata->dtexrefs[i];
                         string name = tref->name;
                         Filename fname = Filename::from_os_specific( name );
-                        if ( !vfs->exists( fname ) )
+                        Log( "Loading material %s\n", fname.get_fullpath().c_str() );
+
+                        const BSPMaterial *mat = BSPMaterial::get_from_file( fname );
+                        if ( !mat )
                         {
-                                Warning( "Material %s not found", fname.get_fullpath().c_str() );
+                                Error( "Material %s not found!", fname.get_fullpath().c_str() );
                                 continue;
                         }
-                                
-                        string mdata = vfs->read_file( fname, true );
-                        TokenVec toks = tokenizer( mdata );
-                        Parser p( toks );
-                        Object obj = p._base_objects[0];
-                        std::cout << obj.name << std::endl;
-                        for ( size_t n = 0; n < obj.properties.size(); n++ )
+                        if ( g_tex_contents.find( name ) == g_tex_contents.end() )
                         {
-                                std::cout << "\t" << obj.properties[n].name << "\t:\t" << obj.properties[n].value << std::endl;
+                                SetTextureContents( tref->name, mat->get_contents().c_str() );
                         }
 
-                        if ( !p.has_property( obj, "$basetexture" ) )
+                        if ( !mat->has_keyvalue( "$basetexture" ) )
                         {
                                 Warning( "Material %s has no basetexture", fname.get_fullpath().c_str() );
                                 continue;
-                        }
-                                
-
-                        size_t ext_idx = name.find_last_of( "." );
-                        string basename = name.substr( 0, ext_idx );
-                        string ext = name.substr( ext_idx );
+                        }       
 
                         PNMImage *img = new PNMImage;
                         if ( img->read( Filename::from_os_specific(
-                                p.get_property_value( obj, "$basetexture" ) ) ) )
+                                mat->get_keyvalue( "$basetexture" ) ) ) )
                         {
                                 tex->image = img;
                                 strcpy( tex->name, name.c_str() );
                                 tex->name[MAX_TEXTURE_NAME - 1] = '\0';
 
                                 PNMImage *bump = new PNMImage;
-                                if ( p.has_property( obj, "$bumpmap" ) )
+                                if ( mat->has_keyvalue( "$bumpmap" ) )
                                 {
                                         Log( "Loaded RAD texture from %s and corresponding bump map %s.\n", tref->name,
-                                             p.get_property_value( obj, "$bumpmap" ).c_str() );
+                                             mat->get_keyvalue( "$bumpmap" ).c_str() );
                                         tex->bump = bump;
                                 }
                                 else

@@ -99,7 +99,7 @@
       <Optimization>MaxSpeed</Optimization>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <WarningLevel>Level3</WarningLevel>
-      <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\OTHER\lachb\Documents\rpbmStudios\panda_cxx_projs\libpandabsp\include;D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\include;..\common;..\template;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>NOMINMAX;WITHIN_PANDA;HLCSG;VERSION_64BIT;NDEBUG;DOUBLEVEC_T;WIN32;_CONSOLE;SYSTEM_WIN32;STDC_HEADERS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AssemblerListingLocation>.\Release\</AssemblerListingLocation>
       <BrowseInformation>true</BrowseInformation>
@@ -121,12 +121,12 @@
       <SubSystem>Console</SubSystem>
       <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
       <OutputFile>..\Release\p3csg.exe</OutputFile>
-      <AdditionalDependencies>binmode.obj;libpanda.lib;libpandaexpress.lib;libp3dtool.lib;libp3dtoolconfig.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>bsp.lib;binmode.obj;libpanda.lib;libpandaexpress.lib;libp3dtool.lib;libp3dtoolconfig.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <StackReserveSize>4194304</StackReserveSize>
       <StackCommitSize>1048576</StackCommitSize>
       <EnableUAC>false</EnableUAC>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>D:\OTHER\lachb\Documents\rpbmStudios\panda_cxx_projs\libpandabsp\Release;D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

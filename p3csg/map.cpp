@@ -2,6 +2,8 @@
 
 #include "csg.h"
 
+#include <bsp_material.h>
+
 int             g_nummapbrushes;
 brush_t         g_mapbrushes[MAX_MAP_BRUSHES];
 
@@ -268,6 +270,17 @@ static void ParseBrush( entity_t* mapent )
                 GetToken( false );
                 //_strupr(g_token);
                 string strtoken = g_token;
+
+                const BSPMaterial *mat = BSPMaterial::get_from_file( strtoken );
+                if ( !mat )
+                {
+                        Error( "Material %s not found!", g_token );
+                }
+                if ( g_tex_contents.find( strtoken ) == g_tex_contents.end() )
+                {
+                        SetTextureContents( g_token, mat->get_contents().c_str() );
+                }
+
                 {
                         if ( !strncasecmp( g_token, "BEVELBRUSH", 10 ) )
                         {

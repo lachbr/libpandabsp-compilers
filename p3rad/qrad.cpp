@@ -2472,6 +2472,7 @@ int             main( const int argc, char** argv )
                                                 Usage();
                                         }
                                 }
+                                /*
                                 else if ( !strcasecmp( argv[i], "-mfincludefile" ) )
                                 {
                                         if ( i + 1 < argc )
@@ -2484,6 +2485,7 @@ int             main( const int argc, char** argv )
                                                 Usage();
                                         }
                                 }
+                                */
                                 else if ( !strcasecmp( argv[i], "-dev" ) )
                                 {
                                         if ( i + 1 < argc )	//added "1" .--vluzacn
@@ -2502,6 +2504,38 @@ int             main( const int argc, char** argv )
                                 else if ( !strcasecmp( argv[i], "-noinfo" ) )
                                 {
                                         g_info = false;
+                                }
+                                else if ( !strcasecmp( argv[i], "-mfdir" ) )
+                                {
+                                        if ( i + 1 < argc )
+                                        {
+                                                VirtualFileSystem *vfs = VirtualFileSystem::get_global_ptr();
+
+                                                PT( VirtualFileList ) list = vfs->scan_directory( argv[++i] );
+
+                                                if ( !list )
+                                                {
+                                                        Warning( "%s is not a valid directory, no multifiles mounted", argv[i] );
+                                                        continue;
+                                                }
+
+                                                for ( size_t filenum = 0; filenum < list->get_num_files(); filenum++ )
+                                                {
+                                                        Filename fn = list->get_file( filenum )->get_filename();
+
+                                                        if ( fn.get_extension() != "mf" )
+                                                                continue;
+
+                                                        Log( "Mounting multifile %s\n", fn.get_fullpath().c_str() );
+                                                        VirtualFileSystem::get_global_ptr()->mount( fn,
+                                                                                                    Filename( "." ),
+                                                                                                    VirtualFileSystem::MF_read_only );
+                                                }
+                                        }
+                                        else
+                                        {
+                                                Usage();
+                                        }
                                 }
                                 else if ( !strcasecmp( argv[i], "-threads" ) )
                                 {
@@ -2726,7 +2760,7 @@ int             main( const int argc, char** argv )
                         dtexdata_init();
                         atexit( dtexdata_free );
 
-                        ReadMFIncludeFile();
+                        //ReadMFIncludeFile();
 
                         // END INIT
 
@@ -2840,6 +2874,7 @@ int             main( const int argc, char** argv )
         return 0;
 }
 
+/*
 void ReadMFIncludeFile()
 {
         Log( "Multifile include file is %s.\n", g_mfincludefile.c_str() );
@@ -2862,3 +2897,4 @@ void ReadMFIncludeFile()
 
         delete buffer;
 }
+*/
