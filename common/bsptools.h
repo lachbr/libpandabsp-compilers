@@ -19,6 +19,13 @@
 #define TEST_EPSILON 0.03125
 #define DIST_EPSILON 0.03125
 
+INLINE LVector3 angles_to_vector( const vec3_t &angles )
+{
+        return LVector3( cos( deg_2_rad( angles[0] ) ) * cos( deg_2_rad( angles[1] ) ),
+                sin( deg_2_rad( angles[0] ) ) * cos( deg_2_rad( angles[1] ) ),
+                sin( deg_2_rad( angles[1] ) ) );
+}
+
 struct Ray
 {
         Ray( const LPoint3 &s, const LPoint3 &e,
