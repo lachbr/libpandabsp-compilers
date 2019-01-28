@@ -7,6 +7,7 @@
 #include <collisionSegment.h>
 #include <collisionPlane.h>
 #include <lightMutex.h>
+#include <boundingBox.h>
 
 #include "mathtypes.h"
 
@@ -97,6 +98,7 @@ struct RADStaticProp
         NodePath mdl;
         bool shadows;
         int propnum;
+		PT( BoundingBox ) bounds;
 
         byte *pvs;
 };

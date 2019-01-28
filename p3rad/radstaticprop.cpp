@@ -58,6 +58,15 @@ void LoadStaticProps()
                         propnp.set_pos( prop->pos[0], prop->pos[1], prop->pos[2] );
                         propnp.set_hpr( prop->hpr[1] - 90, prop->hpr[0], prop->hpr[2] );
 
+						// Generate a bounding box for the prop, we can reduce the number of tests this way.
+						LPoint3 mins, maxs;
+						propnp.calc_tight_bounds( mins, maxs );
+						// World space aabb
+						PT(BoundingBox) bounds = new BoundingBox( mins, maxs );
+						//bounds->xform( propnp.get_net_transform()->get_mat() );
+						bounds->output(std::cout);
+						std::cout << std::endl;
+
                         // Which leaf does the prop reside in?
                         dleaf_t *leaf = PointInLeaf( prop->pos );
 
@@ -68,6 +77,7 @@ void LoadStaticProps()
                         sprop->leafnum = leaf - g_bspdata->dleafs;
                         sprop->mdl = propnp;
                         sprop->propnum = (int)i;
+						sprop->bounds = bounds;
                         sprop->pvs = (byte *)calloc( 1, ( MAX_MAP_LEAFS + 7 ) / 8 );
                         DecompressVis( g_bspdata, &g_bspdata->dvisdata[leaf->visofs], sprop->pvs, ( MAX_MAP_LEAFS + 7 ) / 8 );
 
@@ -132,18 +142,11 @@ void LoadStaticProps()
 
 bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leafnum )
 {
-        //LightMutexHolder holder( g_prop_lock );
 
         if ( start[0] == stop[0] && start[1] == stop[1] && start[2] == stop[2] )
         {
                 return false;
         }
-
-        int thread = GetCurrentThreadNumber();
-        TestGroup *tg = &g_test_groups[thread];
-
-        tg->seg->set_point_a( start[0], start[1], start[2] );
-        tg->seg->set_point_b( stop[0], stop[1], stop[2] );
 
         for ( size_t i = 0; i < g_caster_props.size(); i++ )
         {
@@ -152,6 +155,11 @@ bool StaticPropIntersectionTest( const vec3_t start, const vec3_t stop, int leaf
                 // is prop potentially visible?
                 if ( !PVSCheck( sprop->pvs, leafnum ) )
                         continue;
+
+				// does aabb of prop intersect the line?
+				if ( sprop->bounds->contains( LPoint3( start[0], start[1], start[2] ),
+					                          LPoint3( stop[0], stop[1], stop[2] ) ) == BoundingVolume::IF_no_intersection )
+					continue;
 
                 for ( size_t polynum = 0; polynum < sprop->polygons.size(); polynum++ )
                 {
