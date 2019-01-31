@@ -1,6 +1,7 @@
 #include "qrad.h"
 
 #include <bsp_material.h>
+#include <vifparser.h>
 
 #ifdef WORDS_BIGENDIAN
 #error "HLRAD_TEXTURE doesn't support WORDS_BIGENDIAN, because I have no big endian machine to test it"
@@ -37,6 +38,9 @@ void LoadTextures()
                 tex->bump = nullptr;
                 tex->image = nullptr;
 
+                bool b_explicit_reflectivity = false;
+                LVector3 explicit_reflectivity;
+
                 if ( g_notextures )
                 {
                         DefaultTexture( tex, "DEFAULT" );
@@ -63,7 +67,13 @@ void LoadTextures()
                         {
                                 Warning( "Material %s has no basetexture", fname.get_fullpath().c_str() );
                                 continue;
-                        }       
+                        }
+
+                        if ( mat->has_keyvalue( "$reflectivity" ) )
+                        {
+                                b_explicit_reflectivity = true;
+                                explicit_reflectivity = Parser::to_3f( mat->get_keyvalue( "$reflectivity" ) );
+                        }
 
                         PNMImage *img = new PNMImage;
                         if ( img->read( Filename::from_os_specific(
@@ -94,7 +104,7 @@ void LoadTextures()
                         }
                 }
 
-
+                if ( !b_explicit_reflectivity )
                 {
                         vec3_t total;
                         VectorClear( total );
@@ -123,6 +133,14 @@ void LoadTextures()
                         {
                                 Warning( "Texture '%s': reflectivity (%f,%f,%f) greater than 1.0.", tex->name, tex->reflectivity[0], tex->reflectivity[1], tex->reflectivity[2] );
                         }
+                }
+                else
+                {
+                        explicit_reflectivity[0] = pow( explicit_reflectivity[0], g_texreflectgamma );
+                        explicit_reflectivity[1] = pow( explicit_reflectivity[1], g_texreflectgamma );
+                        explicit_reflectivity[2] = pow( explicit_reflectivity[2], g_texreflectgamma );
+                        explicit_reflectivity *= g_texreflectscale;
+                        VectorCopy( explicit_reflectivity, tex->reflectivity );
                 }
         }
         if ( !g_notextures )

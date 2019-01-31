@@ -79,7 +79,7 @@ bool LightSurface::enumerate_leaf( int leaf_id, const Ray &ray, float start,
         dleaf_t *leaf = &g_bspdata->dleafs[leaf_id];
         for ( int i = 0; i < leaf->nummarksurfaces; i++ )
         {
-                dface_t *face = &g_bspdata->dfaces[leaf->firstmarksurface + i];
+                dface_t *face = &g_bspdata->dfaces[g_bspdata->dmarksurfaces[leaf->firstmarksurface + i]];
 
                 if ( face->on_node == 1 )
                 {
@@ -408,12 +408,11 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
 
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
-                LRGBColor avg_color = dface_AvgLightColor( g_bspdata, face, maps );
+                int style = face->styles[maps];
+                LRGBColor avg_color = dface_AvgLightColor( g_bspdata, face, style );
                 LRGBColor color = avg_color;
 
-                compute_ambient_from_surface( face, skylight, color );
-
-                int style = face->styles[maps];
+                compute_ambient_from_surface( face, skylight, color );                
                 colors[style] += color * scale;
         }
 }
