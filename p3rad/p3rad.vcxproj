@@ -194,6 +194,7 @@
     <ClInclude Include="..\common\winding.h" />
     <ClInclude Include="radial.h" />
     <ClInclude Include="radstaticprop.h" />
+    <ClInclude Include="trace.h" />
     <ClInclude Include="vismat.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

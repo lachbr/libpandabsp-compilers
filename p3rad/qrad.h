@@ -85,7 +85,6 @@
 #define DEFAULT_SUBDIVIDE           true
 #define DEFAULT_CHART               false
 #define DEFAULT_INFO                true
-#define DEFAULT_ALLOW_OPAQUES       true
 #define DEFAULT_ALLOW_SPREAD		true
 
 // ------------------------------------------------------------------------
@@ -129,7 +128,6 @@
 #define DEFAULT_TRANSFER_COMPRESS_TYPE FLOAT16
 #define DEFAULT_RGBTRANSFER_COMPRESS_TYPE VECTOR32
 #define DEFAULT_SOFTSKY true
-#define DEFAULT_BLOCKOPAQUE 1
 #define DEFAULT_TRANSLUCENTDEPTH 2.0f
 #define DEFAULT_NOTEXTURES false
 #define DEFAULT_TEXREFLECTGAMMA 2.2f // 2.0(texgamma cvar) / 2.5 (gamma cvar) * 2.2 (screen gamma) = 1.76
@@ -367,36 +365,6 @@ struct SSE_sampleLightInput_t
         int epsilon;
 };
 
-//
-// lerp.c stuff
-//
-
-// These are bitflags for lighting adjustments for special cases
-typedef enum
-{
-        eModelLightmodeNull = 0,
-        eModelLightmodeOpaque = 0x02,
-        eModelLightmodeNonsolid = 0x08, // for opaque entities with {texture
-}
-eModelLightmodes;
-
-
-typedef struct
-{
-        int entitynum;
-        int modelnum;
-        vec3_t origin;
-
-        vec3_t transparency_scale;
-        bool transparency;
-        int style; // -1 = no style; transparency must be false if style >= 0
-                   // style0 and same style will change to this style, other styles will be blocked.
-        bool block; // this entity can't be seen inside, so all lightmap sample should move outside.
-
-} opaqueList_t;
-
-#define OPAQUE_ARRAY_GROWTH_SIZE 1024
-
 extern vector_string g_multifiles; // for loading textures and static props
 extern string g_mfincludefile;
 
@@ -423,7 +391,6 @@ extern int             nodeparents[MAX_MAP_NODES];
 
 extern entity_t* g_face_entity[MAX_MAP_FACES];
 extern vec3_t   g_face_offset[MAX_MAP_FACES];              // for models with origins
-extern eModelLightmodes g_face_lightmode[MAX_MAP_FACES];
 extern vec3_t   g_face_centroids[MAX_MAP_EDGES];
 
 extern float    g_lightscale;
@@ -538,9 +505,6 @@ extern vec_t    g_chop;    // Chop value for normal textures
 extern vec_t    g_texchop; // Chop value for texture lights
 extern vec_t    g_minchop;
 extern vec_t    g_maxchop;
-extern opaqueList_t* g_opaque_face_list;
-extern unsigned      g_opaque_face_count; // opaque entity count //HLRAD_OPAQUE_NODE
-extern unsigned      g_max_opaque_face_count;    // Current array maximum (used for reallocs)
 
 
                                                  // ------------------------------------------------------------------------
@@ -564,7 +528,6 @@ extern const vec3_t vec3_one;
 extern float g_transtotal_hack;
 extern unsigned char g_minlight;
 extern bool g_softsky;
-extern int g_blockopaque;
 extern bool g_drawpatch;
 extern bool g_drawsample;
 extern vec3_t g_drawsample_origin;
@@ -590,7 +553,6 @@ extern vec_t g_texlightgap;
 extern vec_t g_skysamplescale;
 
 extern void     DetermineLightmapMemory();
-extern void     MakeTnodes( dmodel_t* bm );
 extern void     PairEdges();
 extern void     BuildFacelights( int facenum );
 extern void     PrecompLightmapOffsets();
@@ -599,45 +561,7 @@ extern void		ReduceLightmap();
 extern void		ScaleDirectLights(); // run before AddPatchLights
 extern void		CreateFacelightDependencyList(); // run before AddPatchLights
 extern void		FreeFacelightDependencyList();
-extern void     TestFourLines( const FourVectors &start, const FourVectors &end, fltx4 *fraction4,
-                               int contents_mask = CONTENTS_EMPTY, bool test_static_props = false );
-extern int      TestLine( const vec3_t start, const vec3_t stop, bool test_static_props = false, vec_t *skyhitout = NULL );
-extern int      TestLine( const vec3_t start, const vec3_t stop,
-                          float &total_fraction_visible, bool test_static_props = false, vec_t *skyhitout = NULL );
 extern void MakeTransfer( int patchidx1, int patchidx2, transfer_t *all_transfers );
-#define OPAQUE_NODE_INLINECALL
-#ifdef OPAQUE_NODE_INLINECALL
-typedef struct
-{
-        vec3_t mins, maxs;
-        int headnode;
-} opaquemodel_t;
-extern opaquemodel_t *opaquemodels;
-#endif
-extern void		CreateOpaqueNodes();
-extern int		TestLineOpaque( int modelnum, const vec3_t modelorigin, const vec3_t start, const vec3_t stop );
-extern int		CountOpaqueFaces( int modelnum );
-extern void		DeleteOpaqueNodes();
-#ifdef OPAQUE_NODE_INLINECALL
-extern int TestPointOpaque_r( int nodenum, bool solid, const vec3_t point );
-FORCEINLINE int TestPointOpaque( int modelnum, const vec3_t modelorigin, bool solid, const vec3_t point ) // use "forceinline" because "inline" does nothing here
-{
-        opaquemodel_t *thismodel = &opaquemodels[modelnum];
-        vec3_t newpoint;
-        VectorSubtract( point, modelorigin, newpoint );
-        int axial;
-        for ( axial = 0; axial < 3; axial++ )
-        {
-                if ( newpoint[axial] > thismodel->maxs[axial] )
-                        return 0;
-                if ( newpoint[axial] < thismodel->mins[axial] )
-                        return 0;
-        }
-        return TestPointOpaque_r( thismodel->headnode, solid, newpoint );
-}
-#else
-extern int		TestPointOpaque( int modelnum, const vec3_t modelorigin, bool solid, const vec3_t point );
-#endif
 
 extern void     GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &phongnormal );
 
@@ -655,7 +579,6 @@ extern void     MakeBackplanes();
 extern const dplane_t* getPlaneFromFace( const dface_t* const face );
 extern const dplane_t* getPlaneFromFaceNumber( unsigned int facenum );
 extern void     getAdjustedPlaneFromFaceNumber( unsigned int facenum, dplane_t* plane );
-extern dleaf_t* HuntForWorld( vec_t* point, const vec_t* plane_offset, const dplane_t* plane, int hunt_size, vec_t hunt_scale, vec_t hunt_offset );
 extern void		ApplyMatrix( const matrix_t &m, const vec3_t in, vec3_t &out );
 extern void		ApplyMatrixOnPlane( const matrix_t &m_inverse, const vec3_t in_normal, vec_t in_dist, vec3_t &out_normal, vec_t &out_dist );
 extern void		MultiplyMatrix( const matrix_t &m_left, const matrix_t &m_right, matrix_t &m );
@@ -665,21 +588,12 @@ extern matrix_t	MatrixForScale( const vec3_t center, vec_t scale );
 extern vec_t	CalcMatrixSign( const matrix_t &m );
 extern void		TranslateWorldToTex( int facenum, matrix_t &m );
 extern bool		InvertMatrix( const matrix_t &m, matrix_t &m_inverse );
-extern void		FindFacePositions( int facenum );
-extern void		FreePositionMaps();
-extern bool		FindNearestPosition( int facenum, const Winding *texwinding, const dplane_t &texplane, vec_t s, vec_t t, vec3_t &pos, vec_t *best_s, vec_t *best_t, vec_t *best_dist
-                                             , bool *nudged
-);
 
 // transfers.c
 extern size_t   g_total_transfer;
 extern void     MakeScales( int patch, transfer_t *all_transfers );
 
 // mathutil.c
-extern bool     TestSegmentAgainstOpaqueList( const vec_t* p1, const vec_t* p2
-                                              , vec3_t &scaleout
-                                              , int &opaquestyleout
-);
 extern bool     intersect_linesegment_plane( const dplane_t* const plane, const vec_t* const p1, const vec_t* const p2, vec3_t point );
 extern void     plane_from_points( const vec3_t p1, const vec3_t p2, const vec3_t p3, dplane_t* plane );
 extern bool     point_in_winding( const Winding& w, const dplane_t& plane, const vec_t* point
@@ -689,14 +603,5 @@ extern bool     point_in_winding_noedge( const Winding& w, const dplane_t& plane
 extern void     snap_to_winding( const Winding& w, const dplane_t& plane, vec_t* point );
 extern vec_t	snap_to_winding_noedge( const Winding& w, const dplane_t& plane, vec_t* point, vec_t width, vec_t maxmove );
 extern void     SnapToPlane( const dplane_t* const plane, vec_t* const point, vec_t offset );
-extern vec_t	CalcSightArea( const vec3_t receiver_origin, const vec3_t receiver_normal, const Winding *emitter_winding, int skylevel
-                               , vec_t lighting_power, vec_t lighting_scale
-);
-extern vec_t	CalcSightArea_SpotLight( const vec3_t receiver_origin, const vec3_t receiver_normal, const Winding *emitter_winding, const vec3_t emitter_normal, vec_t emitter_stopdot, vec_t emitter_stopdot2, int skylevel
-                                         , vec_t lighting_power, vec_t lighting_scale
-);
-extern void		GetAlternateOrigin( const vec3_t pos, const vec3_t normal, const patch_t *patch, vec3_t &origin );
-
-extern void	ReadMFIncludeFile();
 
 #endif //HLRAD_H__

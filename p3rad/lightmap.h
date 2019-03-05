@@ -138,4 +138,6 @@ extern void GatherSampleLightSSE( SSE_sampleLightOutput_t &output, directlight_t
 
 extern void SaveVertexNormals();
 
+extern int EdgeVertex( dface_t *f, int edge );
+
 #endif // LIGHTMAP_H

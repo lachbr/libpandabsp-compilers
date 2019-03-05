@@ -4,6 +4,7 @@
 #include "halton.h"
 #include "anorms.h"
 #include "bsptools.h"
+#include "trace.h"
 
 #include <CL/cl.h>
 
@@ -1005,7 +1006,7 @@ void GatherSampleSkyLightSSE( SSE_sampleLightInput_t &input, SSE_sampleLightOutp
                 delta4 += input.pos;
 
                 fltx4 this_fraction;
-                TestFourLines( input.pos, delta4, &this_fraction, CONTENTS_SKY, true );
+                RADTrace::test_four_lines( input.pos, delta4, &this_fraction, CONTENTS_SKY, true );
 
                 total_frac_vis = AddSIMD( total_frac_vis, this_fraction );
         }
@@ -1094,7 +1095,7 @@ void GatherSampleAmbientSkySSE( SSE_sampleLightInput_t &input, SSE_sampleLightOu
                 surface_pos -= offset;
 
                 fltx4 fraction_visible4;
-                TestFourLines( surface_pos, delta, &fraction_visible4, CONTENTS_SKY, true );
+                RADTrace::test_four_lines( surface_pos, delta, &fraction_visible4, CONTENTS_SKY, true );
                 for ( int i = 0; i < input.normal_count; i++ )
                 {
                         fltx4 added_amt = MulSIMD( fraction_visible4, dots[i] );
@@ -1251,7 +1252,7 @@ void GatherSampleLightStandardSSE( SSE_sampleLightInput_t &input, SSE_sampleLigh
 
         // ray trace for visibility
         fltx4 fraction_visible4;
-        TestFourLines( input.pos, src, &fraction_visible4, CONTENTS_EMPTY, true );
+        RADTrace::test_four_lines( input.pos, src, &fraction_visible4, CONTENTS_EMPTY, true );
         dot = MulSIMD( fraction_visible4, dot );
         out.dot[0] = dot;
 

@@ -3,6 +3,7 @@
 #include "cmdlib.h"
 #include "log.h"
 #include "qrad.h"
+#include "trace.h"
 #include <bitset>
 
 #define HALFBIT
@@ -116,7 +117,7 @@ void TestPatchToPatch( int patchidx1, int patchidx2, int head, transfer_t *trans
                 VectorAdd( patch->origin, patch->normal, p1 );
                 VectorAdd( patch2->origin, patch2->normal, p2 );
                 float frac_vis = 0.0;
-                int contents = TestLine( p1, p2 );
+                int contents = RADTrace::test_line( p1, p2 );
                 if ( contents == CONTENTS_EMPTY )
                 {
                         // line traced from patch1 to patch2 without hitting anything

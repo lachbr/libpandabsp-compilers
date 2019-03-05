@@ -5,6 +5,7 @@
 #include "anorms.h"
 #include "lightingutils.h"
 #include "lights.h"
+#include "trace.h"
 
 #include <aa_luse.h>
 #include <randomizer.h>
@@ -249,7 +250,7 @@ void add_emit_surface_lights( const LVector3 &start, LVector3 *cube )
                 vec3_t vorg;
                 VectorCopy( dl->origin, vorg );
 
-                if ( TestLine( vstart, vorg ) == CONTENTS_SOLID )
+                if ( RADTrace::test_line( vstart, vorg ) == CONTENTS_SOLID )
                 {
                         continue;
                 }

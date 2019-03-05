@@ -55,11 +55,16 @@ A simple summary of RAD goes as follows:
 #include "leaf_ambient_lighting.h"
 #include "lights.h"
 #include "vismat.h"
+#include "trace.h"
 //#include "clhelper.h"
 #include <virtualFileSystem.h>
-
+#include <simpleHashMap.h>
 #include <load_prc_file.h>
+#include <pStatClient.h>
+#include <pStatTimer.h>
 
+static PStatCollector radworld_collector( "RadWorld" );
+static PStatCollector bfl_collector( "RadWorld:BuildFacelights" );
 
 /*
 * NOTES
@@ -81,7 +86,6 @@ eVisMethods		g_method = DEFAULT_METHOD;
 vec_t           g_fade = DEFAULT_FADE;
 
 entity_t*       g_face_entity[MAX_MAP_FACES];
-eModelLightmodes g_face_lightmode[MAX_MAP_FACES];
 entity_t*		g_face_texlights[MAX_MAP_FACES];
 
 pvector<patch_t> g_patches;
@@ -131,7 +135,6 @@ float			g_smoothing_threshold_2;
 float			g_smoothing_value_2 = DEFAULT_SMOOTHING2_VALUE;
 
 bool            g_circus = DEFAULT_CIRCUS;
-bool            g_allow_opaques = DEFAULT_ALLOW_OPAQUES;
 bool			g_allow_spread = DEFAULT_ALLOW_SPREAD;
 
 pvector<radtimer_t> g_radtimers;
@@ -150,7 +153,6 @@ bool		g_rgb_transfers = DEFAULT_RGB_TRANSFERS;
 float		g_transtotal_hack = DEFAULT_TRANSTOTAL_HACK;
 unsigned char g_minlight = DEFAULT_MINLIGHT;
 bool g_softsky = DEFAULT_SOFTSKY;
-int g_blockopaque = DEFAULT_BLOCKOPAQUE;
 bool g_notextures = DEFAULT_NOTEXTURES;
 vec_t g_texreflectgamma = DEFAULT_TEXREFLECTGAMMA;
 vec_t g_texreflectscale = DEFAULT_TEXREFLECTSCALE;
@@ -175,10 +177,6 @@ bool            g_subdivide = DEFAULT_SUBDIVIDE;
 vec_t           g_chop = DEFAULT_CHOP;
 vec_t           g_texchop = DEFAULT_TEXCHOP;
 
-// Opaque faces
-opaqueList_t*   g_opaque_face_list = NULL;
-unsigned        g_opaque_face_count = 0;
-unsigned        g_max_opaque_face_count = 0;               // Current array maximum (used for reallocs)
 vec_t			g_corings[ALLSTYLES];
 vec3_t*			g_translucenttextures = NULL;
 vec_t			g_translucentdepth = DEFAULT_TRANSLUCENTDEPTH;
@@ -193,6 +191,20 @@ int				stylewarningcount = 0;
 int				stylewarningnext = 1;
 vec_t g_maxdiscardedlight = 0;
 vec3_t g_maxdiscardedpos = { 0, 0, 0 };
+
+static NodePath g_rtroot( "RTRoot" );
+
+static LPoint3 VertCoord( dface_t *face, int vnum )
+{
+        int eIndex = g_bspdata->dsurfedges[face->firstedge + vnum];
+        int point;
+        if ( eIndex < 0 )
+                point = g_bspdata->dedges[-eIndex].v[1];
+        else
+                point = g_bspdata->dedges[eIndex].v[0];
+        dvertex_t *vert = g_bspdata->dvertexes + point;
+        return LPoint3( vert->point[0], vert->point[1], vert->point[2] );
+}
 
 // =====================================================================================
 //  GetParamsFromEnt
@@ -776,175 +788,6 @@ void ReadLightingCone()
                                 Developer( DEVELOPER_LEVEL_MESSAGE, "info_angularfade: %s = %f %f\n", texname, power, scale );
                         }
                 }
-        }
-}
-
-// =====================================================================================
-//  AddFaceToOpaqueList
-// =====================================================================================
-static void     AddFaceToOpaqueList(
-        int entitynum, int modelnum, const vec3_t origin
-        , const vec3_t &transparency_scale, const bool transparency
-        , int style
-        , bool block
-)
-{
-        if ( g_opaque_face_count == g_max_opaque_face_count )
-        {
-                g_max_opaque_face_count += OPAQUE_ARRAY_GROWTH_SIZE;
-                g_opaque_face_list = (opaqueList_t*)realloc( g_opaque_face_list, sizeof( opaqueList_t ) * g_max_opaque_face_count );
-                hlassume( g_opaque_face_list != NULL, assume_NoMemory );
-        }
-
-        {
-                opaqueList_t*   opaque = &g_opaque_face_list[g_opaque_face_count];
-
-                g_opaque_face_count++;
-
-                if ( transparency && style != -1 )
-                {
-                        Warning( "Dynamic shadow is not allowed in entity with custom shadow.\n" );
-                        style = -1;
-                }
-                VectorCopy( transparency_scale, opaque->transparency_scale );
-                opaque->transparency = transparency;
-                opaque->entitynum = entitynum;
-                opaque->modelnum = modelnum;
-                VectorCopy( origin, opaque->origin );
-                opaque->style = style;
-                opaque->block = block;
-        }
-}
-
-// =====================================================================================
-//  FreeOpaqueFaceList
-// =====================================================================================
-static void     FreeOpaqueFaceList()
-{
-        unsigned        x;
-        opaqueList_t*   opaque = g_opaque_face_list;
-
-        for ( x = 0; x < g_opaque_face_count; x++, opaque++ )
-        {
-        }
-        free( g_opaque_face_list );
-
-        g_opaque_face_list = NULL;
-        g_opaque_face_count = 0;
-        g_max_opaque_face_count = 0;
-}
-static void		LoadOpaqueEntities()
-{
-        int modelnum, entnum;
-        for ( modelnum = 0; modelnum < g_bspdata->nummodels; modelnum++ )
-        {
-                dmodel_t *model = &g_bspdata->dmodels[modelnum];
-                char stringmodel[16];
-                sprintf( stringmodel, "*%i", modelnum );
-                for ( entnum = 0; entnum < g_bspdata->numentities; entnum++ )
-                {
-                        entity_t *ent = &g_bspdata->entities[entnum];
-                        if ( strcmp( ValueForKey( ent, "model" ), stringmodel ) )
-                                continue;
-                        vec3_t origin;
-                        {
-                                GetVectorForKey( ent, "origin", origin );
-                                if ( *ValueForKey( ent, "light_origin" ) && *ValueForKey( ent, "model_center" ) )
-                                {
-                                        entity_t *ent2 = FindTargetEntity( g_bspdata, ValueForKey( ent, "light_origin" ) );
-                                        if ( ent2 )
-                                        {
-                                                vec3_t light_origin, model_center;
-                                                GetVectorForKey( ent2, "origin", light_origin );
-                                                GetVectorForKey( ent, "model_center", model_center );
-                                                VectorSubtract( light_origin, model_center, origin );
-                                        }
-                                }
-                        }
-                        bool opaque = false;
-                        {
-                                if ( g_allow_opaques && ( IntForKey( ent, "zhlt_lightflags" ) & eModelLightmodeOpaque ) )
-                                        opaque = true;
-                        }
-                        vec3_t d_transparency;
-                        VectorFill( d_transparency, 0.0 );
-                        bool b_transparency = false;
-                        {
-                                const char *s;
-                                if ( *( s = ValueForKey( ent, "zhlt_customshadow" ) ) )
-                                {
-                                        double r1 = 1.0, g1 = 1.0, b1 = 1.0, tmp = 1.0;
-                                        if ( sscanf( s, "%lf %lf %lf", &r1, &g1, &b1 ) == 3 ) //RGB version
-                                        {
-                                                if ( r1<0.0 ) r1 = 0.0;
-                                                if ( g1<0.0 ) g1 = 0.0;
-                                                if ( b1<0.0 ) b1 = 0.0;
-                                                d_transparency[0] = r1;
-                                                d_transparency[1] = g1;
-                                                d_transparency[2] = b1;
-                                        }
-                                        else if ( sscanf( s, "%lf", &tmp ) == 1 ) //Greyscale version
-                                        {
-                                                if ( tmp<0.0 ) tmp = 0.0;
-                                                VectorFill( d_transparency, tmp );
-                                        }
-                                }
-                                if ( !VectorCompare( d_transparency, vec3_origin ) )
-                                        b_transparency = true;
-                        }
-                        int opaquestyle = -1;
-                        {
-                                int j;
-                                for ( j = 0; j < g_bspdata->numentities; j++ )
-                                {
-                                        entity_t *lightent = &g_bspdata->entities[j];
-                                        if ( !strcmp( ValueForKey( lightent, "classname" ), "light_shadow" )
-                                             && *ValueForKey( lightent, "target" )
-                                             && !strcmp( ValueForKey( lightent, "target" ), ValueForKey( ent, "targetname" ) ) )
-                                        {
-                                                opaquestyle = IntForKey( lightent, "style" );
-                                                if ( opaquestyle < 0 )
-                                                        opaquestyle = -opaquestyle;
-                                                opaquestyle = (unsigned char)opaquestyle;
-                                                if ( opaquestyle >= ALLSTYLES )
-                                                {
-                                                        Error( "invalid light style: style (%d) >= ALLSTYLES (%d)", opaquestyle, ALLSTYLES );
-                                                }
-                                                break;
-                                        }
-                                }
-                        }
-                        bool block = false;
-                        {
-                                if ( g_blockopaque )
-                                {
-                                        block = true;
-                                        if ( IntForKey( ent, "zhlt_lightflags" ) & eModelLightmodeNonsolid )
-                                                block = false;
-                                        if ( b_transparency )
-                                                block = false;
-                                        if ( opaquestyle != -1 )
-                                                block = false;
-                                }
-                        }
-                        if ( opaque )
-                        {
-                                AddFaceToOpaqueList( entnum, modelnum, origin
-                                                     , d_transparency, b_transparency
-                                                     , opaquestyle
-                                                     , block
-                                );
-                        }
-                }
-        }
-        {
-                Log( "%i opaque models\n", g_opaque_face_count );
-                int i, facecount;
-                for ( facecount = 0, i = 0; i < g_opaque_face_count; i++ )
-                {
-                        facecount += CountOpaqueFaces( g_opaque_face_list[i].modelnum );
-                }
-                Log( "%i opaque faces\n", facecount );
         }
 }
 
@@ -1840,11 +1683,77 @@ void MakeAllScales()
                 (float)g_total_transfer * sizeof( transfer_t ) / ( 1024 * 1024 ) );
 }
 
+static void     BuildRayTraceEnvironment()
+{
+        // Setup ray tracing scene
+        dmodel_t *mdl = &g_bspdata->dmodels[0];
+
+        std::cout << "Building raytrace environment" << std::endl;
+
+        RADTrace::scene->set_build_quality( RayTraceScene::BUILD_QUALITY_HIGH );
+
+        // Group all world faces by their contents, make a separate
+        // triangle mesh for each contents type
+
+        SimpleHashMap<contents_t, pvector<dface_t *>, int_hash> contents2faces;
+        for ( int facenum = 0; facenum < mdl->numfaces; facenum++ )
+        {
+                dface_t *face = &g_bspdata->dfaces[mdl->firstface + facenum];
+                texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
+                texref_t *tref = &g_bspdata->dtexrefs[tex->texref];
+                contents_t contents = GetTextureContents( tref->name );
+                if ( contents2faces.find( contents ) == -1 )
+                {
+                        contents2faces[contents] = { face };
+                }
+                else
+                {
+                        contents2faces[contents].push_back( face );
+                }
+        }
+
+        for ( size_t i = 0; i < contents2faces.get_num_entries(); i++ )
+        {
+                contents_t contents = contents2faces.get_key( i );
+                const pvector<dface_t *> &faces = contents2faces.get_data( i );
+
+                PT( RayTraceTriangleMesh ) geom = new RayTraceTriangleMesh;
+                geom->set_mask( contents );
+                geom->set_build_quality( RayTraceScene::BUILD_QUALITY_HIGH );
+                std::cout << "Building raytrace mesh for contents " << contents << std::endl;
+
+                for ( size_t facenum = 0; facenum < faces.size(); facenum++ )
+                {
+                        dface_t *face = faces[facenum];
+
+                        int ntris = face->numedges - 2;
+                        for ( int tri = 0; tri < ntris; tri++ )
+                        {
+                                geom->add_triangle( VertCoord( face, 0 ),
+                                                    VertCoord( face, ( tri + 1 ) % face->numedges ),
+                                                    VertCoord( face, ( tri + 2 ) % face->numedges ) );
+                        }
+                }
+
+                geom->build();
+
+                RADTrace::scene->add_geometry( geom );
+                g_rtroot.attach_new_node( geom );
+
+        }
+
+        g_rtroot.ls();
+
+        RADTrace::scene->update();
+}
+
 // =====================================================================================
 //  RadWorld
 // =====================================================================================
 static void     RadWorld()
 {
+        PStatTimer _timer( radworld_collector );
+
         unsigned        i;
         unsigned        j;
 
@@ -1857,7 +1766,8 @@ static void     RadWorld()
 
         MakeBackplanes();
         MakeParents( 0, -1 );
-        MakeTnodes( &g_bspdata->dmodels[0] );
+
+        BuildRayTraceEnvironment();
 
         // TODO?
         //BuildClusterTable();
@@ -1885,10 +1795,12 @@ static void     RadWorld()
         // generate a position map for each face
         //NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, FindFacePositions );
 
+        bfl_collector.start();
         // build initial facelights
         lightinfo = (lightinfo_t *)malloc( g_bspdata->numfaces * sizeof( lightinfo_t ) );
         memset( lightinfo, 0, sizeof( lightinfo ) );
         NamedRunThreadsOnIndividual( g_bspdata->numfaces, g_estimate, BuildFacelights ); // done
+        bfl_collector.stop();
 
         if ( g_numbounce > 0 )
         {
@@ -1950,7 +1862,6 @@ static void     Usage()
         Log( "    -limiter #      : Set light clipping threshold (-1=None)\n" );
         Log( "    -circus         : Enable 'circus' mode for locating unlit lightmaps\n" );
         Log( "    -nospread       : Disable sunlight spread angles for this compile\n" );
-        Log( "    -nopaque        : Disable the opaque zhlt_lightflags for this compile\n\n" );
         Log( "    -smooth #       : Set smoothing threshold for blending (in degrees)\n" );
         Log( "    -smooth2 #      : Set smoothing threshold between different textures\n" );
         Log( "    -chop #         : Set radiosity patch size for normal textures\n" );
@@ -2003,7 +1914,6 @@ static void     Usage()
         Log( "   -minlight #    : Minimum final light (integer from 0 to 255)\n" );
         Log( "   -softsky #     : Smooth skylight.(0=off 1=on)\n" );
         Log( "   -depth #       : Thickness of translucent objects.\n" );
-        Log( "   -blockopaque # : Remove the black areas around opaque entities.(0=off 1=on)\n" );
         Log( "   -notextures    : Don't load textures.\n" );
         Log( "   -texreflectgamma # : Gamma that relates reflectivity to texture color bits.\n" );
         Log( "   -texreflectscale # : Reflectivity for 255-white texture.\n" );
@@ -2151,7 +2061,6 @@ static void     Settings()
 
         Log( "\n" );
         Log( "spread angles        [ %17s ] [ %17s ]\n", g_allow_spread ? "on" : "off", DEFAULT_ALLOW_SPREAD ? "on" : "off" );
-        Log( "opaque entities      [ %17s ] [ %17s ]\n", g_allow_opaques ? "on" : "off", DEFAULT_ALLOW_OPAQUES ? "on" : "off" );
         Log( "sky lighting fix     [ %17s ] [ %17s ]\n", g_sky_lighting_fix ? "on" : "off", DEFAULT_SKY_LIGHTING_FIX ? "on" : "off" );
         Log( "incremental          [ %17s ] [ %17s ]\n", g_incremental ? "on" : "off", DEFAULT_INCREMENTAL ? "on" : "off" );
         Log( "dump                 [ %17s ] [ %17s ]\n", g_dumppatches ? "on" : "off", DEFAULT_DUMPPATCHES ? "on" : "off" );
@@ -2184,7 +2093,6 @@ static void     Settings()
         safe_snprintf( buf1, sizeof( buf1 ), "%3.3f", g_translucentdepth );
         safe_snprintf( buf2, sizeof( buf2 ), "%3.3f", DEFAULT_TRANSLUCENTDEPTH );
         Log( "translucent depth    [ %17s ] [ %17s ]\n", buf1, buf2 );
-        Log( "block opaque         [ %17s ] [ %17s ]\n", g_blockopaque ? "on" : "off", DEFAULT_BLOCKOPAQUE ? "on" : "off" );
         Log( "ignore textures      [ %17s ] [ %17s ]\n", g_notextures ? "on" : "off", DEFAULT_NOTEXTURES ? "on" : "off" );
         safe_snprintf( buf1, sizeof( buf1 ), "%3.3f", g_texreflectgamma );
         safe_snprintf( buf2, sizeof( buf2 ), "%3.3f", DEFAULT_TEXREFLECTGAMMA );
@@ -2435,8 +2343,14 @@ int             main( const int argc, char** argv )
         load_prc_file_data( "", "model-cache-model #f" );
         load_prc_file_data( "", "model-cache-textures #f" );
         load_prc_file_data( "", "default-model-extension .egg" );
+        //load_prc_file_data( "", "notify-level-raytrace debug" );
+        //PStatClient::connect( "127.0.0.1" );
+        if ( PStatClient::is_connected() )
+        {
+                PStatClient::main_tick();
+        }
 
-        RADCollisionPolygon::init_type();
+        RADTrace::initialize();
 
         g_Program = "p3rad";
 
@@ -2649,11 +2563,6 @@ int             main( const int argc, char** argv )
                                                 Usage();
                                         }
                                 }
-                                else if ( !strcasecmp( argv[i], "-nopaque" )
-                                          || !strcasecmp( argv[i], "-noopaque" ) ) //--vluzacn
-                                {
-                                        g_allow_opaques = false;
-                                }
                                 else if ( !strcasecmp( argv[i], "-dscale" ) )
                                 {
                                         if ( i + 1 < argc )	//added "1" .--vluzacn
@@ -2670,17 +2579,6 @@ int             main( const int argc, char** argv )
                                         if ( i + 1 < argc )
                                         {
                                                 g_translucentdepth = atof( argv[++i] );
-                                        }
-                                        else
-                                        {
-                                                Usage();
-                                        }
-                                }
-                                else if ( !strcasecmp( argv[i], "-blockopaque" ) )
-                                {
-                                        if ( i + 1 < argc )
-                                        {
-                                                g_blockopaque = atoi( argv[++i] );
                                         }
                                         else
                                         {
@@ -2856,10 +2754,6 @@ int             main( const int argc, char** argv )
 
                         RadWorld();
 
-                        FreeOpaqueFaceList();
-                        //FreePatches();
-                        //DeleteOpaqueNodes();
-
                         if ( g_chart )
                                 PrintBSPFileSizes( g_bspdata );
 
@@ -2869,6 +2763,14 @@ int             main( const int argc, char** argv )
                         LogTimeElapsed( end - start );
                         // END RAD
 
+                        
+
+                        if ( PStatClient::is_connected() )
+                        {
+                                PStatClient::main_tick();
+                                PStatClient::main_tick();
+                                system( "pause" );
+                        }
                 }
         }
         return 0;

@@ -183,6 +183,9 @@
     <ClInclude Include="..\common\clhelper.h">
       <Filter>common</Filter>
     </ClInclude>
+    <ClInclude Include="trace.h">
+      <Filter>rad</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="common">
