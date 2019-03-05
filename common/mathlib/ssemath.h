@@ -2328,6 +2328,12 @@ FORCEINLINE i32x4 LoadAlignedIntSIMD( const void * pSIMD )
         return _mm_load_ps( reinterpret_cast<const float *>( pSIMD ) );
 }
 
+// Load 4 aligned words into a SIMD register
+FORCEINLINE u32x4 LoadAlignedUIntSIMD( const void * pSIMD )
+{
+        return _mm_load_ps( reinterpret_cast<const float *>( pSIMD ) );
+}
+
 // Load 4 unaligned words into a SIMD register
 FORCEINLINE i32x4 LoadUnalignedIntSIMD( const void * pSIMD )
 {
@@ -2336,6 +2342,11 @@ FORCEINLINE i32x4 LoadUnalignedIntSIMD( const void * pSIMD )
 
 // save into four words, 16-byte aligned
 FORCEINLINE void StoreAlignedIntSIMD( int32_t * pSIMD, const fltx4 & a )
+{
+        _mm_store_ps( reinterpret_cast<float *>( pSIMD ), a );
+}
+
+FORCEINLINE void StoreAlignedUIntSIMD( unsigned int * pSIMD, const fltx4 & a )
 {
         _mm_store_ps( reinterpret_cast<float *>( pSIMD ), a );
 }
