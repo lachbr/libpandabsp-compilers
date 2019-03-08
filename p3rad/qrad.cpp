@@ -1685,9 +1685,6 @@ void MakeAllScales()
 
 static void     BuildRayTraceEnvironment()
 {
-        // Setup ray tracing scene
-        dmodel_t *mdl = &g_bspdata->dmodels[0];
-
         std::cout << "Building raytrace environment" << std::endl;
 
         RADTrace::scene->set_build_quality( RayTraceScene::BUILD_QUALITY_HIGH );
@@ -1696,53 +1693,71 @@ static void     BuildRayTraceEnvironment()
         // triangle mesh for each contents type
 
         SimpleHashMap<contents_t, pvector<dface_t *>, int_hash> contents2faces;
-        for ( int facenum = 0; facenum < mdl->numfaces; facenum++ )
+
+        for ( int mdlnum = 0; mdlnum < g_bspdata->nummodels; mdlnum++ )
         {
-                dface_t *face = &g_bspdata->dfaces[mdl->firstface + facenum];
-                texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
-                texref_t *tref = &g_bspdata->dtexrefs[tex->texref];
-                contents_t contents = GetTextureContents( tref->name );
-                if ( contents2faces.find( contents ) == -1 )
+                // if not the world
+                if ( mdlnum != 0 )
                 {
-                        contents2faces[contents] = { face };
-                }
-                else
-                {
-                        contents2faces[contents].push_back( face );
-                }
-        }
-
-        for ( size_t i = 0; i < contents2faces.get_num_entries(); i++ )
-        {
-                contents_t contents = contents2faces.get_key( i );
-                const pvector<dface_t *> &faces = contents2faces.get_data( i );
-
-                PT( RayTraceTriangleMesh ) geom = new RayTraceTriangleMesh;
-                geom->set_mask( contents );
-                geom->set_build_quality( RayTraceScene::BUILD_QUALITY_HIGH );
-                std::cout << "Building raytrace mesh for contents " << contents << std::endl;
-
-                for ( size_t facenum = 0; facenum < faces.size(); facenum++ )
-                {
-                        dface_t *face = faces[facenum];
-
-                        int ntris = face->numedges - 2;
-                        for ( int tri = 0; tri < ntris; tri++ )
+                        entity_t *ent = EntityForModel( g_bspdata, mdlnum );
+                        int lightflags = IntForKey( ent, "zhlt_lightflags" );
+                        if ( lightflags == 0 )
                         {
-                                geom->add_triangle( VertCoord( face, 0 ),
-                                                    VertCoord( face, ( tri + 1 ) % face->numedges ),
-                                                    VertCoord( face, ( tri + 2 ) % face->numedges ) );
+                                // model is not opaque (doesn't block light)
+                                // so we shouldn't create a ray trace mesh for it
+                                continue;
                         }
                 }
 
-                geom->build();
+                // Setup ray tracing scene
+                dmodel_t *mdl = &g_bspdata->dmodels[mdlnum];
 
-                RADTrace::scene->add_geometry( geom );
-                g_rtroot.attach_new_node( geom );
+                for ( int facenum = 0; facenum < mdl->numfaces; facenum++ )
+                {
+                        dface_t *face = &g_bspdata->dfaces[mdl->firstface + facenum];
+                        texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
+                        texref_t *tref = &g_bspdata->dtexrefs[tex->texref];
+                        contents_t contents = GetTextureContents( tref->name );
+                        if ( contents2faces.find( contents ) == -1 )
+                        {
+                                contents2faces[contents] = { face };
+                        }
+                        else
+                        {
+                                contents2faces[contents].push_back( face );
+                        }
+                }
 
+                for ( size_t i = 0; i < contents2faces.get_num_entries(); i++ )
+                {
+                        contents_t contents = contents2faces.get_key( i );
+                        const pvector<dface_t *> &faces = contents2faces.get_data( i );
+
+                        PT( RayTraceTriangleMesh ) geom = new RayTraceTriangleMesh;
+                        geom->set_mask( contents );
+                        geom->set_build_quality( RayTraceScene::BUILD_QUALITY_HIGH );
+                        std::cout << "Building raytrace mesh for contents " << contents << std::endl;
+
+                        for ( size_t facenum = 0; facenum < faces.size(); facenum++ )
+                        {
+                                dface_t *face = faces[facenum];
+
+                                int ntris = face->numedges - 2;
+                                for ( int tri = 0; tri < ntris; tri++ )
+                                {
+                                        geom->add_triangle( VertCoord( face, 0 ),
+                                                VertCoord( face, ( tri + 1 ) % face->numedges ),
+                                                VertCoord( face, ( tri + 2 ) % face->numedges ) );
+                                }
+                        }
+
+                        geom->build();
+
+                        RADTrace::scene->add_geometry( geom );
+                        g_rtroot.attach_new_node( geom );
+
+                }
         }
-
-        g_rtroot.ls();
 
         RADTrace::scene->update();
 }
