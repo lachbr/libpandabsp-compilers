@@ -48,7 +48,7 @@ bool LightSurface::enumerate_node( int node_id, const Ray &ray,
                 // TODO: Don't test displacement faces
 
                 texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
-                if ( GetTextureContents( g_bspdata->dtexrefs[tex->texref].name ) == CONTENTS_SKY )
+                if ( tex->flags & TEX_SKY )
                 {
                         if ( test_point_against_sky_surface( pt, face ) )
                         {
@@ -119,7 +119,17 @@ bool LightSurface::enumerate_leaf( int leaf_id, const Ray &ray, float start,
                 LVector3 pt;
                 VectorMA( ray.start, mid, ray.delta, pt );
 
-                if ( test_point_against_surface( pt, face, tex ) )
+                if ( tex->flags & TEX_SKY )
+                {
+                        if ( test_point_against_sky_surface( pt, face ) )
+                        {
+                                _hit_frac = mid;
+                                _surface = face;
+                                hit = true;
+                                _has_luxel = false;
+                        }
+                }
+                else if ( test_point_against_surface( pt, face, tex ) )
                 {
                         _hit_frac = mid;
                         _surface = face;
@@ -372,7 +382,7 @@ void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
         texinfo_t *texinfo = &g_bspdata->texinfo[face->texinfo];
         if ( texinfo )
         {
-                if ( texinfo->flags & TEX_SPECIAL )
+                if ( texinfo->flags & TEX_SKY )
                 {
                         if ( skylight )
                         {
@@ -394,7 +404,7 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
                                                  float scale, LVector3 *colors )
 {
         texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
-        if ( tex->flags & TEX_SPECIAL )
+        if ( tex->flags & TEX_SKY )
         {
                 if ( skylight )
                 {
