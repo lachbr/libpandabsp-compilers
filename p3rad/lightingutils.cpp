@@ -358,13 +358,8 @@ static directlight_t *find_ambient_sky_light()
         // So we don't have to keep finding the same sky light
         if ( found_light == nullptr )
         {
-                for ( int i = 0; i < Lights::numdlights; i++ )
+                for ( directlight_t *dl = Lights::activelights; dl; dl = dl->next )
                 {
-                        directlight_t *dl = Lights::directlights[i];
-                        if ( dl == nullptr )
-                        {
-                                continue;
-                        }
                         if ( dl->type == emit_skyambient )
                         {
                                 found_light = dl;
