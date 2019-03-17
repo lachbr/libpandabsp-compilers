@@ -48,7 +48,7 @@ bool LightSurface::enumerate_node( int node_id, const Ray &ray,
                 // TODO: Don't test displacement faces
 
                 texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
-                if ( tex->flags & TEX_SPECIAL )
+                if ( GetTextureContents( g_bspdata->dtexrefs[tex->texref].name ) == CONTENTS_SKY )
                 {
                         if ( test_point_against_sky_surface( pt, face ) )
                         {
