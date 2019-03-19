@@ -18,32 +18,6 @@
 #include "bsptools.h"
 #include "lights.h"
 
-class LightSurface : public BaseBSPEnumerator
-{
-public:
-        LightSurface( int thread, bspdata_t *data );
-
-        virtual bool enumerate_node( int node_id, const Ray &ray,
-                                     float f, int context );
-
-        virtual bool enumerate_leaf( int leaf_id, const Ray &ray, float start,
-                                     float end, int context );
-
-        virtual bool find_intersection( const Ray &ray );
-
-private:
-        bool test_point_against_surface( const LVector3 &point, dface_t *face, texinfo_t *tex );
-
-        bool test_point_against_sky_surface( const LVector3 &point, dface_t *face );
-
-public:
-        int _thread;
-        dface_t *_surface;
-        float _hit_frac;
-        LTexCoordf _luxel_coord;
-        bool _has_luxel;
-};
-
 extern float trace_leaf_brushes( int leaf_id, const LVector3 &start, const LVector3 &end, Trace &trace_out );
 extern void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
                                const LPoint3 &p1, const LPoint3 &p2, dbrush_t *brush );

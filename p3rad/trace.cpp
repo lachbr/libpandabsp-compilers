@@ -46,6 +46,7 @@ static const unsigned int ALL_CONTENTS = (
 BitMask32 RADTrace::world_mask = BitMask32::bit( 1 );
 BitMask32 RADTrace::props_mask = BitMask32::bit( 2 );
 PT( RayTraceScene ) RADTrace::scene = nullptr;
+RADTrace::PrimID2dface RADTrace::dface_lookup;
 
 static const unsigned int ALL_CONTENTS_OR_PROPS = ALL_CONTENTS | CONTENTS_PROP;
 static const u32x4 Four_ALL_CONTENTS = { ALL_CONTENTS, ALL_CONTENTS, ALL_CONTENTS, ALL_CONTENTS };
@@ -139,3 +140,16 @@ void RADTrace::test_four_lines( const FourVectors &start, const FourVectors &end
         }
 }
 
+dface_t *RADTrace::get_dface( const RayTraceHitResult &result )
+{
+        int geomidx = dface_lookup.find( result.geom_id );
+        if ( geomidx == -1 )
+                return nullptr;
+
+        //const PrimID2dface &prim2dface = dface_lookup.get_data( geomidx );
+        //int primidx = prim2dface.find( result.prim_id );
+        //if ( primidx == -1 )
+        //        return nullptr;
+
+        return dface_lookup.get_data( geomidx );
+}

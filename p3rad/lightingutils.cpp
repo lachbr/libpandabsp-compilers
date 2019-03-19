@@ -17,136 +17,11 @@
 
 #include "lightmap.h"
 
+#include "trace.h"
+
 #define NEVER_UPDATED -9999
 
-LightSurface::LightSurface( int thread, bspdata_t *data ) :
-        BaseBSPEnumerator( data ),
-        _thread( thread ), _surface( nullptr ),
-        _hit_frac( 1.0 ), _has_luxel( false )
-{
-}
-
-bool LightSurface::enumerate_node( int node_id, const Ray &ray,
-                                   float f, int context )
-{
-        dface_t *sky_surface = nullptr;
-
-        LVector3 pt;
-        VectorMA( ray.start, f, ray.delta, pt );
-
-        dnode_t *node = &g_bspdata->dnodes[node_id];
-
-        for ( int i = 0; i < node->numfaces; i++ )
-        {
-                dface_t *face = &g_bspdata->dfaces[node->firstface + i];
-                // Don't take into account faces that are in a leaf
-                if ( face->on_node == 0 )
-                {
-                        continue;
-                }
-
-                // TODO: Don't test displacement faces
-
-                texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
-                if ( tex->flags & TEX_SKY )
-                {
-                        if ( test_point_against_sky_surface( pt, face ) )
-                        {
-                                sky_surface = face;
-                        }
-
-                        continue;
-                }
-
-                if ( test_point_against_surface( pt, face, tex ) )
-                {
-                        _hit_frac = f;
-                        _surface = face;
-                        _has_luxel = true;
-                        return false;
-                }
-        }
-
-        // if we hit a sky surface, return it
-        _surface = sky_surface;
-        return ( _surface == nullptr );
-}
-
-bool LightSurface::enumerate_leaf( int leaf_id, const Ray &ray, float start,
-                                   float end, int context )
-{
-        bool hit = false;
-        dleaf_t *leaf = &g_bspdata->dleafs[leaf_id];
-        for ( int i = 0; i < leaf->nummarksurfaces; i++ )
-        {
-                dface_t *face = &g_bspdata->dfaces[g_bspdata->dmarksurfaces[leaf->firstmarksurface + i]];
-
-                if ( face->on_node == 1 )
-                {
-                        continue;
-                }
-
-                texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
-                dplane_t *plane = &g_bspdata->dplanes[face->planenum];
-
-                // Backface cull
-                if ( DotProduct( plane->normal, ray.delta ) > 0 )
-                {
-                        continue;
-                }
-
-                float start_dot_n = DotProduct( ray.start, plane->normal );
-                float delta_dot_n = DotProduct( ray.delta, plane->normal );
-
-                float front = start_dot_n + start * delta_dot_n - plane->dist;
-                float back = start_dot_n + end * delta_dot_n - plane->dist;
-
-                int side = front < 0;
-                // Blow it off if it doesn't split the plane
-                if ( (int)( back < 0 ) == side )
-                {
-                        continue;
-                }
-
-                // Dont't test a surface that is further away from the closest found intersection.
-                float f = front / ( front - back );
-                float mid = start * ( 1.0 - f ) + end * f;
-                if ( mid >= _hit_frac )
-                {
-                        continue;
-                }
-
-                LVector3 pt;
-                VectorMA( ray.start, mid, ray.delta, pt );
-
-                if ( tex->flags & TEX_SKY )
-                {
-                        if ( test_point_against_sky_surface( pt, face ) )
-                        {
-                                _hit_frac = mid;
-                                _surface = face;
-                                hit = true;
-                                _has_luxel = false;
-                        }
-                }
-                else if ( test_point_against_surface( pt, face, tex ) )
-                {
-                        _hit_frac = mid;
-                        _surface = face;
-                        hit = true;
-                        _has_luxel = true;
-                }
-        }
-
-        return !hit;
-}
-
-bool LightSurface::find_intersection( const Ray &ray )
-{
-        return !enumerate_nodes_along_ray( ray, this, 0 );
-}
-
-bool LightSurface::test_point_against_surface( const LVector3 &point, dface_t *face, texinfo_t *tex )
+static bool test_point_against_surface( const LVector3 &point, dface_t *face, texinfo_t *tex, LTexCoordf &luxel_coord )
 {
         // Specials don't have lightmaps
         if ( tex->flags & TEX_SPECIAL )
@@ -172,22 +47,8 @@ bool LightSurface::test_point_against_surface( const LVector3 &point, dface_t *f
                 return false;
         }
 
-        _luxel_coord.set( ds, dt );
+        luxel_coord.set( ds, dt );
         return true;
-}
-
-bool LightSurface::test_point_against_sky_surface( const LVector3 &point, dface_t *face )
-{
-        Winding winding( *face, g_bspdata );
-
-        dplane_t plane;
-        winding.getPlane( plane );
-
-        vec3_t vpoint;
-        vpoint[0] = point[0];
-        vpoint[1] = point[1];
-        vpoint[2] = point[2];
-        return point_in_winding( winding, plane, vpoint );
 }
 
 void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 &maxs,
@@ -388,9 +249,8 @@ void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
                 }
                 else
                 {
-                        vec3_t one;
-                        one[0] = one[1] = one[2] = 1.0f;
-                        VectorMultiply( color, one, color );
+                        radtexture_t *rtex = g_textures + texinfo->texref;
+                        VectorMultiply( color, rtex->reflectivity, color );
                 }
         }
 }
@@ -403,10 +263,7 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
         {
                 if ( skylight )
                 {
-                        LVector3 amb( skylight->intensity[0],
-                                      skylight->intensity[1],
-                                      skylight->intensity[2] );
-                        colors[0] += amb * scale;
+                        colors[0] += skylight->intensity * scale;
                 }
                 return;
         }
@@ -458,21 +315,64 @@ void compute_lightmap_color_point_sample( dface_t *face, directlight_t *skylight
         }
 }
 
+struct lightsurface_t
+{
+        bool has_luxel;
+        LTexCoordf luxel_coord;
+        dface_t *surface;
+        float hit_fraction;
+
+        lightsurface_t() :
+                has_luxel( false ),
+                surface( nullptr )
+        {
+        }
+};
+
+static bool lightsurface_findintersection( const Ray &ray, lightsurface_t *surf )
+{
+        BitMask32 mask = CONTENTS_SOLID | CONTENTS_SKY;
+
+        RayTraceHitResult result = RADTrace::scene->trace_line( ray.start, ray.end, mask );
+        surf->hit_fraction = result.hit_fraction;
+        if ( !result.hit )
+        {
+                return false;
+        }
+
+        LPoint3 pt;
+        VectorMA( ray.start, result.hit_fraction, ray.delta.normalized(), pt );
+        surf->surface = RADTrace::get_dface( result );
+        if ( !surf->surface )
+        {
+                return false;
+        }
+        texinfo_t *tex = &g_bspdata->texinfo[surf->surface->texinfo];
+        surf->has_luxel = false;
+        surf->luxel_coord.set( 0, 0 );
+        if ( !( tex->flags & TEX_SKY ) )
+        {
+                if ( test_point_against_surface( pt, surf->surface, tex, surf->luxel_coord ) )
+                {
+                        surf->has_luxel = true;
+                }
+        }
+
+        return true;
+}
+
 void calc_ray_ambient_lighting( int thread, const LVector3 &start,
                                 const LVector3 &end, float tan_theta,
                                 LVector3 *color )
 {
         directlight_t *skylight = find_ambient_sky_light();
-
-        LightSurface surf( thread, g_bspdata );
         Ray ray( start, end, LVector3::zero(), LVector3::zero() );
-        if ( !surf.find_intersection( ray ) )
-        {
+        lightsurface_t surf;
+        if ( !lightsurface_findintersection( ray, &surf ) )
                 return;
-        }
 
         // compute the approximate radius of a circle centered around the intersection point
-        float dist = ray.delta.length() * tan_theta * surf._hit_frac;
+        float dist = ray.delta.length() * tan_theta * surf.hit_fraction;
 
         // until 20" we use the point sample, then blend in the average until we're covering 40"
         // This is attempting to model the ray as a cone - in the ideal case we'd simply sample all
@@ -483,7 +383,7 @@ void calc_ray_ambient_lighting( int thread, const LVector3 &start,
         // point samples provide accuracy for intersections with near geometry
         float scale_avg = RemapValClamped( dist, 20, 40, 0.0f, 1.0f );
 
-        if ( !surf._has_luxel )
+        if ( !surf.has_luxel )
         {
                 scale_avg = 1.0;
         }
@@ -491,18 +391,16 @@ void calc_ray_ambient_lighting( int thread, const LVector3 &start,
         float scale_sample = 1.0f - scale_avg;
         if ( scale_avg != 0 )
         {
-                compute_lightmap_color_from_average( surf._surface, skylight, scale_avg, color );
+                compute_lightmap_color_from_average( surf.surface, skylight, scale_avg, color );
         }
         if ( scale_sample != 0 )
         {
-                compute_lightmap_color_point_sample( surf._surface, skylight, surf._luxel_coord, scale_sample, color );
+                compute_lightmap_color_point_sample( surf.surface, skylight, surf.luxel_coord, scale_sample, color );
         }
 }
 
 void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnormal, LVector3 &color, bool ignore_normals )
 {
-        LightSurface surf( 0, g_bspdata );
-
         int samples = NUMVERTEXNORMALS;
         if ( g_fastmode )
         {
@@ -535,13 +433,14 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                 VectorScale( sampling_normal, MAX_TRACE_LENGTH, end );
                 VectorAdd( vpos, end, end );
                 Ray ray( vpos, end, LVector3::zero(), LVector3::zero() );
-                if ( !surf.find_intersection( ray ) )
+                lightsurface_t surf;
+                if ( !lightsurface_findintersection( ray, &surf ) )
                 {
                         continue;
                 }
 
                 // get color from surface lightmap
-                texinfo_t *tex = &g_bspdata->texinfo[surf._surface->texinfo];
+                texinfo_t *tex = &g_bspdata->texinfo[surf.surface->texinfo];
                 if ( !tex || tex->flags & TEX_SPECIAL )
                 {
                         // ignore contribution from sky or non lit textures
@@ -549,29 +448,29 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                         continue;
                 }
 
-                if ( surf._surface->styles[0] == 255 || surf._surface->lightofs == -1 )
+                if ( surf.surface->styles[0] == 255 || surf.surface->lightofs == -1 )
                 {
                         // no light affects this face
                         continue;
                 }
 
                 LVector3 lightmap_col;
-                if ( !surf._has_luxel )
+                if ( !surf.has_luxel )
                 {
-                        lightmap_col = dface_AvgLightColor( g_bspdata, surf._surface, 0 );
+                        lightmap_col = dface_AvgLightColor( g_bspdata, surf.surface, 0 );
                 }
                 else
                 {
                         // get color from the luxel itself
-                        int smax = surf._surface->lightmap_size[0] + 1;
-                        int tmax = surf._surface->lightmap_size[1] + 1;
+                        int smax = surf.surface->lightmap_size[0] + 1;
+                        int tmax = surf.surface->lightmap_size[1] + 1;
 
                         // luxelcoord is in the space of the accumulated lightmap page; we need to convert
                         // it to be in the space of the surface
-                        int ds = clamp( (int)surf._luxel_coord[0], 0, smax - 1 );
-                        int dt = clamp( (int)surf._luxel_coord[1], 0, tmax - 1 );
+                        int ds = clamp( (int)surf.luxel_coord[0], 0, smax - 1 );
+                        int dt = clamp( (int)surf.luxel_coord[1], 0, tmax - 1 );
 
-                        colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[surf._surface->lightofs];
+                        colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[surf.surface->lightofs];
                         lightmap += dt * smax + ds;
                         ColorRGBExp32ToVector( *lightmap, lightmap_col );
                 }

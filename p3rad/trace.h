@@ -1,9 +1,12 @@
 #ifndef RAD_TRACE_H
 #define RAD_TRACE_H
 
+#include <simpleHashMap.h>
+
 #include "raytrace.h"
 #include "mathtypes.h"
 #include "mathlib/ssemath.h"
+#include "bspfile.h"
 
 class RADTrace
 {
@@ -21,6 +24,12 @@ public:
 
         static BitMask32 world_mask;
         static BitMask32 props_mask;
+
+        static dface_t *get_dface( const RayTraceHitResult &result );
+
+        typedef SimpleHashMap<int, dface_t *, int_hash> PrimID2dface;
+        typedef SimpleHashMap<int, PrimID2dface, int_hash> GeomID2PrimID2dface;
+        static PrimID2dface dface_lookup;
 };
 
 #endif // RAD_TRACE_H

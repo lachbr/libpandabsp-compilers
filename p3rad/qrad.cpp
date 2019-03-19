@@ -1718,37 +1718,17 @@ static void     BuildRayTraceEnvironment()
                         texinfo_t *tex = &g_bspdata->texinfo[face->texinfo];
                         texref_t *tref = &g_bspdata->dtexrefs[tex->texref];
                         contents_t contents = GetTextureContents( tref->name );
-                        if ( contents2faces.find( contents ) == -1 )
-                        {
-                                contents2faces[contents] = { face };
-                        }
-                        else
-                        {
-                                contents2faces[contents].push_back( face );
-                        }
-                }
-
-                for ( size_t i = 0; i < contents2faces.get_num_entries(); i++ )
-                {
-                        contents_t contents = contents2faces.get_key( i );
-                        const pvector<dface_t *> &faces = contents2faces.get_data( i );
 
                         PT( RayTraceTriangleMesh ) geom = new RayTraceTriangleMesh;
                         geom->set_mask( contents );
                         geom->set_build_quality( RayTraceScene::BUILD_QUALITY_HIGH );
-                        std::cout << "Building raytrace mesh for contents " << contents << std::endl;
 
-                        for ( size_t facenum = 0; facenum < faces.size(); facenum++ )
+                        int ntris = face->numedges - 2;
+                        for ( int tri = 0; tri < ntris; tri++ )
                         {
-                                dface_t *face = faces[facenum];
-
-                                int ntris = face->numedges - 2;
-                                for ( int tri = 0; tri < ntris; tri++ )
-                                {
-                                        geom->add_triangle( VertCoord( face, 0 ),
-                                                VertCoord( face, ( tri + 1 ) % face->numedges ),
-                                                VertCoord( face, ( tri + 2 ) % face->numedges ) );
-                                }
+                                geom->add_triangle( VertCoord( face, 0 ),
+                                        VertCoord( face, ( tri + 1 ) % face->numedges ),
+                                        VertCoord( face, ( tri + 2 ) % face->numedges ) );
                         }
 
                         geom->build();
@@ -1756,6 +1736,7 @@ static void     BuildRayTraceEnvironment()
                         RADTrace::scene->add_geometry( geom );
                         g_rtroot.attach_new_node( geom );
 
+                        RADTrace::dface_lookup[geom->get_geom_id()] = face;
                 }
         }
 
