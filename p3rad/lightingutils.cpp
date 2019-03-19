@@ -274,7 +274,7 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
                 LRGBColor avg_color = dface_AvgLightColor( g_bspdata, face, style );
                 LRGBColor color = avg_color;
 
-                compute_ambient_from_surface( face, skylight, color );                
+                compute_ambient_from_surface( face, skylight, color );  
                 colors[style] += color * scale;
         }
 }
@@ -329,6 +329,16 @@ struct lightsurface_t
         }
 };
 
+struct lightsurface_SSE_t
+{
+        u32x4 has_luxel;
+        FourVectors dir;
+        FourVectors delta;
+        FourVectors luxel_coord;
+        dface_t *surface[4];
+        fltx4 hit_fraction;
+};
+
 static bool lightsurface_findintersection( const Ray &ray, lightsurface_t *surf )
 {
         BitMask32 mask = CONTENTS_SOLID | CONTENTS_SKY;
@@ -359,6 +369,122 @@ static bool lightsurface_findintersection( const Ray &ray, lightsurface_t *surf 
         }
 
         return true;
+}
+
+static void lightsurface_findintersection_SSE( const FourVectors &start, const FourVectors &end, lightsurface_SSE_t *surf )
+{
+        u32x4 mask = ReplicateIX4( CONTENTS_SOLID | CONTENTS_SKY );
+
+        surf->delta = end;
+        surf->delta -= start;
+
+        surf->dir = surf->delta;
+        surf->dir.VectorNormalize();
+
+        RayTraceHitResult4 result;
+        RADTrace::scene->trace_four_lines( start, end, mask, &result );
+        surf->hit_fraction = result.hit_fraction;
+
+        FourVectors point = surf->dir;
+        point *= surf->hit_fraction;
+        point += start;
+
+        surf->has_luxel = Four_Zeros;
+
+        for ( int i = 0; i < 4; i++ )
+        {
+
+                if ( surf->hit_fraction.m128_f32[i] < 1.0 - EQUAL_EPSILON ) // did we hit something?
+                {
+                        int geomidx = RADTrace::dface_lookup.find( result.geom_id.m128_u32[i] );
+                        if ( geomidx != -1 )
+                        {
+                                surf->surface[i] = RADTrace::dface_lookup.get_data( geomidx );
+                                if ( surf->surface[i] != nullptr )
+                                {
+                                        texinfo_t *tex = &g_bspdata->texinfo[surf->surface[i]->texinfo];
+                                        if ( !( tex->flags & TEX_SKY ) )
+                                        {
+                                                LTexCoordf coord;
+                                                if ( test_point_against_surface( point.Vec(i), surf->surface[i], tex, coord ) )
+                                                {
+                                                        surf->has_luxel = SetComponentSIMD( surf->has_luxel, i, 1.0 );
+                                                        surf->luxel_coord.x = SetComponentSIMD( surf->luxel_coord.x, i, coord[0] );
+                                                        surf->luxel_coord.y = SetComponentSIMD( surf->luxel_coord.y, i, coord[1] );
+                                                }
+                                        }
+                                }
+                        }
+                        else
+                        {
+                                surf->surface[i] = nullptr;
+                        }
+                }
+                else
+                {
+                        surf->surface[i] = nullptr;
+                }
+        }
+}
+
+void calc_ray_ambient_lighting_SSE( int thread, const FourVectors &start,
+                                const FourVectors &end, fltx4 tan_theta,
+                                LVector3 color[4][MAX_LIGHTSTYLES] )
+{
+        directlight_t *skylight = find_ambient_sky_light();
+
+        lightsurface_SSE_t surf;
+        lightsurface_findintersection_SSE( start, end, &surf );
+
+        // compute the approximate radius of a circle centered around the intersection point
+        fltx4 dist = surf.delta.length();
+        dist = MulSIMD( dist, tan_theta );
+        dist = MulSIMD( dist, surf.hit_fraction );
+
+        // until 20" we use the point sample, then blend in the average until we're covering 40"
+        // This is attempting to model the ray as a cone - in the ideal case we'd simply sample all
+        // luxels in the intersection of the cone with the surface.  Since we don't have surface 
+        // neighbor information computed we'll just approximate that sampling with a blend between
+        // a point sample and the face average.
+        // This yields results that are similar in that aliasing is reduced at distance while 
+        // point samples provide accuracy for intersections with near geometry
+        fltx4 scale_avg;
+        for ( int i = 0; i < 4; i++ )
+        {
+                if ( !surf.surface[i] )
+                        continue;
+                
+                if ( surf.has_luxel.m128_u32[i] == 0 )
+                {
+                        scale_avg = SetComponentSIMD( scale_avg, i, 1.0 );
+                }
+                else
+                {
+                        scale_avg = SetComponentSIMD( scale_avg, i, RemapValClamped( scale_avg.m128_f32[i], 20, 40, 0.0, 1.0 ) );
+                }
+                
+        }
+
+        fltx4 scale_sample = SubSIMD( Four_Ones, scale_avg );
+
+        for ( int i = 0; i < 4; i++ )
+        {
+                if ( !surf.surface[i] )
+                        continue;
+
+                if ( scale_avg.m128_f32[i] != 0 )
+                {
+                        compute_lightmap_color_from_average( surf.surface[i], skylight, scale_avg.m128_f32[i], color[i] );
+                }
+                if ( scale_sample.m128_f32[i] != 0 )
+                {
+                        LTexCoordf coord( surf.luxel_coord.x.m128_f32[i],
+                                          surf.luxel_coord.y.m128_f32[i] );
+                        compute_lightmap_color_point_sample( surf.surface[i], skylight, coord, scale_sample.m128_f32[i], color[i] );
+                }
+
+        }
+        
 }
 
 void calc_ray_ambient_lighting( int thread, const LVector3 &start,

@@ -291,16 +291,41 @@ void compute_ambient_from_spherical_samples( int thread, const LVector3 &sample_
                                              LVector3 *cube )
 {
         LVector3 radcolor[NUMVERTEXNORMALS];
-        float tan_theta = std::tan( VERTEXNORMAL_CONE_INNER_ANGLE );
+        fltx4 tan_theta = ReplicateX4( std::tan( VERTEXNORMAL_CONE_INNER_ANGLE ) );
 
-        for ( int i = 0; i < NUMVERTEXNORMALS; i++ )
+        int num_samples = NUMVERTEXNORMALS;
+        int groups = ( num_samples & 0x3 ) ? ( num_samples / 4 ) + 1 : ( num_samples / 4 );
+
+        LVector3 e[4];
+
+        FourVectors start;
+        start.DuplicateVector( sample_pos );
+
+        for ( int i = 0; i < groups; i++ )
         {
-                LVector3 end = sample_pos + g_anorms[i] * ( COORD_EXTENT * 1.74 );
+                int nsample = 4 * i;
+                int group_samples = std::min( 4, num_samples - nsample );
 
-                LVector3 light_style_colors[MAX_LIGHTSTYLES];
-                light_style_colors[0].set( 0, 0, 0 );
-                calc_ray_ambient_lighting( thread, sample_pos, end, tan_theta, light_style_colors );
-                radcolor[i] = light_style_colors[0];
+                FourVectors end;
+
+                for ( int j = 0; j < 4; j++ )
+                {
+                        LVector3 anorm = ( j < group_samples ) ? g_anorms[nsample + j] : g_anorms[nsample + group_samples - 1];
+                        e[j] = sample_pos + anorm * ( COORD_EXTENT * 1.74 );
+                }
+
+                end.LoadAndSwizzle( e[0], e[1], e[2], e[3] );
+
+                LVector3 light_style_colors[4][MAX_LIGHTSTYLES];
+                memset( light_style_colors, 0, sizeof( LVector3 ) * 4 * MAX_LIGHTSTYLES );
+
+                calc_ray_ambient_lighting_SSE( thread, start, end, tan_theta, light_style_colors );
+
+                for ( int j = 0; j < 4; j++ )
+                {
+                        radcolor[nsample + j] = light_style_colors[j][0];
+                }
+                
         }
 
         // accumulate samples into radiant box

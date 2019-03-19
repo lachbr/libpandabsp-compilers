@@ -25,6 +25,9 @@ extern void clip_box_to_brush( Trace *trace, const LPoint3 &mins, const LPoint3 
 extern void calc_ray_ambient_lighting( int thread, const LVector3 &start,
                                        const LVector3 &end, float tan_theta,
                                        LVector3 *color );
+extern void calc_ray_ambient_lighting_SSE( int thread, const FourVectors &start,
+                                           const FourVectors &end, fltx4 tan_theta,
+                                           LVector3 color[4][MAX_LIGHTSTYLES] );
 
 extern void compute_ambient_from_surface( dface_t *face, directlight_t *skylight,
                                           LRGBColor &color );
