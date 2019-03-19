@@ -24,9 +24,8 @@ bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                 }
                 else
                 {
-                        LVector3 normal( plane->normal[0], plane->normal[1], plane->normal[2] );
-                        start_dot_n = ray.start.dot( normal );
-                        delta_dot_n = ray.delta.dot( normal );
+                        start_dot_n = DotProduct( ray.start, plane->normal );
+                        delta_dot_n = DotProduct( ray.delta, plane->normal );
                 }
 
                 front = start_dot_n + start * delta_dot_n - (plane->dist / scale);
