@@ -533,76 +533,108 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                 samples /= 4;
         }
 
+        int groups = ( samples & 0x3 ) ? ( samples / 4 ) + 1 : ( samples / 4 );
+
+        LVector3 n[4];
+        float dots[4];
+
+        FourVectors vpos4;
+        vpos4.DuplicateVector( vpos );
+
         PN_stdfloat total_dot = 0;
         DirectionalSampler_t sampler;
-        for ( int i = 0; i < samples; i++ )
+        for ( int j = 0; j < groups; j++ )
         {
-                LVector3 sampling_normal = sampler.NextValue();
-                PN_stdfloat dot;
-                if ( ignore_normals )
+                int nsample = 4 * j;
+                int group_samples = std::min( 4, samples - nsample );
+                
+                memset( dots, 0, sizeof( float ) * 4 );
+                memset( n, 0, sizeof( LVector3 ) * 4 );
+                for ( int i = 0; i < group_samples; i++ )
                 {
-                        dot = 0.7071 / 2;
+                        LVector3 sampling_normal = sampler.NextValue();
+                        PN_stdfloat dot;
+                        if ( ignore_normals )
+                        {
+                                dot = 0.7071 / 2;
+                        }
+                        else
+                        {
+                                dot = DotProduct( vnormal, sampling_normal );
+                        }
+                        dots[i] = dot;
+                        if ( dot <= EQUAL_EPSILON )
+                        {
+                                // reject angles behind our plane
+                                continue;
+                        }
+                        n[i] = sampling_normal;
+                        total_dot += dot;
                 }
-                else
-                {
-                        dot = DotProduct( vnormal, sampling_normal );
-                }
-                if ( dot <= EQUAL_EPSILON )
-                {
-                        // reject angles behind our plane
-                        continue;
-                }
-                total_dot += dot;
+                
+                FourVectors normal;
+                normal.LoadAndSwizzle( n[0], n[1], n[2], n[3] );
 
                 // trace to determine surface
-                LVector3 end;
-                VectorScale( sampling_normal, MAX_TRACE_LENGTH, end );
-                VectorAdd( vpos, end, end );
-                Ray ray( vpos, end, LVector3::zero(), LVector3::zero() );
-                lightsurface_t surf;
-                if ( !lightsurface_findintersection( ray, &surf ) )
+                FourVectors end = normal;
+                end *= ReplicateX4( MAX_TRACE_LENGTH );
+                end += vpos4;
+
+                lightsurface_SSE_t surf;
+                lightsurface_findintersection_SSE( vpos4, end, &surf );
+
+                for ( int i = 0; i < group_samples; i++ )
                 {
-                        continue;
+                        if ( !surf.surface[i] )
+                                continue;
+
+                        if ( dots[i] <= EQUAL_EPSILON )
+                        {
+                                // reject angles behind our plane
+                                continue;
+                        }
+
+                        // get color from surface lightmap
+                        texinfo_t *tex = &g_bspdata->texinfo[surf.surface[i]->texinfo];
+                        if ( !tex || tex->flags & TEX_SPECIAL )
+                        {
+                                // ignore contribution from sky or non lit textures
+                                // sky ambient already accounted for during direct pass
+                                continue;
+                        }
+
+                        if ( surf.surface[i]->styles[0] == 255 || surf.surface[i]->lightofs == -1 )
+                        {
+                                // no light affects this face
+                                continue;
+                        }
+
+                        LVector3 lightmap_col;
+                        if ( surf.has_luxel.m128_u32[i] == 0 )
+                        {
+                                lightmap_col = dface_AvgLightColor( g_bspdata, surf.surface[i], 0 );
+                        }
+                        else
+                        {
+                                // get color from the luxel itself
+                                int smax = surf.surface[i]->lightmap_size[0] + 1;
+                                int tmax = surf.surface[i]->lightmap_size[1] + 1;
+
+                                // luxelcoord is in the space of the accumulated lightmap page; we need to convert
+                                // it to be in the space of the surface
+                                int ds = clamp( (int)surf.luxel_coord.x.m128_f32[i], 0, smax - 1 );
+                                int dt = clamp( (int)surf.luxel_coord.y.m128_f32[i], 0, tmax - 1 );
+
+                                colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[surf.surface[i]->lightofs];
+                                lightmap += dt * smax + ds;
+                                ColorRGBExp32ToVector( *lightmap, lightmap_col );
+                        }
+
+
+                        VectorMultiply( lightmap_col, g_textures[tex->texref].reflectivity, lightmap_col );
+                        VectorAdd( color, lightmap_col, color );
                 }
-
-                // get color from surface lightmap
-                texinfo_t *tex = &g_bspdata->texinfo[surf.surface->texinfo];
-                if ( !tex || tex->flags & TEX_SPECIAL )
-                {
-                        // ignore contribution from sky or non lit textures
-                        // sky ambient already accounted for during direct pass
-                        continue;
-                }
-
-                if ( surf.surface->styles[0] == 255 || surf.surface->lightofs == -1 )
-                {
-                        // no light affects this face
-                        continue;
-                }
-
-                LVector3 lightmap_col;
-                if ( !surf.has_luxel )
-                {
-                        lightmap_col = dface_AvgLightColor( g_bspdata, surf.surface, 0 );
-                }
-                else
-                {
-                        // get color from the luxel itself
-                        int smax = surf.surface->lightmap_size[0] + 1;
-                        int tmax = surf.surface->lightmap_size[1] + 1;
-
-                        // luxelcoord is in the space of the accumulated lightmap page; we need to convert
-                        // it to be in the space of the surface
-                        int ds = clamp( (int)surf.luxel_coord[0], 0, smax - 1 );
-                        int dt = clamp( (int)surf.luxel_coord[1], 0, tmax - 1 );
-
-                        colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[surf.surface->lightofs];
-                        lightmap += dt * smax + ds;
-                        ColorRGBExp32ToVector( *lightmap, lightmap_col );
-                }
-
-                //VectorMultiply( lightmap_col, 1.0, lightmap_col );
-                VectorAdd( color, lightmap_col, color );
+                
         }
 
         if ( total_dot )
