@@ -9,12 +9,12 @@ $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\ttsp\game\resources\maps\test</LocalDebuggerWorkingDirectory>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LocalDebuggerCommandArguments>test_ambient.bsp -mfdir /d/OTHER/lachb/Documents/cio/game/resources -threads 6 -final -extra</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>lawbot_windows_room.bsp -mfdir /d/OTHER/lachb/Documents/cio/game/resources -threads 6 -final -extra</LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
     <LocalDebuggerEnvironment>PATH=D:\OTHER\lachb\Documents\cio\cio-panda3d\built_x64\bin;D:\OTHER\lachb\Documents\cio\game\resources;%PATH%
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <LocalDebuggerCommand>D:\OTHER\lachb\Documents\rpbmStudios\panda_hl_bsp_tools\Release\p3rad.exe</LocalDebuggerCommand>
-    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\test_ambient</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerWorkingDirectory>D:\OTHER\lachb\Documents\cio\game\resources\phase_14\etc\lawbot_windows_room</LocalDebuggerWorkingDirectory>
     <LocalDebuggerDebuggerType>Auto</LocalDebuggerDebuggerType>
   </PropertyGroup>
 </Project>

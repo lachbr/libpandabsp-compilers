@@ -486,7 +486,11 @@ void InitLightInfo( lightinfo_t &l, int facenum )
 
         facelight_t *fl = &facelight[facenum];
         
-        l.bumped = g_patches[g_face_patches[facenum]].bumped;
+        if ( g_face_patches[facenum] != -1 )
+                l.bumped = g_patches[g_face_patches[facenum]].bumped;
+        else
+                l.bumped = false;
+
         fl->normal_count = l.bumped ? NUM_BUMP_VECTS + 1 : 1;
         l.normal_count = fl->normal_count;
         fl->bumped = l.bumped;

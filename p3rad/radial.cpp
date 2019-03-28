@@ -256,6 +256,13 @@ void PatchLightmapCoordRange( radial_t *rad, int patchidx, LVector2 &mins, LVect
         patch_t *patch = &g_patches[patchidx];
         Winding *w = patch->winding;
 
+        if ( !w )
+        {
+                mins.set( 0, 0 );
+                maxs.set( 0, 0 );
+                return;
+        }
+
         LVector2 coord;
         LVector3 world;
         for ( int i = 0; i < w->m_NumPoints; i++ )
@@ -358,7 +365,7 @@ radial_t *BuildPatchRadial( int facenum )
 
         patch_t *nextpatch;
 
-        if ( g_face_patches[facenum] )
+        if ( g_face_patches[facenum] != -1 )
         {
                 for ( patch_t *patch = &g_patches[g_face_patches[facenum]]; patch; patch = nextpatch )
                 {
@@ -384,7 +391,7 @@ radial_t *BuildPatchRadial( int facenum )
         for ( int i = 0; i < fn->numneighbors; i++ )
         {
                 int fn_idx = fn->neighbor[i];
-                if ( g_face_patches[fn_idx] )
+                if ( g_face_patches[fn_idx] != -1 )
                 {
                         for ( patch_t *patch = &g_patches[g_face_patches[fn_idx]]; patch; patch = nextpatch )
                         {

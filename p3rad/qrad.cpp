@@ -1161,8 +1161,11 @@ void SubdividePatch( int patchnum )
 
         // calculate the area of the patches to see if they are "significant"
         vec3_t center1, center2;
-        float area1 = o1->getAreaAndBalancePoint( center1 );
-        float area2 = o2->getAreaAndBalancePoint( center2 );
+        float area1 = 0, area2 = 0;
+        if ( o1 )
+                float area1 = o1->getAreaAndBalancePoint( center1 );
+        if ( o2 )
+                float area2 = o2->getAreaAndBalancePoint( center2 );
 
         if ( area1 == 0 || area2 == 0 )
         {
