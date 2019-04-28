@@ -137,15 +137,20 @@ void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 
         smooth_basis.set_row( 0, smooth_basis.get_row( 1 ).cross( phong_normal ).normalized() );
         smooth_basis.set_row( 2, phong_normal );
 
+        //std::cout << smooth_basis;
+
         if ( left_handed )
         {
-                VectorInverse( smooth_basis[1] );
+                smooth_basis.set_row( 1, -smooth_basis.get_row( 1 ) );
         }
+        //std::cout << std::endl;
+
+        //std::cout << smooth_basis << std::endl;
 
         // move the g_localbumpbasis into world space to create bump_vecs
         for ( i = 0; i < 3; i++ )
         {
-                VectorIRotate( g_localbumpbasis[i], smooth_basis, bump_vecs[i] );
+                bump_vecs[i] = smooth_basis.xform_vec_general( g_localbumpbasis[i] ).normalized();
         }
 }
 
