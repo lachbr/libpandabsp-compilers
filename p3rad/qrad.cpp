@@ -1099,6 +1099,9 @@ void SubdividePatch( int patchnum )
         int i, widest_axis = -1;
         bool subdivide = false;
 
+        o1 = nullptr;
+        o2 = nullptr;
+
         // get the current patch
         patch_t *patch = &g_patches[patchnum];
         if ( !patch )
@@ -1162,9 +1165,9 @@ void SubdividePatch( int patchnum )
         // calculate the area of the patches to see if they are "significant"
         vec3_t center1, center2;
         float area1 = 0, area2 = 0;
-        if ( o1 )
+        if ( o1 != nullptr )
                 area1 = o1->getAreaAndBalancePoint( center1 );
-        if ( o2 )
+        if ( o2 != nullptr )
                 area2 = o2->getAreaAndBalancePoint( center2 );
 
         if ( area1 == 0 || area2 == 0 )
