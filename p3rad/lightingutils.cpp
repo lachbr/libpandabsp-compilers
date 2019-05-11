@@ -271,7 +271,9 @@ static void compute_lightmap_color_from_average( dface_t *face, directlight_t *s
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
                 int style = face->styles[maps];
+                ThreadLock();
                 LRGBColor avg_color = dface_AvgLightColor( g_bspdata, face, style );
+                ThreadUnlock();
                 LRGBColor color = avg_color;
 
                 compute_ambient_from_surface( face, skylight, color );  
@@ -612,7 +614,9 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                         LVector3 lightmap_col;
                         if ( surf.has_luxel.m128_u32[i] == 0 )
                         {
+                                ThreadLock();
                                 lightmap_col = dface_AvgLightColor( g_bspdata, surf.surface[i], 0 );
+                                ThreadUnlock();
                         }
                         else
                         {

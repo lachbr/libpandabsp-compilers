@@ -36,7 +36,7 @@ void LoadStaticProps()
                 dstaticprop_t *prop = &g_bspdata->dstaticprops[i];
                 string mdl_path = prop->name;
 
-                NodePath propnp( loader->load_sync( Filename( mdl_path ) ) );
+                NodePath propnp( loader->load_sync( Filename::from_os_specific( mdl_path ) ) );
                 if ( !propnp.is_empty() )
                 {
                         propnp.set_scale( prop->scale[0] * PANDA_TO_HAMMER, prop->scale[1] * PANDA_TO_HAMMER, prop->scale[2] * PANDA_TO_HAMMER );
@@ -118,19 +118,14 @@ struct VDataDef
         LMatrix4 mat_to_world;
 };
 
-void ComputeStaticPropLighting( int thread )
+void ComputeStaticPropLighting( const int prop_idx )
 {
-        int prop_idx = thread;//GetThreadWork();
-        if ( prop_idx == -1 )
+        if ( prop_idx < 0 || prop_idx > (int)g_static_props.size() - 1 )
         {
+                Warning( "ThreadComputeStaticPropLighting: prop %i is invalid\n", prop_idx );
                 return;
         }
         RADStaticProp *prop = g_static_props[prop_idx];
-        if ( prop == nullptr )
-        {
-                Warning( "ThreadComputeStaticPropLighting: prop is nullptr on thread %i\n", thread );
-                return;
-        }
         if ( ( g_bspdata->dstaticprops[prop->propnum].flags & STATICPROPFLAGS_STATICLIGHTING ) == 0 )
         {
                 // baked lighting not wanted
@@ -138,6 +133,7 @@ void ComputeStaticPropLighting( int thread )
         }
 
         pvector<VDataDef> vdatas;
+        vdatas.reserve( 1000 );
 
         // transform all vertices to be in world space
         prop->mdl.clear_model_nodes();
@@ -160,10 +156,10 @@ void ComputeStaticPropLighting( int thread )
                 }
         }
 
-        dstaticprop_t *dprop = &g_bspdata->dstaticprops[prop->propnum];
-
-        //ThreadLock();
-        dprop->first_vertex_data = g_bspdata->dstaticpropvertexdatas.size();
+        pvector<dstaticpropvertexdata_t> newvdatas;
+        newvdatas.reserve( vdatas.size() );
+        pvector<colorrgbexp32_t> newsamples;
+        newsamples.reserve( 10000 );
 
         for ( size_t i = 0; i < vdatas.size(); i++ )
         {
@@ -172,7 +168,7 @@ void ComputeStaticPropLighting( int thread )
                 GeomVertexReader norm_reader( vdata, InternalName::get_normal() );
 
                 dstaticpropvertexdata_t dvdata;
-                dvdata.first_lighting_sample = g_bspdata->staticproplighting.size();
+                dvdata.first_lighting_sample = newsamples.size();
 
                 for ( int row = 0; row < vdata->get_num_rows(); row++ )
                 {
@@ -186,28 +182,43 @@ void ComputeStaticPropLighting( int thread )
                         ComputeDirectLightingAtPoint( world_pos, world_normal, direct_col );
 
                         LVector3 indirect_col( 0 );
-                        ComputeIndirectLightingAtPoint( world_pos, world_normal, indirect_col, false );
+                        ComputeIndirectLightingAtPoint( world_pos, world_normal, indirect_col, true );
 
                         colorrgbexp32_t sample;
                         VectorToColorRGBExp32( direct_col + indirect_col, sample );
-                        g_bspdata->staticproplighting.push_back( sample );
+                        newsamples.push_back( sample );
                 }
-                dvdata.num_lighting_samples = g_bspdata->staticproplighting.size() - dvdata.first_lighting_sample;
 
+                dvdata.num_lighting_samples = newsamples.size() - dvdata.first_lighting_sample;
+
+                newvdatas.push_back( dvdata );
+        }
+
+        ThreadLock();
+        dstaticprop_t *dprop = &g_bspdata->dstaticprops[prop->propnum];
+        dprop->first_vertex_data = g_bspdata->dstaticpropvertexdatas.size();
+        for ( size_t i_vdata = 0; i_vdata < newvdatas.size(); i_vdata++ )
+        {
+                dstaticpropvertexdata_t &dvdata = newvdatas[i_vdata];
+                int first = dvdata.first_lighting_sample;
+                dvdata.first_lighting_sample = g_bspdata->staticproplighting.size();
+                for ( int i = 0; i < dvdata.num_lighting_samples; i++ )
+                {
+                        g_bspdata->staticproplighting.push_back( newsamples[first + i] );
+                }
                 g_bspdata->dstaticpropvertexdatas.push_back( dvdata );
         }
         dprop->num_vertex_datas = g_bspdata->dstaticpropvertexdatas.size() - dprop->first_vertex_data;
-
-        //ThreadUnlock();
+        ThreadUnlock();
 }
 
 void DoComputeStaticPropLighting()
 {
-        //NamedRunThreadsOnIndividual( (int)g_static_props.size(), g_estimate, ComputeStaticPropLighting );
-
-        Log( "Computing static prop lighting...\n" );
-        for ( size_t i = 0; i < g_static_props.size(); i++ )
-        {
-                ComputeStaticPropLighting( i );
-        }
+        //Log( "Computing static prop lighting...\n" );
+        NamedRunThreadsOnIndividual( (int)g_static_props.size(), g_estimate, ComputeStaticPropLighting );
+        //for ( size_t i = 0; i < g_static_props.size(); i++ )
+        //{
+        //        Log( "%i ", (int)i );
+        //        ComputeStaticPropLighting( i );
+        //}
 }

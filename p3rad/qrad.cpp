@@ -2427,13 +2427,16 @@ int             main( const int argc, char** argv )
                                         {
                                                 VirtualFileSystem *vfs = VirtualFileSystem::get_global_ptr();
 
-                                                PT( VirtualFileList ) list = vfs->scan_directory( argv[++i] );
+                                                std::string mfdir( argv[++i] );
+                                                PT( VirtualFileList ) list = vfs->scan_directory( mfdir );
 
                                                 if ( !list )
                                                 {
-                                                        Warning( "%s is not a valid directory, no multifiles mounted", argv[i] );
+                                                        Warning( "%s is not a valid directory, no multifiles mounted", mfdir.c_str() );
                                                         continue;
                                                 }
+
+                                                load_prc_file_data( "", "model-path " + Filename::from_os_specific( mfdir ).get_fullpath() );
 
                                                 for ( size_t filenum = 0; filenum < list->get_num_files(); filenum++ )
                                                 {
