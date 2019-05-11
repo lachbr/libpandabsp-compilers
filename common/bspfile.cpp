@@ -1672,8 +1672,23 @@ contents_t GetTextureContents( const char *texname )
 
 // =====================================================================================
 
+#include <simpleHashMap.h>
+
+typedef SimpleHashMap<dface_t *, LRGBColor, pointer_hash> FaceAvgColorCache;
+static FaceAvgColorCache face_avg_colors;
+
+/**
+ * WARNING: Not thread safe
+ * You need to manually wrap a call to this function in a ThreadLock()/ThreadUnlock().
+ */
 LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
 {
+        int idx = face_avg_colors.find( face );
+        if ( idx != -1 )
+        {
+                return face_avg_colors.get_data( idx );
+        }
+
         int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
         LRGBColor avg( 0 );
         for ( int i = 0; i < luxels; i++ )
@@ -1684,6 +1699,7 @@ LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
                 avg += vcol;
         }
         avg /= luxels;
+        face_avg_colors[face] = avg;
         return avg;
 }
 
