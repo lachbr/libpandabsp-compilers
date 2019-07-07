@@ -813,6 +813,7 @@ void CalcPoints( lightinfo_t *l, facelight_t *fl, int facenum )
 void AllocateLightstyleSamples( facelight_t *fl, int style, int normal_count )
 {
         fl->light[style] = (bumpsample_t *)calloc( fl->numsamples, sizeof( bumpsample_t ) );
+	fl->sunlight[style] = (bumpsample_t *)calloc( fl->numsamples, sizeof( bumpsample_t ) );
 }
 
 void GetPhongNormal( int facenum, const FourVectors &spot, FourVectors &phongnormal )
@@ -1407,14 +1408,23 @@ void GatherSampleLightAt4Points( SSE_SampleInfo_t &info, int sample_idx, int num
                 }
 
                 bumpsample_t *samples = info.facelight->light[lightstyleidx];
+		bumpsample_t *sunsamples = info.facelight->sunlight[lightstyleidx];
                 for ( int n = 0; n < info.normal_count; n++ )
                 {
                         for ( int i = 0; i < num_samples; i++ )
                         {
                                 // record the lighting contribution for this sample
-                                samples[sample_idx + i].light[n].AddLight( SubFloat( fxdot[n], i ),
-                                                                           dl->intensity,
-                                                                           SubFloat( out.sun_amount, i ) );
+
+				// Store sunlight separately
+				lightvalue_t *light;
+				if ( dl->type == emit_skylight )
+					light = &sunsamples[sample_idx + i].light[n];
+				else
+					light = &samples[sample_idx + i].light[n];
+
+				light->AddLight( SubFloat( fxdot[n], i ),
+					dl->intensity,
+					SubFloat( out.sun_amount, i ) );
                         }
                 }
         }
@@ -1544,7 +1554,7 @@ bool PointsInWinding( FourVectors const & point, Winding *w, int &invalidBits )
         return true;
 }
 
-void ResampleLightAt4Points( SSE_SampleInfo_t &info, int style, bool ambient, bumpsample_t *result )
+void ResampleLightAt4Points( SSE_SampleInfo_t &info, int style, bool ambient, bumpsample_t *result)//, bumpsample_t *sunresult )
 {
         SSE_sampleLightOutput_t out;
 
@@ -1564,6 +1574,9 @@ void ResampleLightAt4Points( SSE_SampleInfo_t &info, int style, bool ambient, bu
                         continue;
                 if ( !ambient && dl->type == emit_skyambient )
                         continue;
+
+		if ( dl->type == emit_skylight )
+			continue;
 
                 // only add contributions that match the lightstyle
                 nassertv( style <= MAXLIGHTMAPS );
@@ -1608,7 +1621,12 @@ void ResampleLightAt4Points( SSE_SampleInfo_t &info, int style, bool ambient, bu
                 {
                         for ( int n = 0; n < info.normal_count; ++n )
                         {
-                                result[i].light[n].AddLight( SubFloat( fxdot[n], i ), dl->intensity, SubFloat( out.sun_amount, i ) );
+				bumpsample_t *pOut;
+				//if ( dl->type == emit_skylight )
+				//	pOut = sunresult;
+				//else
+					pOut = result;
+                                pOut[i].light[n].AddLight( SubFloat( fxdot[n], i ), dl->intensity, SubFloat( out.sun_amount, i ) );
                         }
                 }
         }
@@ -1676,7 +1694,8 @@ int SupersampleLightAtPoint( lightinfo_t &l, SSE_SampleInfo_t &info, int samplei
 
                         // Resample the non-ambient light at this point...
                         bumpsample_t result[4];
-                        ResampleLightAt4Points( info, style, false, result );
+			//bumpsample_t sunresult[4];
+			ResampleLightAt4Points( info, style, false, result );//, sunresult );
 
                         // got more subsamples
                         for ( int i = 0; i < 4; i++ )
@@ -1686,6 +1705,7 @@ int SupersampleLightAtPoint( lightinfo_t &l, SSE_SampleInfo_t &info, int samplei
                                         for ( int n = 0; n < info.normal_count; ++n )
                                         {
                                                 light[n].AddLight( result[i][n] );
+						
                                         }
                                         ++subsamplecnt;
                                 }
@@ -1890,7 +1910,10 @@ void BuildPatchLights( int facenum )
 
         for ( i = 0; i < fl->numsamples; i++ )
         {
-                AddSampleToPatch( &fl->sample[i], fl->light[k][i][0], facenum );
+		lightvalue_t totalDirect = fl->light[k][i][0];
+		totalDirect.AddLight( fl->sunlight[k][i][0] );
+
+                AddSampleToPatch( &fl->sample[i], totalDirect, facenum );
         }
 
         // check for a valid face
@@ -1975,6 +1998,7 @@ void BuildPatchLights( int facenum )
         bool needsbump = fl->bumped;
 
         // add an ambient term if desired
+#if 0
         if ( g_ambient[0] || g_ambient[1] || g_ambient[2] )
         {
                 LVector3 ambient = GetLVector3( g_ambient );
@@ -1996,6 +2020,7 @@ void BuildPatchLights( int facenum )
                         }
                 }
         }
+#endif
 }
 
 void DetermineLightmapMemory()
@@ -2038,6 +2063,8 @@ void BuildFacelights( const int facenum )
         // some surfaces don't need lightmaps
         //
         f->lightofs = -1;
+        f->bouncedlightofs = -1;
+        f->sunlightofs = -1;
         for ( j = 0; j < MAXLIGHTMAPS; j++ )
         {
                 f->styles[j] = 255;
@@ -2129,7 +2156,7 @@ void PrecompLightmapOffsets()
         facelight_t*    fl;
         int             lightstyles;
 
-        g_bspdata->dlightdata.clear();
+        g_bspdata->lightdata.clear();
 
         for ( facenum = 0; facenum < g_bspdata->numfaces; facenum++ )
         {
@@ -2154,24 +2181,33 @@ void PrecompLightmapOffsets()
                         continue;
                 }
 
-                f->lightofs = g_bspdata->dlightdata.size();
                 int luxels = ( f->lightmap_size[0] + 1 ) * ( f->lightmap_size[1] + 1 );
+
+                // Direct lighting
+                f->lightofs = g_bspdata->lightdata.size();
                 for ( int i = 0; i < luxels * lightstyles * fl->normal_count; i++ )
                 {
                         // Initialize all luxels for this face.
                         colorrgbexp32_t sample;
                         memset( &sample, 0, sizeof( colorrgbexp32_t ) );
-                        g_bspdata->dlightdata.push_back( sample );
+                        g_bspdata->lightdata.push_back( sample );
                 }
-                hlassume( g_bspdata->dlightdata.size() <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING ); //lightdata
 
+                // Bounced lighting
+                f->bouncedlightofs = g_bspdata->bouncedlightdata.size();
+                for ( int i = 0; i < luxels; i++ )
+                {
+                        colorrgbexp32_t sample;
+                        memset( &sample, 0, sizeof( colorrgbexp32_t ) );
+                        g_bspdata->bouncedlightdata.push_back( sample );
+                }
         }
 }
 
 void ReduceLightmap()
 {
-        pvector<colorrgbexp32_t> oldlightdata = g_bspdata->dlightdata;
-        g_bspdata->dlightdata.clear();
+        pvector<colorrgbexp32_t> oldlightdata = g_bspdata->lightdata;
+        g_bspdata->lightdata.clear();
 
         int facenum;
         for ( facenum = 0; facenum < g_bspdata->numfaces; facenum++ )
@@ -2185,7 +2221,7 @@ void ReduceLightmap()
                 // just need to zero the lightmap so that it won't contribute to lightdata size
                 if ( IntForKey( g_face_entity[facenum], "zhlt_striprad" ) )
                 {
-                        f->lightofs = g_bspdata->dlightdata.size();
+                        f->lightofs = g_bspdata->lightdata.size();
                         for ( int k = 0; k < MAXLIGHTMAPS; k++ )
                         {
                                 f->styles[k] = 255;
@@ -2201,7 +2237,7 @@ void ReduceLightmap()
                 int oldofs;
                 unsigned char oldstyles[MAXLIGHTMAPS];
                 oldofs = f->lightofs;
-                f->lightofs = g_bspdata->dlightdata.size();
+                f->lightofs = g_bspdata->lightdata.size();
                 for ( k = 0; k < MAXLIGHTMAPS; k++ )
                 {
                         oldstyles[k] = f->styles[k];
@@ -2223,10 +2259,10 @@ void ReduceLightmap()
                                 continue;
                         }
                         f->styles[numstyles] = oldstyles[k];
-                        hlassume( g_bspdata->dlightdata.size() + fl->numsamples * ( numstyles + 1 ) <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING );
+                        hlassume( g_bspdata->lightdata.size() + fl->numsamples * ( numstyles + 1 ) <= g_max_map_lightdata, assume_MAX_MAP_LIGHTING );
                         for ( int j = 0; j < fl->numsamples; j++ )
                         {
-                                g_bspdata->dlightdata.push_back(oldlightdata[oldofs + fl->numsamples * k + j]);
+                                g_bspdata->lightdata.push_back(oldlightdata[oldofs + fl->numsamples * k + j]);
                         }
                         numstyles++;
                 }

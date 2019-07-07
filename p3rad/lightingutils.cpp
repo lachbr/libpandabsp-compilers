@@ -301,7 +301,7 @@ void compute_lightmap_color_point_sample( dface_t *face, directlight_t *skylight
                 offset *= ( NUM_BUMP_VECTS + 1 );
         }
 
-        colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[face->lightofs];
+        colorrgbexp32_t *lightmap = &g_bspdata->lightdata[face->lightofs];
         lightmap += dt * smax + ds;
         for ( int maps = 0; maps < MAXLIGHTMAPS && face->styles[maps] != 0xFF; maps++ )
         {
@@ -629,7 +629,7 @@ void ComputeIndirectLightingAtPoint( const LVector3 &vpos, const LNormalf &vnorm
                                 int ds = clamp( (int)surf.luxel_coord.x.m128_f32[i], 0, smax - 1 );
                                 int dt = clamp( (int)surf.luxel_coord.y.m128_f32[i], 0, tmax - 1 );
 
-                                colorrgbexp32_t *lightmap = &g_bspdata->dlightdata[surf.surface[i]->lightofs];
+                                colorrgbexp32_t *lightmap = &g_bspdata->lightdata[surf.surface[i]->lightofs];
                                 lightmap += dt * smax + ds;
                                 ColorRGBExp32ToVector( *lightmap, lightmap_col );
                         }

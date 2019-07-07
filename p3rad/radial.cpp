@@ -563,10 +563,10 @@ void FinalLightFace( const int facenum )
                                 // v is indirect light that is received on the luxel
                                 SampleRadial( prad, samp_pos, &v, bump_sample_count );
 
-                                for ( bump_sample = 0; bump_sample < bump_sample_count; bump_sample++ )
-                                {
-                                        lb[bump_sample].AddLight( v[bump_sample] );
-                                }
+                                //for ( bump_sample = 0; bump_sample < bump_sample_count; bump_sample++ )
+                                //{
+                                //        lb[bump_sample].AddLight( v[bump_sample] );
+                                //}
                         }
 
                         for ( bump_sample = 0; bump_sample < bump_sample_count; bump_sample++ )
@@ -575,14 +575,22 @@ void FinalLightFace( const int facenum )
                                 for ( i = 0; i < 3; i++ )
                                 {
                                         lb[bump_sample][i] = std::max( lb[bump_sample][i], minlight );
+                                        v[bump_sample][i] = std::max( v[bump_sample][i], minlight );
                                 }
 
                                 // save out to BSP file
-                                colorrgbexp32_t *col = SampleLightmap( g_bspdata, g_bspdata->dfaces + facenum, j, k, bump_sample );
-                                        
-                                LVector3 vcol;
-                                VectorCopy( lb[bump_sample], vcol );
-                                VectorToColorRGBExp32( vcol, *col );
+
+                                // direct
+                                colorrgbexp32_t *dcol = SampleLightmap( g_bspdata, g_bspdata->dfaces + facenum, j, k, bump_sample );
+                                LVector3 dvcol;
+                                VectorCopy( lb[bump_sample], dvcol );
+                                VectorToColorRGBExp32( dvcol, *dcol );
+
+                                // bounced
+                                colorrgbexp32_t *bcol = SampleBouncedLightmap( g_bspdata, g_bspdata->dfaces + facenum, j );
+                                LVector3 bvcol;
+                                VectorCopy( v[bump_sample], bvcol );
+                                VectorToColorRGBExp32( bvcol, *bcol );
                         }
                 }
 

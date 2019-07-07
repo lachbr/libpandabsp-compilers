@@ -86,6 +86,7 @@ typedef struct
         int numluxels;
         vec3_t *luxel_points;
         bumpsample_t *light[MAXLIGHTMAPS];
+	bumpsample_t *sunlight[MAXLIGHTMAPS];
 }
 facelight_t;
 
