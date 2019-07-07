@@ -101,7 +101,7 @@
 #define MAX_LIGHTSTYLES 64
 //=============================================================================
 
-#define BSPVERSION  31
+#define BSPVERSION  32
 #define TOOLVERSION 3
 
 // One hammer unit is 1/16th of a foot.
@@ -130,7 +130,9 @@ enum
         LUMP_NODES,
         LUMP_TEXINFO,
         LUMP_FACES,
-        LUMP_LIGHTING,
+	LUMP_BOUNCEDLIGHTING,
+        LUMP_DIRECTLIGHTING,
+	LUMP_DIRECTSUNLIGHTING,
         LUMP_LEAFS,
         LUMP_MARKSURFACES,
         LUMP_EDGES,
@@ -148,9 +150,9 @@ enum
         LUMP_VERTNORMALINDICES,
         LUMP_CUBEMAPDATA,
         LUMP_CUBEMAPS,
-};
 
-static const int HEADER_LUMPS = 26;
+	HEADER_LUMPS,
+};
 
 typedef struct
 {
@@ -267,6 +269,8 @@ typedef struct dface_s
         int             lightofs;                              // start of [numstyles*surfsize] samples
         int             lightmap_mins[2];
         int             lightmap_size[2];
+	int		bouncedlightofs;
+	int		sunlightofs;
 
         // index into the g_dorigfaces array,
         // which original non-split face this face comes from.
@@ -441,9 +445,6 @@ struct bspdata_t
         byte     dvisdata[MAX_MAP_VISIBILITY];
         int      dvisdata_checksum;
 
-        pvector<colorrgbexp32_t>    dlightdata;
-        int      dlightdata_checksum;
-
         int      numtexrefs;
         texref_t dtexrefs[MAX_MAP_TEXTURES];                                  // (dtexlump_t)
         int      dtexrefs_checksum;
@@ -504,6 +505,11 @@ struct bspdata_t
         pvector<unsigned short> vertnormalindices;
         pvector<colorrgbexp32_t> cubemapdata;
         pvector<dcubemap_t> cubemaps;
+
+	pvector<colorrgbexp32_t> bouncedlightdata;
+	pvector<colorrgbexp32_t> sunlightdata;
+	pvector<colorrgbexp32_t> lightdata;
+	int      dlightdata_checksum;
 
         int      numentities;
         entity_t entities[MAX_MAP_ENTITIES];
@@ -568,5 +574,7 @@ extern contents_t ContentsFromName( const char *name );
 
 extern LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
 INLINE extern colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
+colorrgbexp32_t *SampleSunLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
+colorrgbexp32_t *SampleBouncedLightmap( bspdata_t *data, const dface_t *face, int luxel );
 
 #endif //BSPFILE_H__

@@ -430,7 +430,9 @@ bspdata_t            *LoadBSPImage( dheader_t* const header )
         CopyLump( LUMP_LEAFBRUSHES, data->dleafbrushes, header );
         CopyLump( LUMP_LEAFAMBIENTINDEX, data->leafambientindex, header );
         CopyLump( LUMP_LEAFAMBIENTLIGHTING, data->leafambientlighting, header );
-        CopyLump( LUMP_LIGHTING, data->dlightdata, header );
+	CopyLump( LUMP_BOUNCEDLIGHTING, data->bouncedlightdata, header );
+        CopyLump( LUMP_DIRECTLIGHTING, data->lightdata, header );
+	CopyLump( LUMP_DIRECTSUNLIGHTING, data->sunlightdata, header );
         CopyLump( LUMP_STATICPROPS, data->dstaticprops, header );
         CopyLump( LUMP_STATICPROPVERTEXDATA, data->dstaticpropvertexdatas, header );
         CopyLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header );
@@ -459,7 +461,7 @@ bspdata_t            *LoadBSPImage( dheader_t* const header )
         data->dedges_checksum = FastChecksum( data->dedges, data->numedges * sizeof( data->dedges[0] ) );
         data->dtexrefs_checksum = FastChecksum( data->dtexrefs, data->numedges * sizeof( data->dtexrefs[0] ) );
         data->dvisdata_checksum = FastChecksum( data->dvisdata, data->visdatasize * sizeof( data->dvisdata[0] ) );
-        data->dlightdata_checksum = FastChecksum( data->dlightdata.data(), data->dlightdata.size() * sizeof( colorrgbexp32_t ) );
+        data->dlightdata_checksum = FastChecksum( data->lightdata.data(), data->lightdata.size() * sizeof( colorrgbexp32_t ) );
         data->dentdata_checksum = FastChecksum( data->dentdata, data->entdatasize * sizeof( data->dentdata[0] ) );
 
         return data;
@@ -531,7 +533,9 @@ void            WriteBSPFile( bspdata_t *data, const char* const filename )
         AddLump( LUMP_LEAFBRUSHES, data->dleafbrushes, header, bspfile );
         AddLump( LUMP_LEAFAMBIENTINDEX, data->leafambientindex, header, bspfile );
         AddLump( LUMP_LEAFAMBIENTLIGHTING, data->leafambientlighting, header, bspfile );
-        AddLump( LUMP_LIGHTING, data->dlightdata, header, bspfile );
+	AddLump( LUMP_BOUNCEDLIGHTING, data->bouncedlightdata, header, bspfile );
+        AddLump( LUMP_DIRECTLIGHTING, data->lightdata, header, bspfile );
+	AddLump( LUMP_DIRECTSUNLIGHTING, data->sunlightdata, header, bspfile );
         AddLump( LUMP_STATICPROPS, data->dstaticprops, header, bspfile );
         AddLump( LUMP_STATICPROPVERTEXDATA, data->dstaticpropvertexdatas, header, bspfile );
         AddLump( LUMP_STATICPROPLIGHTING, data->staticproplighting, header, bspfile );
@@ -1071,7 +1075,7 @@ void            PrintBSPFileSizes(bspdata_t *data)
         totalmemory += ArrayUsage( "edges", data->numedges, ENTRIES( data->dedges ), ENTRYSIZE( data->dedges ) );
         totalmemory += ArrayUsage( "texrefs", data->numtexrefs, ENTRIES( data->dtexrefs ), ENTRYSIZE( data->dtexrefs ) );
 
-        totalmemory += GlobUsage( "lightdata", data->dlightdata.size(), g_max_map_lightdata );
+        totalmemory += GlobUsage( "lightdata", data->lightdata.size(), g_max_map_lightdata );
         totalmemory += GlobUsage( "visdata", data->visdatasize, sizeof( data->dvisdata ) );
         totalmemory += GlobUsage( "entdata", data->entdatasize, sizeof( data->dentdata ) );
         if ( numallocblocks == -1 )
@@ -1703,11 +1707,26 @@ LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style )
         return avg;
 }
 
+INLINE colorrgbexp32_t *SampleLightData( pvector<colorrgbexp32_t> &data, const dface_t *face, int ofs, int luxel, int style, int bump )
+{
+	int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
+	int bump_count = face->bumped_lightmap ? NUM_BUMP_VECTS + 1 : 1;
+	return &data[ofs + ( ( style * bump_count + bump ) * luxels ) + luxel];
+}
+
 INLINE colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump )
 {
-        int luxels = ( face->lightmap_size[0] + 1 ) * ( face->lightmap_size[1] + 1 );
-        int bump_count = face->bumped_lightmap ? NUM_BUMP_VECTS + 1 : 1;
-        return &data->dlightdata[face->lightofs + ( ( style * bump_count + bump ) * luxels ) + luxel];
+	return SampleLightData( data->lightdata, face, face->lightofs, luxel, style, bump );
+}
+
+colorrgbexp32_t *SampleSunLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump )
+{
+	return SampleLightData( data->sunlightdata, face, face->sunlightofs, luxel, style, bump );
+}
+
+colorrgbexp32_t *SampleBouncedLightmap( bspdata_t *data, const dface_t *face, int luxel )
+{
+	return &data->bouncedlightdata[face->bouncedlightofs + luxel];
 }
 
 int GetNumWorldLeafs( bspdata_t *bspdata )
