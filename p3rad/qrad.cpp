@@ -194,18 +194,6 @@ vec3_t g_maxdiscardedpos = { 0, 0, 0 };
 
 static NodePath g_rtroot( "RTRoot" );
 
-static LPoint3 VertCoord( dface_t *face, int vnum )
-{
-        int eIndex = g_bspdata->dsurfedges[face->firstedge + vnum];
-        int point;
-        if ( eIndex < 0 )
-                point = g_bspdata->dedges[-eIndex].v[1];
-        else
-                point = g_bspdata->dedges[eIndex].v[0];
-        dvertex_t *vert = g_bspdata->dvertexes + point;
-        return LPoint3( vert->point[0], vert->point[1], vert->point[2] );
-}
-
 // =====================================================================================
 //  GetParamsFromEnt
 //      this function is called from parseentity when it encounters the 
@@ -1732,9 +1720,9 @@ static void     BuildRayTraceEnvironment()
                         int ntris = face->numedges - 2;
                         for ( int tri = 0; tri < ntris; tri++ )
                         {
-                                geom->add_triangle( VertCoord( face, 0 ),
-                                        VertCoord( face, ( tri + 1 ) % face->numedges ),
-                                        VertCoord( face, ( tri + 2 ) % face->numedges ) );
+                                geom->add_triangle( VertCoord( g_bspdata, face, 0 ),
+                                        VertCoord( g_bspdata, face, ( tri + 1 ) % face->numedges ),
+                                        VertCoord( g_bspdata, face, ( tri + 2 ) % face->numedges ) );
                         }
 
                         geom->build();
