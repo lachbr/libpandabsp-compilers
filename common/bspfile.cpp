@@ -1733,3 +1733,15 @@ int GetNumWorldLeafs( bspdata_t *bspdata )
 {
         return bspdata->dmodels[0].visleafs;
 }
+
+LPoint3 VertCoord( const bspdata_t *data, const dface_t *face, int vnum )
+{
+	int eIndex = data->dsurfedges[face->firstedge + vnum];
+	int point;
+	if ( eIndex < 0 )
+		point = data->dedges[-eIndex].v[1];
+	else
+		point = data->dedges[eIndex].v[0];
+	const dvertex_t *vert = data->dvertexes + point;
+	return LPoint3( vert->point[0], vert->point[1], vert->point[2] );
+}

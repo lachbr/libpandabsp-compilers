@@ -533,6 +533,8 @@ extern void		LoadExtentFile( const char *const filename );
 #endif
 extern void		GetFaceExtents( bspdata_t *data, int facenum, int mins_out[2], int maxs_out[2] );
 
+extern LPoint3 VertCoord( const bspdata_t *data, const dface_t *face, int vnum );
+
 extern int GetNumWorldLeafs( bspdata_t *data );
 
 //

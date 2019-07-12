@@ -316,6 +316,12 @@ INLINE void VectorLerp( const LVector3 &src1, const LVector3 &src2, float t, LVe
         dest[2] = src1[2] + ( src2[2] - src1[2] ) * t;
 }
 
+INLINE void Vector2DLerp( const LVector2 &src1, const LVector2 &src2, float t, LVector2 &dest )
+{
+	dest[0] = src1[0] + ( src2[0] - src1[0] ) * t;
+	dest[1] = src1[1] + ( src2[1] - src1[1] ) * t;
+}
+
 INLINE float DotProductAbs( const LVector3 &v0, const LVector3 &v1 )
 {
         return fabsf( v0[0] * v1[0] ) +
