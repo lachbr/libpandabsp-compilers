@@ -1,5 +1,5 @@
 # libpandabsp-compilers
-`libpandabsp-compilers` is a suite of tools for compiling levels, for use with my [libpandabsp](https://github.com/lachbr/libpandabsp) library and the [Panda3D](https://github.com/panda3d/panda3d) game engine. It is a heavy modification and upgrade of [Zoner's Half Life Tools](http://zhlt.info/).
+`libpandabsp-compilers` is a suite of tools for compiling BSP levels, for use with my [libpandabsp](https://github.com/lachbr/libpandabsp) library and the [Panda3D](https://github.com/panda3d/panda3d) game engine. It is a heavy modification and upgrade of [Zoner's Half Life Tools](http://zhlt.info/).
 
 ---
 
