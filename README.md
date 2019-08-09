@@ -1,5 +1,5 @@
-# Panda3D BSP Tools
-**Panda3D BSP** is a suite of tools for creating worlds/levels/maps in the Panda3D game engine. It is a heavy modification of [Zoner's Half Life Tools](http://zhlt.info/) and the [Sledge Editor](http://sledge-editor.com/).
+# libpandabsp-compilers
+`libpandabsp-compilers` is a suite of tools for compiling levels for use with my [libpandabsp](https://github.com/lachbr/libpandabsp) library and the [Panda3D](https://github.com/panda3d/panda3d) game engine. It is a heavy modification and upgrade of [Zoner's Half Life Tools](http://zhlt.info/).
 
 ---
 
