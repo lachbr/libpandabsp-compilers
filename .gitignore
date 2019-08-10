@@ -13,3 +13,10 @@ p3bsp/CMakeFiles
 p3csg/CMakeFiles
 p3vis/CMakeFiles
 p3rad/CMakeFiles
+*.sln
+*.vcxproj
+*.vcroj
+*.filters
+*.user
+*.cmake
+CMakeCache.txt
