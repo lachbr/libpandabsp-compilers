@@ -2,7 +2,7 @@
 #include "config.h"
 #endif
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #include <sys/stat.h>
 #include <io.h>
 #include <fcntl.h>
@@ -22,7 +22,7 @@
 #endif
 #endif
 
-#include "cmdlib.h"
+#include "filelib.h"
 #include "messages.h"
 #include "log.h"
 #include "mathtypes.h"

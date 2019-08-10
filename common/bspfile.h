@@ -182,8 +182,8 @@ typedef struct dvertex_s
 
 typedef struct
 {
-        float           normal[3];
-        float           dist;
+        double          normal[3];
+        double          dist;
         planetypes      type;                                  // PLANE_X - PLANE_ANYZ ?remove? trivial to regenerate
 } dplane_t;
 
@@ -419,7 +419,7 @@ epair_t;
 
 typedef struct
 {
-        vec3_t          origin;
+        float           origin[3];
         int             firstbrush;
         int             numbrushes;
         epair_t*        epairs;
@@ -515,68 +515,69 @@ struct bspdata_t
         entity_t entities[MAX_MAP_ENTITIES];
 };
 
-extern bspdata_t *g_bspdata;
+extern _BSPEXPORT bspdata_t *g_bspdata;
 
-extern void     DecompressVis( bspdata_t *data, const byte* src, byte* const dest, const unsigned int dest_length );
-extern int      CompressVis( const byte* const src, const unsigned int src_length,
+extern _BSPEXPORT void     DecompressVis( bspdata_t *data, const byte* src, byte* const dest, const unsigned int dest_length );
+extern _BSPEXPORT int      CompressVis( const byte* const src, const unsigned int src_length,
                              byte* dest, unsigned int dest_length );
 
-extern bspdata_t     *LoadBSPImage( dheader_t* header );
-extern bspdata_t     *LoadBSPFile( const char* const filename );
-extern void     WriteBSPFile( bspdata_t *data, const char* const filename );
-extern void     PrintBSPFileSizes( bspdata_t *data );
+extern _BSPEXPORT bspdata_t     *LoadBSPImage( dheader_t* header );
+extern _BSPEXPORT bspdata_t     *LoadBSPFile( const char* const filename );
+extern _BSPEXPORT void     WriteBSPFile( bspdata_t *data, const char* const filename );
+extern _BSPEXPORT void     PrintBSPFileSizes( bspdata_t *data );
 #ifdef PLATFORM_CAN_CALC_EXTENT
-extern void		WriteExtentFile( bspdata_t *data, const char *const filename );
-extern bool		CalcFaceExtents_test();
+extern _BSPEXPORT void		WriteExtentFile( bspdata_t *data, const char *const filename );
+extern _BSPEXPORT bool		CalcFaceExtents_test();
 #else
-extern void		LoadExtentFile( const char *const filename );
+extern _BSPEXPORT void		LoadExtentFile( const char *const filename );
 #endif
-extern void		GetFaceExtents( bspdata_t *data, int facenum, int mins_out[2], int maxs_out[2] );
+extern _BSPEXPORT void		GetFaceExtents( bspdata_t *data, int facenum, int mins_out[2], int maxs_out[2] );
 
-extern LPoint3 VertCoord( const bspdata_t *data, const dface_t *face, int vnum );
+extern _BSPEXPORT LPoint3 VertCoord( const bspdata_t *data, const dface_t *face, int vnum );
 
-extern int GetNumWorldLeafs( bspdata_t *data );
+extern _BSPEXPORT int GetNumWorldLeafs( bspdata_t *data );
 
 //
 // Entity Related Stuff
 //
 
-extern void            ParseEntities( bspdata_t *data );
-extern void            UnparseEntities( bspdata_t *data );
+extern _BSPEXPORT void            ParseEntities( bspdata_t *data );
+extern _BSPEXPORT void            UnparseEntities( bspdata_t *data );
 
-extern void            DeleteKey( entity_t* ent, const char* const key );
-extern void            SetKeyValue( entity_t* ent, const char* const key, const char* const value );
-extern const char*     ValueForKey( const entity_t* const ent, const char* const key );
-extern int             IntForKey( const entity_t* const ent, const char* const key );
-extern vec_t           FloatForKey( const entity_t* const ent, const char* const key );
-extern void            GetVectorForKey( const entity_t* const ent, const char* const key, vec3_t vec );
+extern _BSPEXPORT void            DeleteKey( entity_t* ent, const char* const key );
+extern _BSPEXPORT void            SetKeyValue( entity_t* ent, const char* const key, const char* const value );
+extern _BSPEXPORT const char*     ValueForKey( const entity_t* const ent, const char* const key );
+extern _BSPEXPORT int             IntForKey( const entity_t* const ent, const char* const key );
+extern _BSPEXPORT float           FloatForKey( const entity_t* const ent, const char* const key );
+extern _BSPEXPORT void            GetVectorForKey( const entity_t* const ent, const char* const key, float *vec );
+extern _BSPEXPORT void            GetVectorDForKey( const entity_t* const ent, const char* const key, double *vec );
 
-extern entity_t* FindTargetEntity( bspdata_t *data, const char* const target );
-extern epair_t* ParseEpair();
-extern entity_t* EntityForModel( bspdata_t *data, int modnum );
+extern _BSPEXPORT entity_t* FindTargetEntity( bspdata_t *data, const char* const target );
+extern _BSPEXPORT epair_t* ParseEpair();
+extern _BSPEXPORT entity_t* EntityForModel( bspdata_t *data, int modnum );
 
-extern int FastChecksum( const void* const buffer, int bytes );
+extern _BSPEXPORT int FastChecksum( const void* const buffer, int bytes );
 
 //
 // Texture Related Stuff
 //
 
-extern int      g_max_map_texref;
-extern int		g_max_map_lightdata;
-extern void     dtexdata_init();
-extern void CDECL dtexdata_free();
+extern _BSPEXPORT int      g_max_map_texref;
+extern _BSPEXPORT int		g_max_map_lightdata;
+extern _BSPEXPORT void     dtexdata_init();
+extern _BSPEXPORT void CDECL dtexdata_free();
 
-extern char*    GetTextureByNumber( bspdata_t *data, int texturenumber );
+extern _BSPEXPORT char*    GetTextureByNumber( bspdata_t *data, int texturenumber );
 
-extern map<string, contents_t> g_tex_contents;
-extern void SetTextureContents( const char *texname, const char *contents );
-extern void SetTextureContents( const char *texname, contents_t contents );
-extern contents_t GetTextureContents( const char *texname );
-extern contents_t ContentsFromName( const char *name );
+extern _BSPEXPORT map<string, contents_t> g_tex_contents;
+extern _BSPEXPORT void SetTextureContents( const char *texname, const char *contents );
+extern _BSPEXPORT void SetTextureContents( const char *texname, contents_t contents );
+extern _BSPEXPORT contents_t GetTextureContents( const char *texname );
+extern _BSPEXPORT contents_t ContentsFromName( const char *name );
 
-extern LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
-INLINE extern colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
-colorrgbexp32_t *SampleSunLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
-colorrgbexp32_t *SampleBouncedLightmap( bspdata_t *data, const dface_t *face, int luxel );
+extern _BSPEXPORT LRGBColor dface_AvgLightColor( bspdata_t *data, dface_t *face, int style );
+extern _BSPEXPORT colorrgbexp32_t *SampleLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
+_BSPEXPORT colorrgbexp32_t *SampleSunLightmap( bspdata_t *data, const dface_t *face, int luxel, int style, int bump = 0 );
+_BSPEXPORT colorrgbexp32_t *SampleBouncedLightmap( bspdata_t *data, const dface_t *face, int luxel );
 
 #endif //BSPFILE_H__

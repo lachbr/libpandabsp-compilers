@@ -10,7 +10,7 @@
 #include "mathlib.h"
 #include "sse.h"
 
-#ifndef COMPILER_MSVC64
+#ifndef VERSION_64BIT
 // Implement for 64-bit Windows if needed.
 
 static const uint32_t _sincos_masks[] = { (uint32_t)0x0,  (uint32_t)~0x0 };

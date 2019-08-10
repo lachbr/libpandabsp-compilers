@@ -4,7 +4,7 @@
 //
 //=====================================================================================//
 
-#include "mathlib/ssemath.h"
+#include "ssemath.h"
 
 
 fltx4 Pow_FixedPoint_Exponent_SIMD( const fltx4 & x, int exponent )

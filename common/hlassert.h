@@ -6,7 +6,7 @@
 #pragma once
 #endif
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #ifdef _DEBUG
 
 #include "log.h"
@@ -20,7 +20,7 @@
 #define hlassert(exp)
 
 #endif // _DEBUG
-#endif // SYSTEM_WIN32
+#endif // _WIN32
 
 #ifdef SYSTEM_POSIX
 #ifdef _DEBUG

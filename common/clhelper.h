@@ -10,11 +10,13 @@
 #ifndef CLHELPER_H
 #define CLHELPER_H
 
+#include "common_config.h"
+
 #include <CL/cl.h>
 
 #include <pvector.h>
 
-class CLHelper
+class _BSPEXPORT CLHelper
 {
 public:
         class CLProgram;

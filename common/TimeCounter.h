@@ -7,23 +7,23 @@
 
 #include "cmdlib.h"
 
-class TimeCounter
+class _BSPEXPORT TimeCounter
 {
 public:
     void start()
     {
-        start = I_FloatTime();
+        _start = I_FloatTime();
     }
 
     void stop()
     {
         double stop = I_FloatTime();
-        accum += stop - start;
+        _accum += stop - _start;
     }
 
     double getTotal() const
     {
-        return accum;
+        return _accum;
     }
 
     void reset()
@@ -42,8 +42,8 @@ public:
     // Default Copy Operator ok
 
 protected:
-    double start;
-    double accum;
+    double _start;
+    double _accum;
 };
 
 #endif//TIMECOUNTER_H__

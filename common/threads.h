@@ -16,14 +16,14 @@
 
 typedef void q_threadfunction( int );
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define DEFAULT_NUMTHREADS -1
 #endif
 #ifdef SYSTEM_POSIX
 #define DEFAULT_NUMTHREADS 1
 #endif
 
-class BSPThread : public Thread
+class _BSPEXPORT BSPThread : public Thread
 {
 public:
         BSPThread();
@@ -42,25 +42,25 @@ private:
 
 #define DEFAULT_THREAD_PRIORITY TP_normal
 
-extern int      g_numthreads;
-extern ThreadPriority g_threadpriority;
-extern LightMutex g_global_lock;
-extern pvector<PT( BSPThread )> g_threadhandles;
+extern _BSPEXPORT int      g_numthreads;
+extern _BSPEXPORT ThreadPriority g_threadpriority;
+extern _BSPEXPORT LightMutex g_global_lock;
+extern _BSPEXPORT pvector<PT( BSPThread )> g_threadhandles;
 
-extern int	GetCurrentThreadNumber();
+extern _BSPEXPORT int	GetCurrentThreadNumber();
 
-extern void     ThreadSetPriority( ThreadPriority type );
-extern void     ThreadSetDefault();
-extern int      GetThreadWork();
-extern void     ThreadLock();
-extern void     ThreadUnlock();
+extern _BSPEXPORT void     ThreadSetPriority( ThreadPriority type );
+extern _BSPEXPORT void     ThreadSetDefault();
+extern _BSPEXPORT int      GetThreadWork();
+extern _BSPEXPORT void     ThreadLock();
+extern _BSPEXPORT void     ThreadUnlock();
 
-extern void     RunThreadsOnIndividual( int workcnt, bool showpacifier, q_threadfunction );
-extern void     RunThreadsOn( int workcnt, bool showpacifier, q_threadfunction );
+extern _BSPEXPORT void     RunThreadsOnIndividual( int workcnt, bool showpacifier, q_threadfunction );
+extern _BSPEXPORT void     RunThreadsOn( int workcnt, bool showpacifier, q_threadfunction );
 
 #ifdef ZHLT_NETVIS
-extern void     threads_InitCrit();
-extern void     threads_UninitCrit();
+extern _BSPEXPORT void     threads_InitCrit();
+extern _BSPEXPORT void     threads_UninitCrit();
 #endif
 
 #define NamedRunThreadsOn(n,p,f) { printf("%-20s ", #f ":"); RunThreadsOn(n,p,f); }

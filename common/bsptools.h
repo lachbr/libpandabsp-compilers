@@ -12,6 +12,8 @@
 #ifndef BSPTOOLS_H
 #define BSPTOOLS_H
 
+#include "common_config.h"
+
 #include <aa_luse.h>
 #include "bspfile.h"
 #include "mathlib/ssemath.h"
@@ -26,7 +28,7 @@ INLINE LVector3 angles_to_vector( const vec3_t &angles )
                 sin( deg_2_rad( angles[1] ) ) );
 }
 
-struct Ray
+struct _BSPEXPORT Ray
 {
         Ray( const LPoint3 &s, const LPoint3 &e,
              const LPoint3 &mi, const LPoint3 &ma )
@@ -76,7 +78,7 @@ struct Ray
 
 struct collbspdata_t;
 
-struct Trace
+struct _BSPEXPORT Trace
 {
         LPoint3 start_pos;
         LPoint3 end_pos;
@@ -131,7 +133,7 @@ struct Trace
 
 };
 
-class BaseBSPEnumerator
+class _BSPEXPORT BaseBSPEnumerator
 {
 public:
         BaseBSPEnumerator( bspdata_t *data );
@@ -146,12 +148,12 @@ public:
         bspdata_t *data;
 };
 
-extern bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
+extern _BSPEXPORT bool r_enumerate_nodes_along_ray( int node_id, const Ray &ray, float start,
                                          float end, BaseBSPEnumerator *surf, int context, float scale = 1.0 );
 
-extern bool enumerate_nodes_along_ray( const Ray &ray, BaseBSPEnumerator *surf, int context, float scale = 1.0 );
+extern _BSPEXPORT bool enumerate_nodes_along_ray( const Ray &ray, BaseBSPEnumerator *surf, int context, float scale = 1.0 );
 
-struct lightfalloffparams_t
+struct _BSPEXPORT lightfalloffparams_t
 {
         float constant_atten;
         float linear_atten;
@@ -161,6 +163,6 @@ struct lightfalloffparams_t
         float end_fade_distance;
         float cap_distance;
 };
-extern lightfalloffparams_t GetLightFalloffParams( entity_t *e, LVector3 &intensity );
+extern _BSPEXPORT lightfalloffparams_t GetLightFalloffParams( entity_t *e, LVector3 &intensity );
 
 #endif // BSPTOOLS_H

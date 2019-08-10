@@ -555,7 +555,7 @@ void            WriteBSPFile( bspdata_t *data, const char* const filename )
 // =====================================================================================
 //  GetFaceExtents (with PLATFORM_CAN_CALC_EXTENT on)
 // =====================================================================================
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #ifdef VERSION_32BIT
 static void CorrectFPUPrecision()
 {
@@ -1127,9 +1127,6 @@ epair_t*        ParseEpair()
 * ================
 */
 
-// AJM: each tool should have its own version of GetParamsFromEnt which parseentity calls
-extern void     GetParamsFromEnt( entity_t* mapent );
-
 bool            ParseEntity(bspdata_t *data)
 {
         epair_t*        e;
@@ -1168,11 +1165,6 @@ bool            ParseEntity(bspdata_t *data)
                 mapent->epairs = e;
         }
 
-        if ( !strcmp( ValueForKey( mapent, "classname" ), "info_compile_parameters" ) )
-        {
-                Log( "Map entity info_compile_parameters detected, using compile settings\n" );
-                GetParamsFromEnt( mapent );
-        }
         // ugly code
         if ( !strncmp( ValueForKey( mapent, "classname" ), "light", 5 ) && *ValueForKey( mapent, "_tex" ) )
         {
@@ -1370,50 +1362,6 @@ void            UnparseEntities(bspdata_t *data)
                         SetKeyValue( mapent, "convertto", "" );
                 }
         }
-#ifdef HLCSG
-        extern bool g_nolightopt;
-        if ( !g_nolightopt )
-        {
-                int i, j;
-                int count = 0;
-                bool *lightneedcompare = (bool *)malloc( data->numentities * sizeof( bool ) );
-                hlassume( lightneedcompare != NULL, assume_NoMemory );
-                memset( lightneedcompare, 0, data->numentities * sizeof( bool ) );
-                for ( i = data->numentities - 1; i > -1; i-- )
-                {
-                        entity_t *ent = &data->entities[i];
-                        const char *classname = ValueForKey( ent, "classname" );
-                        const char *targetname = ValueForKey( ent, "targetname" );
-                        int style = IntForKey( ent, "style" );
-                        if ( !targetname[0] || strcmp( classname, "light" ) && strcmp( classname, "light_spot" ) && strcmp( classname, "light_environment" ) )
-                                continue;
-                        for ( j = i + 1; j < data->numentities; j++ )
-                        {
-                                if ( !lightneedcompare[j] )
-                                        continue;
-                                entity_t *ent2 = &data->entities[j];
-                                const char *targetname2 = ValueForKey( ent2, "targetname" );
-                                int style2 = IntForKey( ent2, "style" );
-                                if ( style == style2 && !strcmp( targetname, targetname2 ) )
-                                        break;
-                        }
-                        if ( j < data->numentities )
-                        {
-                                DeleteKey( ent, "targetname" );
-                                count++;
-                        }
-                        else
-                        {
-                                lightneedcompare[i] = true;
-                        }
-                }
-                if ( count > 0 )
-                {
-                        Log( "%d redundant named lights optimized.\n", count );
-                }
-                free( lightneedcompare );
-        }
-#endif
         for ( i = 0; i < data->numentities; i++ )
         {
                 ep = data->entities[i].epairs;
@@ -1517,7 +1465,7 @@ int             IntForKey( const entity_t* const ent, const char* const key )
 // =====================================================================================
 //  FloatForKey
 // =====================================================================================
-vec_t           FloatForKey( const entity_t* const ent, const char* const key )
+float           FloatForKey( const entity_t* const ent, const char* const key )
 {
         return atof( ValueForKey( ent, key ) );
 }
@@ -1526,18 +1474,34 @@ vec_t           FloatForKey( const entity_t* const ent, const char* const key )
 //  GetVectorForKey
 //      returns value for key in vec[0-2]
 // =====================================================================================
-void            GetVectorForKey( const entity_t* const ent, const char* const key, vec3_t vec )
+void            GetVectorForKey( const entity_t* const ent, const char* const key, float *vec )
 {
         const char*     k;
-        double          v1, v2, v3;
+        float          v1, v2, v3;
 
         k = ValueForKey( ent, key );
-        // scanf into doubles, then assign, so it is vec_t size independent
         v1 = v2 = v3 = 0;
         sscanf( k, "%lf %lf %lf", &v1, &v2, &v3 );
         vec[0] = v1;
         vec[1] = v2;
         vec[2] = v3;
+}
+
+// =====================================================================================
+//  GetVectorDForKey
+//      returns value for key in vec[0-2]
+// =====================================================================================
+void            GetVectorDForKey( const entity_t* const ent, const char* const key, double *vec )
+{
+	const char*     k;
+	double          v1, v2, v3;
+
+	k = ValueForKey( ent, key );
+	v1 = v2 = v3 = 0;
+	sscanf( k, "%lf %lf %lf", &v1, &v2, &v3 );
+	vec[0] = v1;
+	vec[1] = v2;
+	vec[2] = v3;
 }
 
 // =====================================================================================

@@ -3,6 +3,8 @@
 
 #pragma warning(disable: 4251)
 
+#include "common_config.h"
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -71,7 +73,7 @@ using std::endl;
 //#define ZHLT_HIDDENSOUNDTEXTURE //--vluzacn
 
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define RIPENT_PAUSE //--vluzacn
 #endif
 #define RIPENT_TEXTURE //--vluzacn
@@ -79,7 +81,7 @@ using std::endl;
 // tool specific settings below only mean a recompile of the tool affected
 
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define HLCSG_GAMETEXTMESSAGE_UTF8 //--vluzacn
 #endif
 //#define HLBSP_SUBDIVIDE_INMID // this may contribute to 'AllocBlock: full' problem though it may generate fewer faces. --vluzacn
@@ -119,7 +121,7 @@ using std::endl;
 #include "win32fix.h"
 #include "mathtypes.h"
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(disable: 4127)                      // conditional expression is constant
 #pragma warning(disable: 4115)                      // named type definition in parentheses
 #pragma warning(disable: 4244)                      // conversion from 'type' to type', possible loss of data
@@ -155,7 +157,7 @@ using std::endl;
 #include "c2cpp.h"
 #endif
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define SYSTEM_SLASH_CHAR  '\\'
 #define SYSTEM_SLASH_STR   "\\"
 #endif
@@ -169,39 +171,39 @@ using std::endl;
 #define sizeofElement(type,identifier) (sizeof((type*)0)->identifier)
 
 #ifdef SYSTEM_POSIX
-extern char*    strupr( char* string );
-extern char*    strlwr( char* string );
+extern _BSPEXPORT char*    strupr( char* string );
+extern _BSPEXPORT char*    strlwr( char* string );
 #endif
-extern const char* stristr( const char* const string, const char* const substring );
-extern bool CDECL FORMAT_PRINTF( 3, 4 ) safe_snprintf( char* const dest, const size_t count, const char* const args, ... );
-extern bool     safe_strncpy( char* const dest, const char* const src, const size_t count );
-extern bool     safe_strncat( char* const dest, const char* const src, const size_t count );
-extern bool     TerminatedString( const char* buffer, const int size );
+extern _BSPEXPORT const char* stristr( const char* const string, const char* const substring );
+extern _BSPEXPORT bool CDECL FORMAT_PRINTF( 3, 4 ) safe_snprintf( char* const dest, const size_t count, const char* const args, ... );
+extern _BSPEXPORT bool     safe_strncpy( char* const dest, const char* const src, const size_t count );
+extern _BSPEXPORT bool     safe_strncat( char* const dest, const char* const src, const size_t count );
+extern _BSPEXPORT bool     TerminatedString( const char* buffer, const int size );
 
-extern char*    FlipSlashes( char* string );
+extern _BSPEXPORT char*    FlipSlashes( char* string );
 
-extern double   I_FloatTime();
+extern _BSPEXPORT double   I_FloatTime();
 
-extern int      CheckParm( char* check );
+extern _BSPEXPORT int      CheckParm( char* check );
 
-extern void     DefaultExtension( char* path, const char* extension );
-extern void     DefaultPath( char* path, char* basepath );
-extern void     StripFilename( char* path );
-extern void     StripExtension( char* path );
+extern _BSPEXPORT void     DefaultExtension( char* path, const char* extension );
+extern _BSPEXPORT void     DefaultPath( char* path, char* basepath );
+extern _BSPEXPORT void     StripFilename( char* path );
+extern _BSPEXPORT void     StripExtension( char* path );
 
-extern void     ExtractFile( const char* const path, char* dest );
-extern void     ExtractFilePath( const char* const path, char* dest );
-extern void     ExtractFileBase( const char* const path, char* dest );
-extern void     ExtractFileExtension( const char* const path, char* dest );
+extern _BSPEXPORT void     ExtractFile( const char* const path, char* dest );
+extern _BSPEXPORT void     ExtractFilePath( const char* const path, char* dest );
+extern _BSPEXPORT void     ExtractFileBase( const char* const path, char* dest );
+extern _BSPEXPORT void     ExtractFileExtension( const char* const path, char* dest );
 
-extern short    BigShort( short l );
-extern short    LittleShort( short l );
-extern int      BigLong( int l );
-extern int      LittleLong( int l );
-extern float    BigFloat( float l );
-extern float    LittleFloat( float l );
+extern _BSPEXPORT short    BigShort( short l );
+extern _BSPEXPORT short    LittleShort( short l );
+extern _BSPEXPORT int      BigLong( int l );
+extern _BSPEXPORT int      LittleLong( int l );
+extern _BSPEXPORT float    BigFloat( float l );
+extern _BSPEXPORT float    LittleFloat( float l );
 
-extern bool strcontains( const string &str, const string &keyword );
-extern vector<string> explode( const string &delimiter, const string &str );
+extern _BSPEXPORT bool strcontains( const string &str, const string &keyword );
+extern _BSPEXPORT vector<string> explode( const string &delimiter, const string &str );
 
 #endif //CMDLIB_H__

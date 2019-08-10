@@ -4,7 +4,7 @@
 //
 //=====================================================================================//
 
-#include <halton.h>
+#include "halton.h"
 
 HaltonSequenceGenerator_t::HaltonSequenceGenerator_t( int b )
 {

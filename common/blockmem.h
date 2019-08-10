@@ -6,14 +6,14 @@
 #pragma once
 #endif
 
-extern void*    AllocBlock( unsigned long size );
-extern bool     FreeBlock( void* pointer );
+extern _BSPEXPORT void*    AllocBlock( unsigned long size );
+extern _BSPEXPORT bool     FreeBlock( void* pointer );
 
-extern void*    Alloc( unsigned long size );
-extern bool     Free( void* pointer );
+extern _BSPEXPORT void*    Alloc( unsigned long size );
+extern _BSPEXPORT bool     Free( void* pointer );
 
 #if defined(CHECK_HEAP)
-extern void     HeapCheck();
+extern _BSPEXPORT void     HeapCheck();
 #else
 #define HeapCheck()
 #endif

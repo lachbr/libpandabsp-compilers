@@ -14,7 +14,7 @@
 #pragma once
 #endif
 
-class BSPBoundingBox
+class _BSPEXPORT BSPBoundingBox
 {
 public:
         typedef enum

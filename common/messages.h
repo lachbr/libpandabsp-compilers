@@ -95,6 +95,6 @@ typedef enum
 }
 assume_msgs;
 
-extern const MessageTable_t* GetAssume( assume_msgs id );
+extern _BSPEXPORT const MessageTable_t* GetAssume( assume_msgs id );
 
 #endif // commonc MESSAGES_H__

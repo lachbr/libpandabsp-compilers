@@ -6,7 +6,6 @@
 #pragma once
 #endif
 
-#include "basictypes.h"
 #include "mathtypes.h"
 #include "win32fix.h"
 #include "mathlib.h"
@@ -23,23 +22,7 @@
 #define	SIDE_BACK		1
 #define	SIDE_CROSS		-2
 
-#ifdef HLBSP
-#ifndef DOUBLEVEC_T
-#error you must add -dDOUBLEVEC_T to the project!
-#endif
-#define dplane_t plane_t
-#define g_dplanes g_mapplanes
-typedef struct
-{
-        vec3_t			normal;
-        vec3_t			unused_origin;
-        vec_t			dist;
-        planetypes		type;
-} dplane_t;
-extern dplane_t g_dplanes[MAX_INTERNAL_MAP_PLANES];
-#endif
-
-class Winding
+class _BSPEXPORT Winding
 {
 public:
         // General Functions

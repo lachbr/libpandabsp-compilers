@@ -29,7 +29,7 @@
 
 #define	Q_PI	3.14159265358979323846
 
-extern const vec3_t vec3_origin;
+extern _BSPEXPORT const vec3_t vec3_origin;
 
 INLINE void P_swap( float &a, float &b )
 {
@@ -213,8 +213,8 @@ struct colorrgbexp32_t
         signed char exponent;
 };
 
-void VectorToColorRGBExp32( const LVector3 &v, colorrgbexp32_t &out );
-void ColorRGBExp32ToVector( const colorrgbexp32_t &color, LVector3 &out );
+_BSPEXPORT void VectorToColorRGBExp32( const LVector3 &v, colorrgbexp32_t &out );
+_BSPEXPORT void ColorRGBExp32ToVector( const colorrgbexp32_t &color, LVector3 &out );
 
 // maps a float to a byte fraction between min & max
 INLINE unsigned char fixed_8_fraction( float t, float tMin, float tMax )
@@ -336,7 +336,7 @@ INLINE float DotProductAbs( const LVector3 &v0, const float *v1 )
                 fabsf( v0[2] * v1[2] );
 }
 
-void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 &face_normal,
+_BSPEXPORT void GetBumpNormals( const LVector3 &svec, const LVector3 &tvec, const LVector3 &face_normal,
                      const LVector3 &phong_normal, LVector3 *bump_vecs );
 
 INLINE LVector3 GetLVector3( const vec3_t &vec )
@@ -349,9 +349,9 @@ INLINE LVector3 GetLVector3_2( const vec_t *vec )
         return LVector3( vec[0], vec[1], vec[2] );
 }
 
-extern bool SolveInverseQuadratic( float x1, float y1, float x2, float y2,
+_BSPEXPORT extern bool SolveInverseQuadratic( float x1, float y1, float x2, float y2,
                                    float x3, float y3, float &a, float &b, float &c );
-extern bool SolveInverseQuadraticMonotonic( float x1, float y1, float x2, float y2,
+_BSPEXPORT extern bool SolveInverseQuadraticMonotonic( float x1, float y1, float x2, float y2,
                                             float x3, float y3, float &a, float &b, float &c );
 
 static INLINE float FLerp( float f1, float f2, float t )

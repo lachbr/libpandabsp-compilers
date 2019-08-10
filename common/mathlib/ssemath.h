@@ -11,7 +11,9 @@
 
 #include <xmmintrin.h>
 
-#include <mathlib.h>
+#include "common_config.h"
+
+#include "../mathlib.h"
 
 #if defined(GNUC)
 #define USE_STDC_FOR_SIMD 0
@@ -134,20 +136,20 @@ FORCEINLINE void TestVPUFlags() {}
 // instructions, saving a load and possible L2
 // miss.)
 #ifndef _X360
-extern const fltx4 Four_Zeros;									// 0 0 0 0
-extern const fltx4 Four_Ones;									// 1 1 1 1
-extern const fltx4 Four_Twos;									// 2 2 2 2
-extern const fltx4 Four_Threes;									// 3 3 3 3
-extern const fltx4 Four_Fours;									// guess.
-extern const fltx4 Four_Point225s;								// .225 .225 .225 .225
-extern const fltx4 Four_PointFives;								// .5 .5 .5 .5
-extern const fltx4 Four_Epsilons;								// FLT_EPSILON FLT_EPSILON FLT_EPSILON FLT_EPSILON
-extern const fltx4 Four_2ToThe21s;								// (1<<21)..
-extern const fltx4 Four_2ToThe22s;								// (1<<22)..
-extern const fltx4 Four_2ToThe23s;								// (1<<23)..
-extern const fltx4 Four_2ToThe24s;								// (1<<24)..
-extern const fltx4 Four_Origin;									// 0 0 0 1 (origin point, like vr0 on the PS2)
-extern const fltx4 Four_NegativeOnes;							// -1 -1 -1 -1 
+extern _BSPEXPORT const fltx4 Four_Zeros;									// 0 0 0 0
+extern _BSPEXPORT const fltx4 Four_Ones;									// 1 1 1 1
+extern _BSPEXPORT const fltx4 Four_Twos;									// 2 2 2 2
+extern _BSPEXPORT const fltx4 Four_Threes;									// 3 3 3 3
+extern _BSPEXPORT const fltx4 Four_Fours;									// guess.
+extern _BSPEXPORT const fltx4 Four_Point225s;								// .225 .225 .225 .225
+extern _BSPEXPORT const fltx4 Four_PointFives;								// .5 .5 .5 .5
+extern _BSPEXPORT const fltx4 Four_Epsilons;								// FLT_EPSILON FLT_EPSILON FLT_EPSILON FLT_EPSILON
+extern _BSPEXPORT const fltx4 Four_2ToThe21s;								// (1<<21)..
+extern _BSPEXPORT const fltx4 Four_2ToThe22s;								// (1<<22)..
+extern _BSPEXPORT const fltx4 Four_2ToThe23s;								// (1<<23)..
+extern _BSPEXPORT const fltx4 Four_2ToThe24s;								// (1<<24)..
+extern _BSPEXPORT const fltx4 Four_Origin;									// 0 0 0 1 (origin point, like vr0 on the PS2)
+extern _BSPEXPORT const fltx4 Four_NegativeOnes;							// -1 -1 -1 -1 
 #else
 #define			   Four_Zeros XMVectorZero()					// 0 0 0 0
 #define			   Four_Ones XMVectorSplatOne()					// 1 1 1 1
@@ -164,22 +166,22 @@ extern const fltx4 Four_2ToThe24s;								// (1<<24)..
 extern const fltx4 Four_Origin;									// 0 0 0 1 (origin point, like vr0 on the PS2)
 extern const fltx4 Four_NegativeOnes;							// -1 -1 -1 -1 
 #endif
-extern const fltx4 Four_FLT_MAX;								// FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX
-extern const fltx4 Four_Negative_FLT_MAX;						// -FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX
-extern const fltx4 g_SIMD_0123;									// 0 1 2 3 as float
+extern _BSPEXPORT const fltx4 Four_FLT_MAX;								// FLT_MAX, FLT_MAX, FLT_MAX, FLT_MAX
+extern _BSPEXPORT const fltx4 Four_Negative_FLT_MAX;						// -FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX
+extern _BSPEXPORT const fltx4 g_SIMD_0123;									// 0 1 2 3 as float
 
 // external aligned integer constants
-extern const ALIGN_16BYTE int32_t g_SIMD_clear_signmask[] ALIGN16_POST;			// 0x7fffffff x 4
-extern const ALIGN_16BYTE int32_t g_SIMD_signmask[] ALIGN16_POST;				// 0x80000000 x 4
-extern const ALIGN_16BYTE int32_t g_SIMD_lsbmask[] ALIGN16_POST;				// 0xfffffffe x 4
-extern const ALIGN_16BYTE int32_t g_SIMD_clear_wmask[] ALIGN16_POST;			// -1 -1 -1 0
-extern const ALIGN_16BYTE int32_t g_SIMD_ComponentMask[4][4] ALIGN16_POST;		// [0xFFFFFFFF 0 0 0], [0 0xFFFFFFFF 0 0], [0 0 0xFFFFFFFF 0], [0 0 0 0xFFFFFFFF]
-extern const ALIGN_16BYTE int32_t g_SIMD_AllOnesMask[] ALIGN16_POST;			// ~0,~0,~0,~0
-extern const ALIGN_16BYTE int32_t g_SIMD_Low16BitsMask[] ALIGN16_POST;			// 0xffff x 4
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_clear_signmask[] ALIGN16_POST;			// 0x7fffffff x 4
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_signmask[] ALIGN16_POST;				// 0x80000000 x 4
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_lsbmask[] ALIGN16_POST;				// 0xfffffffe x 4
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_clear_wmask[] ALIGN16_POST;			// -1 -1 -1 0
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_ComponentMask[4][4] ALIGN16_POST;		// [0xFFFFFFFF 0 0 0], [0 0xFFFFFFFF 0 0], [0 0 0xFFFFFFFF 0], [0 0 0 0xFFFFFFFF]
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_AllOnesMask[] ALIGN16_POST;			// ~0,~0,~0,~0
+extern _BSPEXPORT const ALIGN_16BYTE int32_t g_SIMD_Low16BitsMask[] ALIGN16_POST;			// 0xffff x 4
 
 // this mask is used for skipping the tail of things. If you have N elements in an array, and wish
 // to mask out the tail, g_SIMD_SkipTailMask[N & 3] what you want to use for the last iteration.
-extern const int32_t ALIGN_16BYTE g_SIMD_SkipTailMask[4][4] ALIGN16_POST;
+extern _BSPEXPORT const int32_t ALIGN_16BYTE g_SIMD_SkipTailMask[4][4] ALIGN16_POST;
 
 // Define prefetch macros.
 // The characteristics of cache and prefetch are completely 
@@ -2941,7 +2943,7 @@ inline fltx4 fnegate( const fltx4 & x )
 }
 
 
-fltx4 Pow_FixedPoint_Exponent_SIMD( const fltx4 & x, int exponent );
+_BSPEXPORT fltx4 Pow_FixedPoint_Exponent_SIMD( const fltx4 & x, int exponent );
 
 // PowSIMD - raise a SIMD register to a power.  This is analogous to the C pow() function, with some
 // restictions: fractional exponents are only handled with 2 bits of precision. Basically,

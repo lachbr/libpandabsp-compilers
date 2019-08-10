@@ -3,7 +3,7 @@
 #endif
 
 #ifdef ZHLT_NETVIS
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
@@ -185,7 +185,7 @@ void CDECL      OpenLog( const int clientid )
                 char            logfilename[_MAX_PATH];
 
 #ifdef ZHLT_NETVIS
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                 if ( clientid )
                 {
                         char            computername[MAX_COMPUTERNAME_LENGTH + 1];
@@ -241,7 +241,7 @@ void CDECL      CloseLog()
 //  Every function up to this point should check g_log, the functions below should not
 //
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 // AJM: fprintf/flush wasnt printing newline chars correctly (prefixed with \r) under win32
 //      due to the fact that those streams are in byte mode, so this function prefixes 
 //      all \n with \r automatically.
@@ -274,7 +274,7 @@ void            Safe_WriteLog( const char* const message )
 void            WriteLog( const char* const message )
 {
 
-#ifndef SYSTEM_WIN32
+#ifndef _WIN32
         if ( CompileLog )
         {
                 fprintf( CompileLog, "%s", message ); //fprintf(CompileLog, message); //--vluzacn
@@ -314,7 +314,7 @@ void CDECL FORMAT_PRINTF( 1, 2 )      Error( const char* const error, ... )
         char            message2[MAX_ERROR];
         va_list         argptr;
 
-        /*#if defined( SYSTEM_WIN32 ) && !defined( __MINGW32__ ) && !defined( __BORLANDC__ )
+        /*#if defined( _WIN32 ) && !defined( __MINGW32__ ) && !defined( __BORLANDC__ )
         {
         char* wantint3 = getenv("WANTINT3");
         if (wantint3)
