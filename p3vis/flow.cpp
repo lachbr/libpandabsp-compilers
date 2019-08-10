@@ -666,7 +666,7 @@ static void     SimpleFlood( byte* const srcmightsee, const int leafnum, byte* c
 }
 
 #define PORTALSEE_SIZE (MAX_PORTALS*2)
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable: 4100)                             // unreferenced formal parameter
 #endif
@@ -1162,6 +1162,6 @@ NoWork:
                 delete[] boundary;
 }
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(pop)
 #endif

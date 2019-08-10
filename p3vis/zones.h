@@ -9,7 +9,6 @@
 #pragma once
 #endif
 
-#include "basictypes.h"
 #include "winding.h"
 #include "boundingbox.h"
 

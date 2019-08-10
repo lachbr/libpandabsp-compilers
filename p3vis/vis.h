@@ -24,7 +24,7 @@
 #define DEFAULT_FULLVIS     false
 #define DEFAULT_CHART       false
 #define DEFAULT_INFO        true
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define DEFAULT_ESTIMATE    false
 #endif
 #ifdef SYSTEM_POSIX

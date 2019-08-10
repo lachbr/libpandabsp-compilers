@@ -11,7 +11,7 @@ Contains code by Skyler "Zipster" York (zipster89134@hotmail.com) - Included wit
 
 #include "vis.h"
 #ifndef WITHIN_PANDA
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
@@ -402,7 +402,7 @@ static portal_t* GetNextPortal()
 // =====================================================================================
 //  LeafThread
 // =====================================================================================
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable: 4100)                             // unreferenced formal parameter
 #endif
@@ -501,7 +501,7 @@ static void     LeafThread( int unused )
 }
 #endif
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(pop)
 #endif
 
@@ -1118,7 +1118,7 @@ static void     Usage()
         Log( "    -low | -high    : run program an altered priority level\n" );
         Log( "    -nolog          : don't generate the compile logfiles\n" );
         Log( "    -threads #      : manually specify the number of threads to run\n" );
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
         Log( "    -estimate       : display estimated time during compile\n" );
 #endif
 #ifdef SYSTEM_POSIX
@@ -1288,7 +1288,7 @@ int             main( const int argc, char** argv )
                                         }
                                 }
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                 else if ( !strcasecmp( argv[i], "-estimate" ) )
                                 {
                                         g_estimate = true;
@@ -1452,7 +1452,7 @@ int             main( const int argc, char** argv )
                                         if ( i + 1 < argc )
                                         {
                                                 char tmp[_MAX_PATH];
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                                 GetModuleFileName( NULL, tmp, _MAX_PATH );
 #else
                                                 safe_strncpy( tmp, argv[0], _MAX_PATH );
@@ -1666,7 +1666,7 @@ int             main( const int argc, char** argv )
                                                 if ( g_overview_count < g_overview_max )
                                                 {
                                                         vec3_t p;
-                                                        GetVectorForKey( &g_bspdata->entities[i], "origin", p );
+                                                        GetVectorDForKey( &g_bspdata->entities[i], "origin", p );
                                                         VectorCopy( p, g_overview[g_overview_count].origin );
                                                         g_overview[g_overview_count].visleafnum = VisLeafnumForPoint( p );
                                                         g_overview[g_overview_count].reverse = IntForKey( &g_bspdata->entities[i], "reverse" );
@@ -1709,7 +1709,7 @@ int             main( const int argc, char** argv )
                                 free( g_uncompressed );
                                 // END VIS
 
-#ifndef SYSTEM_WIN32
+#ifndef _WIN32
                                 // Talk about cheese . . .
                                 StopNetvisSocketServer();
 #endif
@@ -1718,7 +1718,7 @@ int             main( const int argc, char** argv )
                         else if ( g_vismode == VIS_MODE_CLIENT )
                         {
 
-#ifndef SYSTEM_WIN32
+#ifndef _WIN32
                                 // Dont ask  . . 
                                 DisconnectFromServer();
 #endif
