@@ -898,28 +898,11 @@ static void     EmitPlanes()
         g_bspdata->numplanes = g_nummapplanes;
         mp = g_mapplanes;
         dp = g_bspdata->dplanes;
-        {
-                char name[_MAX_PATH];
-                safe_snprintf( name, _MAX_PATH, "%s.pln", g_Mapname );
-                FILE *planeout = fopen( name, "wb" );
-                if ( !planeout )
-                        Error( "Couldn't open %s", name );
-                SafeWrite( planeout, g_mapplanes, g_nummapplanes * sizeof( plane_t ) );
-                fclose( planeout );
-        }
         for ( i = 0; i < g_nummapplanes; i++, mp++, dp++ )
         {
-                //if (!(mp->redundant))
-                //{
-                //    Log("EmitPlanes: plane %i non redundant\n", i);
                 VectorCopy( mp->normal, dp->normal );
                 dp->dist = mp->dist;
                 dp->type = mp->type;
-                // }
-                //else
-                // {
-                //     Log("EmitPlanes: plane %i redundant\n", i);
-                // }
         }
 }
 
