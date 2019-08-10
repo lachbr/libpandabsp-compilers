@@ -46,14 +46,20 @@ dleaf_t*		PointInLeaf_Worst( const vec3_t point )
 {
         return PointInLeaf_Worst_r( 0, point );
 }
+dleaf_t*	PointInLeafD( const vec3_t &point )
+{
+	float pointf[3];
+	VectorCopy( point, pointf );
+	return PointInLeaf( pointf );
+}
 dleaf_t*        PointInLeaf( const LVector3 &vpoint )
 {
-        vec3_t point;
+        float point[3];
         VectorCopy( vpoint, point );
 
         return PointInLeaf( point );
 }
-dleaf_t*        PointInLeaf( const vec3_t point )
+dleaf_t*        PointInLeaf( const float * point )
 {
         int             nodenum;
         vec_t           dist;

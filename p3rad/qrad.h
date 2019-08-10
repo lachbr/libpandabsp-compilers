@@ -24,7 +24,7 @@
 
 #include <pnmImage.h>
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(disable: 4142 4028)
 #include <io.h>
 #pragma warning(default: 4142 4028)
@@ -42,7 +42,7 @@
 #include <ctype.h>
 #endif
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #include <direct.h>
 #endif
 
@@ -140,7 +140,7 @@
 #define		TRANSFER_EPSILON		0.0000001
 
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define DEFAULT_ESTIMATE    false
 #endif
 #ifdef SYSTEM_POSIX
@@ -212,7 +212,7 @@ typedef struct lightvalue_s
         LVector3 light;
         float direct_sun_amt;
 
-        vec_t &operator []( int n )
+        float &operator []( int n )
         {
                 return light[n];
         }
@@ -482,9 +482,9 @@ INLINE void ReportRadTimers()
 
 extern bool		g_fastmode;
 extern bool     g_extra;
-extern vec3_t   g_ambient;
-extern vec_t    g_direct_scale;
-extern vec_t	g_limitthreshold;
+extern float   g_ambient[3];
+extern float    g_direct_scale;
+extern float	g_limitthreshold;
 extern bool		g_drawoverload;
 extern unsigned g_numbounce;
 extern float    g_qgamma;
@@ -493,18 +493,18 @@ extern float    g_smoothing_threshold;
 extern float    g_smoothing_value;
 extern float g_smoothing_threshold_2;
 extern float g_smoothing_value_2;
-extern vec_t *g_smoothvalues; //[numtexref]
+extern float *g_smoothvalues; //[numtexref]
 extern bool     g_estimate;
 extern char     g_source[_MAX_PATH];
-extern vec_t    g_fade;
+extern float    g_fade;
 extern bool     g_incremental;
 extern bool     g_circus;
 extern bool		g_allow_spread;
 extern bool     g_sky_lighting_fix;
-extern vec_t    g_chop;    // Chop value for normal textures
-extern vec_t    g_texchop; // Chop value for texture lights
-extern vec_t    g_minchop;
-extern vec_t    g_maxchop;
+extern float    g_chop;    // Chop value for normal textures
+extern float    g_texchop; // Chop value for texture lights
+extern float    g_minchop;
+extern float    g_maxchop;
 
 
                                                  // ------------------------------------------------------------------------
@@ -550,7 +550,7 @@ extern bool g_bleedfix;
 extern vec_t g_maxdiscardedlight;
 extern vec3_t g_maxdiscardedpos;
 extern vec_t g_texlightgap;
-extern vec_t g_skysamplescale;
+extern float g_skysamplescale;
 
 extern void     DetermineLightmapMemory();
 extern void     PairEdges();
@@ -573,7 +573,8 @@ extern funcCheckVisBit g_CheckVisBit;
 
 // qradutil.c
 extern vec_t    PatchPlaneDist( const patch_t* const patch );
-extern dleaf_t* PointInLeaf( const vec3_t point );
+extern dleaf_t* PointInLeafD( const vec3_t &point );
+extern dleaf_t* PointInLeaf( const float *point );
 extern dleaf_t* PointInLeaf( const LVector3 &point );
 extern void     MakeBackplanes();
 extern const dplane_t* getPlaneFromFace( const dface_t* const face );

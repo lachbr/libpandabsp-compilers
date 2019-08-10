@@ -1,204 +1,81 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="..\common\anorms.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\leaf_ambient_lighting.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\blockmem.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\lightingutils.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\bspfile.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\lightmap.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\cmdlib.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\lights.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\cmdlinecfg.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\loadtextures.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\filelib.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\mathutil.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\log.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\qrad.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\mathlib.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\qradutil.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="mathutil.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\radial.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\messages.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\radstaticprop.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\scriplib.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\trace.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\common\threads.cpp">
-      <Filter>common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\winding.cpp">
-      <Filter>common</Filter>
-    </ClCompile>
-    <ClCompile Include="lightmap.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="loadtextures.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="qrad.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="qradutil.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="radstaticprop.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="trace.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="leaf_ambient_lighting.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="lightingutils.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\halton.cpp">
-      <Filter>common</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\bsptools.cpp">
-      <Filter>common</Filter>
-    </ClCompile>
-    <ClCompile Include="radial.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\mathlib\sse.cpp">
-      <Filter>common\mathlib</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\mathlib\sseconst.cpp">
-      <Filter>common\mathlib</Filter>
-    </ClCompile>
-    <ClCompile Include="lights.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="vismat.cpp">
-      <Filter>rad</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\mathlib\powsse.cpp">
-      <Filter>common\mathlib</Filter>
-    </ClCompile>
-    <ClCompile Include="..\common\clhelper.cpp">
-      <Filter>common</Filter>
+    <ClCompile Include="B:\Projects\libpandabsp-compilers\p3rad\vismat.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\template\basictypes.h">
-      <Filter>template</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\leaf_ambient_lighting.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\anorms.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\lightingutils.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\blockmem.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\lightmap.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\boundingbox.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\lights.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\bspfile.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\qrad.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\cmdlib.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\radial.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\cmdlinecfg.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\radstaticprop.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\filelib.h">
-      <Filter>common</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\trace.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\common\hlassert.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\log.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\mathlib.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\mathtypes.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\messages.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\scriplib.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\threads.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\win32fix.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\winding.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="qrad.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="radstaticprop.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="leaf_ambient_lighting.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="lightingutils.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\halton.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\bsptools.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="radial.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="lightmap.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\mathlib\ssemath.h">
-      <Filter>common\mathlib</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\mathlib\sse.h">
-      <Filter>common\mathlib</Filter>
-    </ClInclude>
-    <ClInclude Include="lights.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="vismat.h">
-      <Filter>rad</Filter>
-    </ClInclude>
-    <ClInclude Include="..\common\clhelper.h">
-      <Filter>common</Filter>
-    </ClInclude>
-    <ClInclude Include="trace.h">
-      <Filter>rad</Filter>
+    <ClInclude Include="B:\Projects\libpandabsp-compilers\p3rad\vismat.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <Filter Include="common">
-      <UniqueIdentifier>{3d60cbb1-fff2-43a7-abd1-e15109bca81b}</UniqueIdentifier>
+    <CustomBuild Include="B:\Projects\libpandabsp-compilers\p3rad\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{D20A72B4-9893-3F3F-B440-83B6E3E31D57}</UniqueIdentifier>
     </Filter>
-    <Filter Include="template">
-      <UniqueIdentifier>{4885d1f8-4800-427f-ad2d-fcb3873ce531}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="rad">
-      <UniqueIdentifier>{c193c38f-a439-407c-8d85-0ba25e1be21a}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="common\mathlib">
-      <UniqueIdentifier>{b7a947d4-0ad3-418f-989e-0fbd45981be7}</UniqueIdentifier>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{51FF0EA3-6C99-318F-95C3-56252AD15ACC}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

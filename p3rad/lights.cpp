@@ -227,7 +227,7 @@ void ParseLightGeneric( entity_t *e, directlight_t *dl )
                 }
                 else
                 {
-                        GetVectorForKey( e2, "origin", dest );
+                        GetVectorDForKey( e2, "origin", dest );
                         VectorSubtract( dest, dl->origin, dl->normal );
                         dl->normal.normalize();
                 }
@@ -235,7 +235,7 @@ void ParseLightGeneric( entity_t *e, directlight_t *dl )
         else
         {
                 vec3_t angles;
-                GetVectorForKey( e, "angles", angles );
+                GetVectorDForKey( e, "angles", angles );
                 float pitch = FloatForKey( e, "pitch" );
                 float angle = FloatForKey( e, "angle" );
                 SetupLightNormalFromProps( GetLVector3( angles ), angle, pitch, dl->normal );
@@ -257,7 +257,7 @@ void SetLightFalloffParams( entity_t *e, directlight_t *dl )
 void ParseLightSpot( entity_t *e, directlight_t *dl )
 {
         vec3_t dest;
-        GetVectorForKey( e, "origin", dest );
+        GetVectorDForKey( e, "origin", dest );
         dl = AllocDLight( GetLVector3( dest ), true );
 
         ParseLightGeneric( e, dl );
@@ -429,7 +429,7 @@ void BuildVisForLightEnvironment()
 void ParseLightEnvironment( entity_t *e, directlight_t *dl )
 {
         vec3_t dest;
-        GetVectorForKey( e, "origin", dest );
+        GetVectorDForKey( e, "origin", dest );
         dl = AllocDLight( GetLVector3( dest ), false );
 
         ParseLightGeneric( e, dl );
@@ -472,7 +472,7 @@ void ParseLightEnvironment( entity_t *e, directlight_t *dl )
 void ParseLightPoint( entity_t *e, directlight_t *dl )
 {
         vec3_t dest;
-        GetVectorForKey( e, "origin", dest );
+        GetVectorDForKey( e, "origin", dest );
         dl = AllocDLight( GetLVector3( dest ), true );
 
         ParseLightGeneric( e, dl );

@@ -41,7 +41,7 @@ A simple summary of RAD goes as follows:
 
 */
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
@@ -83,7 +83,7 @@ eVisMethods;
 
 eVisMethods		g_method = DEFAULT_METHOD;
 
-vec_t           g_fade = DEFAULT_FADE;
+float           g_fade = DEFAULT_FADE;
 
 entity_t*       g_face_entity[MAX_MAP_FACES];
 entity_t*		g_face_texlights[MAX_MAP_FACES];
@@ -95,8 +95,8 @@ pvector<int> g_cluster_children;
 
 size_t g_total_transfer = 0;
 
-vec_t g_minchop = 4;
-vec_t g_maxchop = 4;
+float g_minchop = 4;
+float g_maxchop = 4;
 
 static pvector<LVector3> emitlight;
 static pvector<bumpsample_t> addlight;
@@ -106,16 +106,16 @@ string		g_mfincludefile;
 
 vec3_t          g_face_offset[MAX_MAP_FACES];              // for rotating bmodels
 
-vec_t           g_direct_scale = DEFAULT_DLIGHT_SCALE;
-vec_t           g_skysamplescale = 1.0;
+float           g_direct_scale = DEFAULT_DLIGHT_SCALE;
+float           g_skysamplescale = 1.0;
 int             g_extrapasses = 4;
 
 unsigned        g_numbounce = 100; // max number of bounces
 
 static bool     g_dumppatches = DEFAULT_DUMPPATCHES;
 
-vec3_t          g_ambient = { DEFAULT_AMBIENT_RED, DEFAULT_AMBIENT_GREEN, DEFAULT_AMBIENT_BLUE };
-vec_t			g_limitthreshold = DEFAULT_LIMITTHRESHOLD;
+float          g_ambient[3] = { DEFAULT_AMBIENT_RED, DEFAULT_AMBIENT_GREEN, DEFAULT_AMBIENT_BLUE };
+float			g_limitthreshold = DEFAULT_LIMITTHRESHOLD;
 bool			g_drawoverload = false;
 
 float           g_lightscale = DEFAULT_LIGHTSCALE;
@@ -174,10 +174,10 @@ bool            g_info = DEFAULT_INFO;
 
 // Patch creation and subdivision criteria
 bool            g_subdivide = DEFAULT_SUBDIVIDE;
-vec_t           g_chop = DEFAULT_CHOP;
-vec_t           g_texchop = DEFAULT_TEXCHOP;
+float           g_chop = DEFAULT_CHOP;
+float           g_texchop = DEFAULT_TEXCHOP;
 
-vec_t			g_corings[ALLSTYLES];
+float			g_corings[ALLSTYLES];
 vec3_t*			g_translucenttextures = NULL;
 vec_t			g_translucentdepth = DEFAULT_TRANSLUCENTDEPTH;
 vec_t			g_blur = DEFAULT_BLUR;
@@ -628,7 +628,7 @@ static bool     IsSpecial( const dface_t* const f )
 static float    totalarea = 0;
 // =====================================================================================
 
-vec_t *g_smoothvalues; //[numtexref]
+float *g_smoothvalues; //[numtexref]
 void ReadCustomSmoothValue()
 {
         int num;
@@ -637,7 +637,7 @@ void ReadCustomSmoothValue()
         epair_t *ep;
 
         num = g_bspdata->numtexrefs;
-        g_smoothvalues = (vec_t *)malloc( num * sizeof( vec_t ) );
+        g_smoothvalues = (float *)malloc( num * sizeof( vec_t ) );
         for ( i = 0; i < num; i++ )
         {
                 g_smoothvalues[i] = g_smoothing_threshold;
@@ -804,7 +804,7 @@ static entity_t *FindTexlightEntity( int facenum )
                 if ( strcasecmp( ValueForKey( ent, "_tex" ), texname ) )
                         continue;
                 vec3_t delta;
-                GetVectorForKey( ent, "origin", delta );
+                GetVectorDForKey( ent, "origin", delta );
                 VectorSubtract( delta, centroid, delta );
                 vec_t dist = VectorLength( delta );
                 if ( *ValueForKey( ent, "_frange" ) )
@@ -982,7 +982,7 @@ static void MakePatches()
                 // bmodels with origin brushes need to be offset into
                 // their in-use position
                 vec3_t vorigin;
-                GetVectorForKey( ent, "origin", vorigin );
+                GetVectorDForKey( ent, "origin", vorigin );
                 VectorCopy( vorigin, origin );
                 for ( j = 0; j < mod->numfaces; j++ )
                 {
@@ -1231,7 +1231,7 @@ static void SubdividePatches()
         // to sort per polygon.
         for ( i = 0; i < patch_count; i++ )
         {
-                vec3_t vorg;
+                float vorg[3];
                 VectorCopy( g_patches[i].origin, vorg );
                 g_patches[i].leafnum = PointInLeaf( vorg ) - g_bspdata->dleafs;
 
@@ -1242,7 +1242,7 @@ static void SubdividePatches()
                 {
                         for ( int j = 0; j < g_patches[i].winding->m_NumPoints; j++ )
                         {
-                                int clusterNumber = PointInLeaf( g_patches[i].winding->m_Points[j] ) - g_bspdata->dleafs;
+                                int clusterNumber = PointInLeafD( g_patches[i].winding->m_Points[j] ) - g_bspdata->dleafs;
                                 if ( clusterNumber != -1 )
                                 {
                                         g_patches[i].leafnum = clusterNumber;
@@ -1350,7 +1350,7 @@ static void     CollectLight( LVector3 &total )
 //      Get light from other g_patches
 //      Run multi-threaded
 // =====================================================================================
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(push)
 #pragma warning(disable: 4100)                             // unreferenced formal parameter
 #endif
@@ -1452,7 +1452,7 @@ void GatherLight( int threadnum )
         }
 }
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #pragma warning(pop)
 #endif
 
@@ -1875,7 +1875,7 @@ static void     Usage()
         Log( "    -low | -high    : run program an altered priority level\n" );
         Log( "    -nolog          : Do not generate the compile logfiles\n" );
         Log( "    -threads #      : manually specify the number of threads to run\n" );
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
         Log( "    -estimate       : display estimated time during compile\n" );
 #endif
 #ifdef SYSTEM_POSIX
@@ -2180,7 +2180,7 @@ void            LoadRadFiles( const char* const mapname, const char* const user_
         {
                 char tmp[_MAX_PATH];
                 memset( tmp, 0, sizeof( tmp ) );
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                 GetModuleFileName( NULL, tmp, _MAX_PATH );
 #else
                 safe_strncpy( tmp, argv0, _MAX_PATH );
@@ -2460,7 +2460,7 @@ int             main( const int argc, char** argv )
                                                 Usage();
                                         }
                                 }
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                 else if ( !strcasecmp( argv[i], "-estimate" ) )
                                 {
                                         g_estimate = true;

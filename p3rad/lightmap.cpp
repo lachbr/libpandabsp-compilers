@@ -430,8 +430,8 @@ void            GetPhongNormal( int facenum, const LVector3 &spot, LVector3 &pho
                         vert1 = EdgeVertex( f, j );
                         vert2 = EdgeVertex( f, j + 1 );
 
-                        LVector3 p1 = GetLVector3( g_bspdata->dvertexes[vert1].point );
-                        LVector3 p2 = GetLVector3( g_bspdata->dvertexes[vert2].point );
+                        LVector3 p1 = GetLVector3_2( g_bspdata->dvertexes[vert1].point );
+                        LVector3 p2 = GetLVector3_2( g_bspdata->dvertexes[vert2].point );
 
                         // Build vectors from the middle of the face to the edge vertexes and the sample pos.
                         VectorSubtract( p1, g_face_centroids[facenum], v1 );
@@ -855,8 +855,8 @@ void GetPhongNormal( int facenum, const FourVectors &spot, FourVectors &phongnor
                         vert1 = EdgeVertex( f, j );
                         vert2 = EdgeVertex( f, j + 1 );
 
-                        LVector3 p1 = GetLVector3( g_bspdata->dvertexes[vert1].point );
-                        LVector3 p2 = GetLVector3( g_bspdata->dvertexes[vert2].point );
+                        LVector3 p1 = GetLVector3_2( g_bspdata->dvertexes[vert1].point );
+                        LVector3 p2 = GetLVector3_2( g_bspdata->dvertexes[vert2].point );
 
                         // Build vectors from the middle of the face to the edge vertexes and the sample pos.
                         VectorSubtract( p1, g_face_centroids[facenum], v1 );
@@ -944,7 +944,7 @@ void ComputeIlluminationPointAndNormalsSSE( const lightinfo_t &l, const FourVect
 
         for ( int i = 0; i < 4; i++ )
         {
-                vec3_t vpos;
+                float vpos[3];
                 VectorCopy( pos.Vec( i ), vpos );
                 info->clusters[i] = PointInLeaf( vpos ) - g_bspdata->dleafs;
         }
