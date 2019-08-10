@@ -719,7 +719,7 @@ bool            ParseMapEntity()
                         }
                         DeleteKey( mapent, "zhlt_transform" );
                 }
-                GetVectorForKey( mapent, "origin", ent_scale_origin );
+                GetVectorDForKey( mapent, "origin", ent_scale_origin );
 
                 if ( ent_move_b || ent_scale_b || ent_gscale_b )
                 {
@@ -846,7 +846,7 @@ bool            ParseMapEntity()
                                                 int origin[3];
                                                 char string[MAXTOKEN];
                                                 int i;
-                                                GetVectorForKey( mapent, "origin", v );
+                                                GetVectorDForKey( mapent, "origin", v );
                                                 VectorScale( v, ent_gscale, v );
                                                 for ( i = 0; i<3; ++i )
                                                         origin[i] = (int)( v[i] >= 0 ? v[i] + 0.5 : v[i] - 0.5 );
@@ -906,7 +906,7 @@ bool            ParseMapEntity()
 
 
 
-        GetVectorForKey( mapent, "origin", mapent->origin );
+	GetVectorForKey( mapent, "origin", mapent->origin );
 
         if ( !strcmp( "func_group", ValueForKey( mapent, "classname" ) )
              || !strcmp( "func_detail", ValueForKey( mapent, "classname" ) )
@@ -986,7 +986,7 @@ bool            ParseMapEntity()
                 }
 
                 vec3_t origin;
-                GetVectorForKey( mapent, "origin", origin );
+                GetVectorDForKey( mapent, "origin", origin );
                 VectorCopy( origin, dcm.pos );
 
                 dcm.size = IntForKey( mapent, "size" );
@@ -1004,15 +1004,15 @@ bool            ParseMapEntity()
                 strcpy( prop.name, ValueForKey( mapent, "modelpath" ) );
 
                 vec3_t scale;
-                GetVectorForKey( mapent, "scale", scale );
+                GetVectorDForKey( mapent, "scale", scale );
                 VectorCopy( scale, prop.scale );
 
                 vec3_t origin;
-                GetVectorForKey( mapent, "origin", origin );
+                GetVectorDForKey( mapent, "origin", origin );
                 VectorCopy( origin, prop.pos );
 
                 vec3_t angles;
-                GetVectorForKey( mapent, "angles", angles );
+                GetVectorDForKey( mapent, "angles", angles );
                 VectorCopy( angles, prop.hpr );
 
                 prop.first_vertex_data = -1; // will be filled in by p3rad if STATICPROPFLAGS_STATICLIGHTING bit is set

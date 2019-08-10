@@ -11,7 +11,7 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 */
 
 #include "csg.h" 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h> //--vluzacn
 #endif
@@ -1345,7 +1345,7 @@ static void     Usage()
         Log( "    -nolog           : don't generate the compile logfiles\n" );
         Log( "    -noresetlog      : Do not delete log file\n" );
         Log( "    -threads #       : manually specify the number of threads to run\n" );
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
         Log( "    -estimate        : display estimated time during compile\n" );
 #endif
 #ifdef SYSTEM_POSIX
@@ -1553,7 +1553,7 @@ int             main( const int argc, char** argv )
                                         }
                                 }
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                 else if ( !strcasecmp( argv[i], "-estimate" ) )
                                 {
                                         g_estimate = true;
@@ -1750,7 +1750,7 @@ int             main( const int argc, char** argv )
                                         if ( i + 1 < argc )
                                         {
                                                 char tmp[_MAX_PATH];
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                                 GetModuleFileName( NULL, tmp, _MAX_PATH );
 #else
                                                 safe_strncpy( tmp, argv[0], _MAX_PATH );
@@ -1898,7 +1898,7 @@ int             main( const int argc, char** argv )
                                 }
                                 else
                                 {
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                         GetModuleFileName( NULL, temp, _MAX_PATH );
 #else
                                         safe_strncpy( temp, argv[0], _MAX_PATH );
@@ -1924,7 +1924,7 @@ int             main( const int argc, char** argv )
                                 }
                                 else
                                 {
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                         GetModuleFileName( NULL, temp, _MAX_PATH );
 #else
                                         safe_strncpy( temp, argv[0], _MAX_PATH );
@@ -1950,7 +1950,7 @@ int             main( const int argc, char** argv )
                                 }
                                 else
                                 {
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                         GetModuleFileName( NULL, temp, _MAX_PATH );
 #else
                                         safe_strncpy( temp, argv[0], _MAX_PATH );
@@ -2025,7 +2025,7 @@ int             main( const int argc, char** argv )
                                 {
                                 char temp[_MAX_PATH];
                                 char test[_MAX_PATH];
-                                #ifdef SYSTEM_WIN32
+                                #ifdef _WIN32
                                 GetModuleFileName (NULL, temp, _MAX_PATH);
                                 #else
                                 safe_strncpy (temp, argv[0], _MAX_PATH);

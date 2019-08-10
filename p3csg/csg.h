@@ -27,10 +27,6 @@
 //#include "wadpath.h"
 #include "cmdlinecfg.h"
 
-#ifndef DOUBLEVEC_T
-#error you must add -dDOUBLEVEC_T to the project!
-#endif
-
 #define DEFAULT_BRUSH_UNION_THRESHOLD 0.0f
 #define DEFAULT_TINY_THRESHOLD        0.0
 #define DEFAULT_ONLYENTS    false
@@ -56,7 +52,7 @@
 // AJM: added in
 #define UNLESS(a)  if (!(a))
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define DEFAULT_ESTIMATE    false
 #endif
 

@@ -259,7 +259,7 @@ bool            MakeBrushPlanes( brush_t* b, int brushnum )
         //
         // if the origin key is set (by an origin brush), offset all of the values
         //
-        GetVectorForKey( &g_bspdata->entities[b->entitynum], "origin", origin );
+        GetVectorDForKey( &g_bspdata->entities[b->entitynum], "origin", origin );
 
         //
         // convert to mapplanes
@@ -548,7 +548,7 @@ hullbrush_t *CreateHullBrush( const brush_t *b )
         // planes
 
         numplanes = 0;
-        GetVectorForKey( &g_bspdata->entities[b->entitynum], "origin", origin );
+        GetVectorDForKey( &g_bspdata->entities[b->entitynum], "origin", origin );
 
         for ( i = 0; i < b->numsides; i++ )
         {
