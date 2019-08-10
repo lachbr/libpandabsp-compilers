@@ -31,7 +31,7 @@ static node_t*  PointInLeaf( node_t* node, const vec3_t point )
                 return node;
         }
 
-        d = DotProduct( g_dplanes[node->planenum].normal, point ) - g_dplanes[node->planenum].dist;
+        d = DotProduct( g_bspdata->dplanes[node->planenum].normal, point ) - g_bspdata->dplanes[node->planenum].dist;
 
         if ( d > 0 )
                 return PointInLeaf( node->children[0], point );
@@ -456,7 +456,7 @@ node_t*         FillOutside( node_t* node, const bool leakfile, const unsigned h
         inside = false;
         for ( i = 1; i < g_bspdata->numentities; i++ )
         {
-                GetVectorForKey( &g_bspdata->entities[i], "origin", origin );
+                GetVectorDForKey( &g_bspdata->entities[i], "origin", origin );
                 cl = ValueForKey( &g_bspdata->entities[i], "classname" );
                 if ( !isClassnameAllowableOutside( cl ) )
                 {
@@ -542,7 +542,7 @@ gotit:;
 
         if ( ret )
         {
-                GetVectorForKey( &g_bspdata->entities[hit_occupied], "origin", origin );
+                GetVectorDForKey( &g_bspdata->entities[hit_occupied], "origin", origin );
 
 
                 {
@@ -663,7 +663,7 @@ void			FillInside( node_t* node )
                 {
                         vec3_t origin;
                         node_t* innode;
-                        GetVectorForKey( &g_bspdata->entities[i], "origin", origin );
+                        GetVectorDForKey( &g_bspdata->entities[i], "origin", origin );
                         origin[2] += 1;
                         innode = PointInLeaf( node, origin );
                         MarkOccupied_r( innode );

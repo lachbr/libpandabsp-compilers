@@ -8,7 +8,7 @@ Modified by Tony "Merl" Moore (merlinis@bigpond.net.au) [AJM]
 
 */
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
@@ -62,8 +62,6 @@ vec_t g_brushbounds[MAX_MAP_BRUSHES][2][3];
 bool g_nohull2 = false;
 
 bool g_viewportal = false;
-
-dplane_t g_dplanes[MAX_INTERNAL_MAP_PLANES];
 
 
 // =====================================================================================
@@ -239,7 +237,7 @@ static void     SplitFaceTmp( face_t* in, const dplane_t* const split, face_t** 
                 if ( in->detaillevel )
                 {
                         // put front face in front node, and back face in back node.
-                        const dplane_t *faceplane = &g_dplanes[in->planenum];
+                        const dplane_t *faceplane = &g_bspdata->dplanes[in->planenum];
                         if ( DotProduct( faceplane->normal, split->normal ) > NORMAL_EPSILON ) // usually near 1.0 or -1.0
                         {
                                 *front = in;
@@ -1019,7 +1017,7 @@ static surfchain_t* ReadSurfs( FILE* file )
                         VectorCopy( v, f->pts[i] );
                         if ( DEVELOPER_LEVEL_MEGASPAM <= g_developer )
                         {
-                                const dplane_t *plane = &g_dplanes[f->planenum];
+                                const dplane_t *plane = &g_bspdata->dplanes[f->planenum];
                                 inaccuracy = fabs( DotProduct( f->pts[i], plane->normal ) - plane->dist );
                                 inaccuracy_count++;
                                 inaccuracy_total += inaccuracy;
@@ -1078,7 +1076,7 @@ static brush_t *ReadBrushes( FILE *file )
                         }
                         side_t *s;
                         s = AllocSide();
-                        s->plane = g_dplanes[planenum ^ 1];
+                        s->plane = g_bspdata->dplanes[planenum ^ 1];
                         s->w = new Winding( numpoints );
                         int x;
                         for ( x = 0; x < numpoints; x++ )
@@ -1126,7 +1124,7 @@ brush_t *MakeBrushListFromSurfs(surfchain_t *surfs)
                                         
                                         side_t *s;
                                         s = AllocSide();
-                                        s->plane = g_dplanes[dbs->planenum ^ 1];
+                                        s->plane = g_bspdata->dplanes[dbs->planenum ^ 1];
                                         s->w = new Winding( s->plane.normal, s->plane.dist );
 
                                         // clip against planes of all other sides to
@@ -1137,7 +1135,7 @@ brush_t *MakeBrushListFromSurfs(surfchain_t *surfs)
                                                         continue;
 
                                                 dbrushside_t *other_dbs = &g_bspdata->dbrushsides[db->firstside + j];
-                                                dplane_t pl = g_dplanes[other_dbs->planenum ^ 1];
+                                                dplane_t pl = g_bspdata->dplanes[other_dbs->planenum ^ 1];
                                                 if ( !s->w->Chop( pl.normal, pl.dist, NORMAL_EPSILON ) )
                                                 {
                                                         break;
@@ -1368,7 +1366,7 @@ static void     Usage()
         Log( "    -low | -high   : run program an altered priority level\n" );
         Log( "    -nolog         : don't generate the compile logfiles\n" );
         Log( "    -threads #     : manually specify the number of threads to run\n" );
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
         Log( "    -estimate      : display estimated time during compile\n" );
 #endif
 #ifdef SYSTEM_POSIX
@@ -1520,36 +1518,6 @@ static void     ProcessFile( const char* const filename )
 
         Settings(); // AJM: moved here due to info_compile_parameters entity
 
-        {
-                char name[_MAX_PATH];
-                safe_snprintf( name, _MAX_PATH, "%s.pln", filename );
-                FILE *planefile = fopen( name, "rb" );
-                if ( !planefile )
-                {
-                        Warning( "Couldn't open %s", name );
-#undef dplane_t
-#undef g_dplanes
-                        for ( i = 0; i < g_bspdata->numplanes; i++ )
-                        {
-                                plane_t *mp = &g_mapplanes[i];
-                                dplane_t *dp = &g_bspdata->dplanes[i];
-                                VectorCopy( dp->normal, mp->normal );
-                                mp->dist = dp->dist;
-                                mp->type = dp->type;
-                        }
-#define dplane_t plane_t
-#define g_dplanes g_mapplanes
-                }
-                else
-                {
-                        if ( q_filelength( planefile ) != g_bspdata->numplanes * sizeof( dplane_t ) )
-                        {
-                                Error( "Invalid plane data" );
-                        }
-                        SafeRead( planefile, g_dplanes, g_bspdata->numplanes * sizeof( dplane_t ) );
-                        fclose( planefile );
-                }
-        }
         // init the tables to be shared by all models
         BeginBSPFile();
 
@@ -1633,7 +1601,7 @@ int             main( const int argc, char** argv )
                                         g_noinsidefill = true;
                                 }
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                 else if ( !strcasecmp( argv[i], "-estimate" ) )
                                 {
                                         g_estimate = true;
@@ -1808,7 +1776,7 @@ int             main( const int argc, char** argv )
                                         if ( i + 1 < argc )
                                         {
                                                 char tmp[_MAX_PATH];
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                                 GetModuleFileName( NULL, tmp, _MAX_PATH );
 #else
                                                 safe_strncpy( tmp, argv[0], _MAX_PATH );
@@ -1896,7 +1864,7 @@ int             main( const int argc, char** argv )
                                 {
                                         char tmp[_MAX_PATH];
                                         // try looking in the directory we were run from
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
                                         GetModuleFileName( NULL, tmp, _MAX_PATH );
 #else
                                         safe_strncpy( tmp, argv[0], _MAX_PATH );

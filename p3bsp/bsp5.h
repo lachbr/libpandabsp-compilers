@@ -51,7 +51,7 @@
 #define DEFAULT_NULLTEX             true
 
 
-#ifdef SYSTEM_WIN32
+#ifdef _WIN32
 #define DEFAULT_ESTIMATE        false
 #endif
 

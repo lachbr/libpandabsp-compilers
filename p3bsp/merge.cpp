@@ -113,7 +113,7 @@ static face_t*  TryMerge( face_t* f1, face_t* f2 )
         // check slope of connected lines
         // if the slopes are colinear, the point can be removed
         //
-        plane = &g_dplanes[f1->planenum];
+        plane = &g_bspdata->dplanes[f1->planenum];
         VectorCopy( plane->normal, planenormal );
 
         back = f1->pts[( i + f1->numpoints - 1 ) % f1->numpoints];
