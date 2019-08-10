@@ -119,7 +119,7 @@ inline vec_t   VectorNormalize( vec3_t v )
         return length;
 }
 
-inline bool     VectorCompare( const vec3_t v1, const vec3_t v2 )
+inline bool     VectorCompare( const float *v1, const float *v2 )
 {
         int             i;
 
@@ -344,7 +344,7 @@ INLINE LVector3 GetLVector3( const vec3_t &vec )
         return LVector3( vec[0], vec[1], vec[2] );
 }
 
-INLINE LVector3 GetLVector3_2( const vec_t *vec )
+INLINE LVector3 GetLVector3_2( const float *vec )
 {
         return LVector3( vec[0], vec[1], vec[2] );
 }
