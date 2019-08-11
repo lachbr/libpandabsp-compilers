@@ -1,7 +1,7 @@
 # libpandabsp-compilers
 `libpandabsp-compilers` is a suite of tools for compiling BSP levels, for use with my [libpandabsp](https://github.com/lachbr/libpandabsp) library and the [Panda3D](https://github.com/panda3d/panda3d) game engine. It is a heavy modification and upgrade of [Zoner's Half Life Tools](http://zhlt.info/).
 
-The project is only supported on Windows currently, but cross-platform support is possible.
+The project is currently only supported on Windows. Cross-platform support has not yet been tested, but it is possible.
 
 # Dependencies
 ### For all projects
