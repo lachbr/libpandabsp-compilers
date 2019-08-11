@@ -329,6 +329,13 @@ INLINE float DotProductAbs( const LVector3 &v0, const LVector3 &v1 )
                 fabsf( v0[2] * v1[2] );
 }
 
+INLINE double DotProductAbsD( const LVector3 &v0, const double *v1 )
+{
+	return fabs( v0[0] * v1[0] ) +
+		fabs( v0[1] * v1[1] ) +
+		fabs( v0[2] * v1[2] );
+}
+
 INLINE float DotProductAbs( const LVector3 &v0, const float *v1 )
 {
         return fabsf( v0[0] * v1[0] ) +
