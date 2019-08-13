@@ -133,6 +133,20 @@ inline bool     VectorCompare( const float *v1, const float *v2 )
         return true;
 }
 
+inline bool     VectorCompareD( const double *v1, const double *v2 )
+{
+	int             i;
+
+	for ( i = 0; i < 3; i++ )
+	{
+		if ( fabs( v1[i] - v2[i] ) > EQUAL_EPSILON )
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 
 //
 // Portable bit rotation
