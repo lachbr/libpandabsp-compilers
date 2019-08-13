@@ -205,7 +205,7 @@ inline static void AddPlane( pstack_t* const stack, const plane_t* const split )
                 for ( j = 0; j < stack->clipPlaneCount; j++ )
                 {
                         if ( fabs( ( stack->clipPlane[j] ).dist - split->dist ) <= EQUAL_EPSILON &&
-                             VectorCompare( ( stack->clipPlane[j] ).normal, split->normal ) )
+                             VectorCompareD( ( stack->clipPlane[j] ).normal, split->normal ) )
                         {
                                 return;
                         }
@@ -488,7 +488,7 @@ inline static void     RecursiveLeafFlow( const int leafnum, const threaddata_t*
                 VectorSubtract( vec3_origin, p->plane.normal, backplane.normal );
                 backplane.dist = -p->plane.dist;
 
-                if ( VectorCompare( prevstack->portalplane->normal, backplane.normal ) )
+                if ( VectorCompareD( prevstack->portalplane->normal, backplane.normal ) )
                 {
                         continue;                                      // can't go out a coplanar face
                 }

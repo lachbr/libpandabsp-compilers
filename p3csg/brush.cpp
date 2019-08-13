@@ -659,8 +659,8 @@ hullbrush_t *CreateHullBrush( const brush_t *b )
                         {
                                 for ( e2 = 0; e2 < w[k]->m_NumPoints; e2++ )
                                 {
-                                        if ( VectorCompare( w[k]->m_Points[( e2 + 1 ) % w[k]->m_NumPoints], edge->vertexes[1] ) &&
-                                             VectorCompare( w[k]->m_Points[e2], edge->vertexes[0] ) )
+                                        if ( VectorCompareD( w[k]->m_Points[( e2 + 1 ) % w[k]->m_NumPoints], edge->vertexes[1] ) &&
+                                             VectorCompareD( w[k]->m_Points[e2], edge->vertexes[0] ) )
                                         {
                                                 found++;
                                                 VectorCopy( planes[k].normal, edge->normals[1] );
@@ -698,7 +698,7 @@ hullbrush_t *CreateHullBrush( const brush_t *b )
                         VectorCopy( w[i]->m_Points[e], v );
                         for ( j = 0; j < numvertexes; j++ )
                         {
-                                if ( VectorCompare( vertexes[j].point, v ) )
+                                if ( VectorCompareD( vertexes[j].point, v ) )
                                 {
                                         break;
                                 }
