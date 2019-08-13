@@ -101,8 +101,8 @@
 #define MAX_LIGHTSTYLES 64
 //=============================================================================
 
-#define BSPVERSION  32
-#define TOOLVERSION 3
+#define BSPVERSION  33
+#define TOOLVERSION 4
 
 // One hammer unit is 1/16th of a foot.
 // One panda unit is one foot.
